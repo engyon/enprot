@@ -210,8 +210,8 @@ enprot$
 ----
 Decryption can be performed exactly the same way using the `-d` command:
 ----
-$ ./target/debug/enprot sample/test.ept -d Agent_007,GEHEIM -k GEHEIM=james -k Agent_007=bond
-mjos@blu:~/Desktop/lab/enprot$ cat sample/test.ept 
+enprot$ ./target/debug/enprot sample/test.ept -d Agent_007,GEHEIM -k GEHEIM=james -k Agent_007=bond
+enprot$ cat sample/test.ept 
 hello, this is a test file
 // <( BEGIN GEHEIM )>
 Secret line 1
@@ -223,7 +223,7 @@ Secret line 2
 // <( BEGIN Agent_007 )>
 Super secret line 3
 // <( END Agent_007 )>
-mjos@blu:~/Desktop/lab/enprot
+enprot%
 ----
 We see that only one layer of encryption was removed from GEHEIM. You may
 use the exactly same command for second iteration to reveal the original 
@@ -247,7 +247,7 @@ Usage: enprot [OPTION].. [FILE]...
 	-o FILE         Specify output file for previous input.
 
 Written 2018 by Markku-Juhani O. Saarinen <mjos@iki.fi>
-mjos@blu:~/Desktop/lab/enprot$ 
+enprot$ 
 ----
 
 Notice how that authorship information appeared at the end of help text
@@ -284,13 +284,13 @@ both predicates at once.
 enprot$ ./target/debug/enprot sample/test.ept -E GEHEIM
 Password for GEHEIM: 
 Repeat password for GEHEIM: 
-mjos@blu:~/Desktop/lab/enprot$ cat sample/test.ept 
+enprot$ cat sample/test.ept 
 hello, this is a test file
 // <( ENCRYPTED GEHEIM 12d24bf3dbebfe5feb7684efdb1d98391c4b0afd809a8bc87f3f8e6f75e59651 )>
 // <( BEGIN Agent_007 )>
 Super secret line 3
 // <( END Agent_007 )>
-mjos@blu:~/Desktop/lab/enprot$
+enprot$
 ----
 Here I left out the `-k` definition so Enprot asked me to enter a password.
 The `-d` flag will work the same way when the ciphertext is in CAS or in 
