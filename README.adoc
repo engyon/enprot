@@ -229,9 +229,54 @@ We see that only one layer of encryption was removed from GEHEIM. You may
 use the exactly same command for second iteration to reveal the original 
 file.
 
+==== Working on Source Code
+
+The system allows one work on text-format documents, but also on program
+source code. For example the source code of Enprot has an encrypted portion
+in its help message:
+----
+enprot$ ./target/debug/enprot -d AUTHOR -k AUTHOR=markku src/main.rs
+enprot$ cargo run -- -h
+   Compiling enprot v0.1.0 (file:///home/mjos/Desktop/lab/enprot)
+    Finished dev [unoptimized + debuginfo] target(s) in 2.17s
+     Running `target/debug/enprot -h`
+Usage: enprot [OPTION].. [FILE]...
+	-h -? --help    This simple hlpe 
+   
+    [....]
+	-o FILE         Specify output file for previous input.
+
+Written 2018 by Markku-Juhani O. Saarinen <mjos@iki.fi>
+mjos@blu:~/Desktop/lab/enprot$ 
+----
+
+Notice how that authorship information appeared at the end of help text
+when cargo recompiled the source code (since it was "touched"). This is 
+because some source lines in `src/main.rs` originally read:
+----
+48:            "-h" | "-?" |"--help" => {
+49:                println!("{}", usage);
+50:// <( ENCRYPTED AUTHOR )>
+51:// <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
+52:// <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
+53:// <( END AUTHOR )>
+54:                ::std::process::exit(0);
+----
+Which was decrypted to
+----
+48:            "-h" | "-?" |"--help" => {
+49:                println!("{}", usage);
+50:// <( BEGIN AUTHOR )>
+51:                println!("Written 2018 by Markku-Juhani O. Saarinen <mjos@iki.fi>");
+52:// <( END AUTHOR )>
+53:                ::std::process::exit(0);
+----
+Without modifying anything else in the source code.
+
+
 ==== Encrypted Stashing
 
-If we combine encruption `-e WORD` and CAS storage `-s WORD`, the ciphertext
+If we combine encryption `-e WORD` and CAS storage `-s WORD`, the ciphertext
 is stored into CAS in encryption form. One may use `-E` flag to specify
 both predicates at once.
 

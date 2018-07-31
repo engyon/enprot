@@ -47,6 +47,10 @@ fn main() {
 		match arg.as_ref() {
 			"-h" | "-?" |"--help" => {
 				println!("{}", usage);
+// <( ENCRYPTED AUTHOR )>
+// <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
+// <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
+// <( END AUTHOR )>
 				::std::process::exit(0);
 			},
 			"-v" | "--verbose" => {
