@@ -191,7 +191,7 @@ Secret line 2
 // <( END Agent_007 )>
 enprot$
 ----
-In the above example I entered ``bond'' in both password prompts. Keys can
+In the above example I entered "bond" in both password prompts. Keys can
 also be passed from command line with the `-k` flag:
 ----
 enprot$ ./target/debug/enprot sample/test.ept -e GEHEIM -k GEHEIM=james
@@ -256,6 +256,30 @@ enprot$ ./target/debug/enprot sample/test.ept -d GEHEIM
 Password for GEHEIM: 
 enprot$
 ----
+
+==== Multi-File Processing
+
+Since files are transformed in place, you can use wildcards to process
+a large number of files at once. You will be asked for passwords only
+once.
+
+To process a file and output to a different filename, use `-o`:
+----
+enprot$ ./target/debug/enprot input.ept -o output.ept
+----
+To direct output to an another directory, or to add a prefix flag `-p PREFIX`.
+The PREFIX is literally added before each output file. Note that if input
+filenames have a relative path, that remains unchanged.
+
+----
+enprot$ ./target/debug/enprot -p output/ file.*
+----
+Will read files `file.1`, `file.2`, etc and write them into directory `output`
+(if it exists). However
+----
+enprot$ ./target/debug/enprot -p output file.*
+----
+Will produce files `outputfile.1`, `outputfile.2`, etc.
 
 
 ==== Cryptography: Symmetric Authenticated Encryption
