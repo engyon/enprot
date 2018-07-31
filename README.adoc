@@ -1,20 +1,20 @@
 [[enprot]]
 == enprot
 
-Enprot is a confidentiality processor for text and source and files.
+Enprot is a confidentiality processor for text and source code files.
 
 
-=== Introduction
+=== Introduction and Tutorial
 
 Engyon Protected Text (EPT) is a human-editable annotation method that 
 allows a text format document to contain finely grained cryptographic 
 confidentiality and integrity features. 
 
 Enprot is a pure Rust project. Use `cargo build --release` to build
-the release binary `target/release/enprot` or use `cargo run --` to 
+the release binary `target/release/enprot` or `cargo run --` to 
 build and run the debug version. Some of the dependencies may require
 the latest compiler (developed and tested with rustc 1.27.2). There
-is a simple help built-in:
+is a simple help built-in with `-h` flag:
 
 ----
 enprot$ cargo run -- -h
@@ -55,12 +55,13 @@ Super secret line 3
 // <( END Agent_007 )>
 ----
 
-As can be seen, the most elementary EPT markup is in comments and consists
-of BEGIN..END segments. Each such segment has a keyword (or ``word'')
+As can be seen, the most elementary EPT markup is in comments of the
+"host" language (which is C or AsciiDoc in this case) and consists
+of BEGIN..END segments. Each such segment has a keyword (or WORD)
 associated with it. Keywords can be used inside other keywords to form
 a tree-like structure.
 
-Now if we invoke `eptree` on a syntactically correct file such as this one,
+When invoke `eptree` on a syntactically correct file such as this one,
 nothing happens:
 ----
 enprot$ ./target/debug/enprot sample/test.ept 
@@ -82,8 +83,8 @@ for different languages:
 |===
 
 Note that the left separator must start the line (after whitespace). The
-right separator must currently also be on the same line.
-Adding verbosity reveals what the system is doing:
+right separator must currently also be on the same line. Adding verbosity 
+with `-v` reveals what the system is doing:
 
 ----
 enprot$ ./target/debug/enprot sample/test.ept -v
@@ -95,21 +96,22 @@ enprot$
 ----
 
 We see the default setting for left and right separators. Furthermore we
-see that the file is read in (parsed), transformed (which might be a
-no-op), and then written back (synthesized), overwriting the original file.
-This behavior can be changed.
+see that the file is read in (parsed), transformed (which is a no-op
+in this case), and then written back (synthesized), overwriting the 
+original file. This transformation behavior is controlled by a multitude
+of flags (as seen before).
 
 
 ==== Content Addressed Storage
 
 In above example we see `casdir = 'cas'`. This means that the default 
-directory for CAS (Content Addressed Storage) is `cas`.
-If you do not have a `cas` directory under your working directory, these
-work files are written to the current directory. We suggest that you
-do a `mkdir cas` if that directory doesn't exist.
+directory for CAS (Content Addressed Storage) is `cas` under current
+directly. If you do not have a `cas` directory set up, these work files are 
+written to the current directory. This is not a problem, but creates
+clutter. We suggest that you do a `mkdir cas`.
 
 The operation of CAS can be demonstrated simply by using the `-s` (store) flag,
-which hides away (sanitizes) a part of the text file:
+which hides away (sanitizes) a part of the text file. 
 ----
 enprot$ ./target/debug/enprot sample/test.ept -s GEHEIM
 enprot$ cat sample/test.ept 
@@ -123,10 +125,11 @@ cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4
 enprot$
 ----
 We can see that the entire section between BEGIN GEHEIM and END GEHEIM has 
-disappeared and has been replaced with a STORED GEHEIM. It is actually stored
-under a long hexadecimal filename. The properties of cryptographic functions
-guarantee that no two different contents can have the same hash. Therefore
-it is not really relevant how you store the file, as long as you store it.
+disappeared and has been replaced with a single STORED GEHEIM. The contents
+are actually stored in a file with a long hexadecimal filename. The properties 
+of cryptographic functions guarantee that no two different contents can have
+the same hash. This removes much of the problem of version control as
+the file can be referred directly by it's content.
 
 One could now send this file for editing, and new text could be added around
 the GEHEIM sections. If the original CAS files are around, the same hidden
@@ -264,6 +267,6 @@ AES-256 in SIV (Synthetic Initialization Vector) mode [RFC5297]. A SIV
 ciphertext is always 16 bytes larger than plaintext and the 16-byte 
 authentication tag also serves as the "synthetic IV". 
 
-All the hash function computations for CAS utilize SHA-3 [FIPS202] variants.
+All hash function computations for CAS utilize SHA-3 [FIPS202] variants.
 It is also used to derive keying material from passwords.
 
