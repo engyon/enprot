@@ -1,0 +1,269 @@
+[[enprot]]
+== enprot
+
+Enprot is a confidentiality processor for text and source and files.
+
+
+=== Introduction
+
+Engyon Protected Text (EPT) is a human-editable annotation method that 
+allows a text format document to contain finely grained cryptographic 
+confidentiality and integrity features. 
+
+Enprot is a pure Rust project. Use `cargo build --release` to build
+the release binary `target/release/enprot` or use `cargo run --` to 
+build and run the debug version. Some of the dependencies may require
+the latest compiler (developed and tested with rustc 1.27.2). There
+is a simple help built-in:
+
+----
+enprot$ cargo run -- -h
+    Finished dev [unoptimized + debuginfo] target(s) in 0.04s
+     Running `target/debug/enprot -h`
+Usage: enprot [OPTION].. [FILE]...
+        -h -? --help    This simple help.
+        -v              Produce more verbose output.
+        -q              Supress unnecessary output.
+        -l LEFT_SEP     Specify left separator in parsing.
+        -r RIGHT_SEP    Specify right separator in parsing.
+        -s WORD         Store (unencrypted) WORD segments to CAS.
+        -f WORD         Fetch (unencrypted) WORD segments from CAS.
+        -k WORD=KEY     Specify a secret KEY for WORD.
+        -e WORD         Encrypt WORD segments.
+        -E WORD         Encrypt and store WORD segments.
+        -d WORD         Decrypt WORD segments.
+        -c DIRECTORY    Directory for CAS files (default "cas").
+        -p PREFIX       Use PREFIX for output filenames.
+        -o FILE         Specify output file for previous input.
+
+enprot$ 
+----
+All of the commands also have have long variants; see `src/main.rs`.
+
+A simple example is contained in `sample/test.ept`:
+----
+hello, this is a test file
+// <( BEGIN GEHEIM )>
+Secret line 1
+Secret line 2
+// <( BEGIN Agent_007 )>
+James Bond
+// <( END Agent_007 )>
+// <( END GEHEIM )>
+// <( BEGIN Agent_007 )>
+Super secret line 3
+// <( END Agent_007 )>
+----
+
+As can be seen, the most elementary EPT markup is in comments and consists
+of BEGIN..END segments. Each such segment has a keyword (or ``word'')
+associated with it. Keywords can be used inside other keywords to form
+a tree-like structure.
+
+Now if we invoke `eptree` on a syntactically correct file such as this one,
+nothing happens:
+----
+enprot$ ./target/debug/enprot sample/test.ept 
+enprot$ 
+----
+In fact the markup has been chosen specifically in a way that most input
+files would be syntactically correct without modification. The markup
+is contained between left and right separators that can be specified
+with `-l` and `-r` flags. Here are some comment-hiding suggestions
+for different languages:
+
+|===
+| Format 				| `LEFT_SEP`	 	| `RIGHT_SEP` 
+
+| Raw text format		| `"<("`,     		| `")>"`
+| AsciiDoc and C++ code	| `"// <("`	  		| `")>"`
+| MarkDown, XML, HTML	| `"<-- <("`		| `")> -->"`
+| (La)TeX and similar	| `"\n% <("`		| `")>"`
+|===
+
+Note that the left separator must start the line (after whitespace). The
+right separator must currently also be on the same line.
+Adding verbosity reveals what the system is doing:
+
+----
+enprot$ ./target/debug/enprot sample/test.ept -v
+LEFT_SEP='// <(' RIGHT_SEP=')>' casdir = 'cas'
+Reading sample/test.ept
+Transforming sample/test.ept
+Writing sample/test.ept
+enprot$
+----
+
+We see the default setting for left and right separators. Furthermore we
+see that the file is read in (parsed), transformed (which might be a
+no-op), and then written back (synthesized), overwriting the original file.
+This behavior can be changed.
+
+
+==== Content Addressed Storage
+
+In above example we see `casdir = 'cas'`. This means that the default 
+directory for CAS (Content Addressed Storage) is `cas`.
+If you do not have a `cas` directory under your working directory, these
+work files are written to the current directory. We suggest that you
+do a `mkdir cas` if that directory doesn't exist.
+
+The operation of CAS can be demonstrated simply by using the `-s` (store) flag,
+which hides away (sanitizes) a part of the text file:
+----
+enprot$ ./target/debug/enprot sample/test.ept -s GEHEIM
+enprot$ cat sample/test.ept 
+hello, this is a test file
+// <( STORED GEHEIM cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4 )>
+// <( BEGIN Agent_007 )>
+Super secret line 3
+// <( END Agent_007 )>
+enprot$ ls cas
+cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4
+enprot$
+----
+We can see that the entire section between BEGIN GEHEIM and END GEHEIM has 
+disappeared and has been replaced with a STORED GEHEIM. It is actually stored
+under a long hexadecimal filename. The properties of cryptographic functions
+guarantee that no two different contents can have the same hash. Therefore
+it is not really relevant how you store the file, as long as you store it.
+
+One could now send this file for editing, and new text could be added around
+the GEHEIM sections. If the original CAS files are around, the same hidden
+part can be recovered simply with a `-f` (fetch) instruction:
+
+----
+enprot$ ./target/debug/enprot sample/test.ept -f GEHEIM
+----
+Now the contents of `test.ept` are exactly as they were before, and the GEHEIM
+section is again contained in a BEGIN.. END enclosure.
+
+
+With all parameters, multiple keywords can be joined with a comma:
+----
+enprot sample/test.ept -s Agent_007,GEHEIM
+enprot$ cat sample/test.ept 
+hello, this is a test file
+// <( STORED GEHEIM cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4 )>
+// <( STORED Agent_007 575d69f5b0034279bc3ef164e94287e6366e9df76729895a302a66a8817cf306 )>
+enprot$ 
+----
+We see the the first GEHEIM is again stored under the same filename. In fact
+it was not even overwritten because the system checked that a file with that 
+name already existed in the CAS directory, so there is no need.
+
+Such determinism is a important property of the CAS. Even if you lose the 
+CAS files related to some sanitized version of the document, you may 
+regenerate the exactly same ones if you have the original unsanitized document.
+
+Now the original document can be restored with
+----
+enprot$ ./target/debug/enprot sample/test.ept -f Agent_007 -f notexistent,GEHEIM
+----
+You see that `-f` parameter can be given multiple times. In fact it is possible
+to even mix `-s` and `-f` statements on the same command if you want to
+sanitize some keywords while unsanitizing others. However specifying both
+`-s` and `-f` for the _same_ keyword isn't very helpful; the keyword will
+be unsanitized and resanitized on alternative runs.
+
+==== Encryption and Decryption
+
+We may encrypt sections in a way that keeps the ciphertext entirely in the
+document itself. Assuming that `sample/test.ept` is at it's original state:
+----
+enprot$ ./target/debug/enprot sample/test.ept -e Agent_007
+Password for Agent_007: 
+Repeat password for Agent_007: 
+enprot$ cat sample/test.ept 
+hello, this is a test file
+// <( BEGIN GEHEIM )>
+Secret line 1
+Secret line 2
+// <( ENCRYPTED Agent_007 )>
+// <( DATA lEsVpN3ES6rj0sbxrDm30EgMpYCc+yKM2i2Z )>
+// <( END Agent_007 )>
+// <( END GEHEIM )>
+// <( ENCRYPTED Agent_007 )>
+// <( DATA C0nBhV6V5yVExLOgvpK8xzUluc08lsr7wwBhx4ENMDrJU3pA )>
+// <( END Agent_007 )>
+enprot$
+----
+In the above example I entered ``bond'' in both password prompts. Keys can
+also be passed from command line with the `-k` flag:
+----
+enprot$ ./target/debug/enprot sample/test.ept -e GEHEIM -k GEHEIM=james
+enprot$ cat sample/test.ept 
+hello, this is a test file
+// <( ENCRYPTED GEHEIM )>
+// <( DATA 4reYea85vTqNzzf7eon3x/LHs6iLy3GPgSZvsX7l0MhqdVnuIe5y3poxqvQxFqYT )>
+// <( DATA B1np55+m8WlPDtzMt+SMPEyfPIKAeqo+tAWS7ftfJmAqSswibIqRJh0jXO6nBDvK )>
+// <( DATA 4EclPifsb89G2i5vu8dfFkmQT8uj2o71UAohLPeY8vX2qksDJGm99pzZwm5hoXUm )>
+// <( DATA VVYf )>
+// <( END GEHEIM )>
+// <( ENCRYPTED Agent_007 )>
+// <( DATA C0nBhV6V5yVExLOgvpK8xzUluc08lsr7wwBhx4ENMDrJU3pA )>
+// <( END Agent_007 )>
+enprot$
+----
+Decryption can be performed exactly the same way using the `-d` command:
+----
+$ ./target/debug/enprot sample/test.ept -d Agent_007,GEHEIM -k GEHEIM=james -k Agent_007=bond
+mjos@blu:~/Desktop/lab/enprot$ cat sample/test.ept 
+hello, this is a test file
+// <( BEGIN GEHEIM )>
+Secret line 1
+Secret line 2
+// <( ENCRYPTED Agent_007 )>
+// <( DATA lEsVpN3ES6rj0sbxrDm30EgMpYCc+yKM2i2Z )>
+// <( END Agent_007 )>
+// <( END GEHEIM )>
+// <( BEGIN Agent_007 )>
+Super secret line 3
+// <( END Agent_007 )>
+mjos@blu:~/Desktop/lab/enprot
+----
+We see that only one layer of encryption was removed from GEHEIM. You may
+use the exactly same command for second iteration to reveal the original 
+file.
+
+==== Encrypted Stashing
+
+If we combine encruption `-e WORD` and CAS storage `-s WORD`, the ciphertext
+is stored into CAS in encryption form. One may use `-E` flag to specify
+both predicates at once.
+
+----
+enprot$ ./target/debug/enprot sample/test.ept -E GEHEIM
+Password for GEHEIM: 
+Repeat password for GEHEIM: 
+mjos@blu:~/Desktop/lab/enprot$ cat sample/test.ept 
+hello, this is a test file
+// <( ENCRYPTED GEHEIM 12d24bf3dbebfe5feb7684efdb1d98391c4b0afd809a8bc87f3f8e6f75e59651 )>
+// <( BEGIN Agent_007 )>
+Super secret line 3
+// <( END Agent_007 )>
+mjos@blu:~/Desktop/lab/enprot$
+----
+Here I left out the `-k` definition so Enprot asked me to enter a password.
+The `-d` flag will work the same way when the ciphertext is in CAS or in 
+local DATA clauses.
+
+----
+enprot$ ./target/debug/enprot sample/test.ept -d GEHEIM
+Password for GEHEIM: 
+enprot$
+----
+
+
+==== Cryptography: Symmetric Authenticated Encryption
+
+Due to its minimal message expansion and non-sequential nature of data 
+being encrypted, a nonce-reuse/misuse resistant Authenticated Encryption 
+with Associated Data (AEAD) mechanism is used. We have chosen to use
+AES-256 in SIV (Synthetic Initialization Vector) mode [RFC5297]. A SIV 
+ciphertext is always 16 bytes larger than plaintext and the 16-byte 
+authentication tag also serves as the "synthetic IV". 
+
+All the hash function computations for CAS utilize SHA-3 [FIPS202] variants.
+It is also used to derive keying material from passwords.
+

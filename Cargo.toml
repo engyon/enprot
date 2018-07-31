@@ -3,9 +3,6 @@ name		= "enprot"
 version		= "0.1.0"
 authors		= ["Markku-Juhani O. Saarinen <mjos@iki.fi>"]
 
-[build]
-rustflags	= ["-Ctarget-feature=+aes"]
-
 [dependencies]
 hex		= "0.3"
 base64		= "0.9"

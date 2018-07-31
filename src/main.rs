@@ -19,13 +19,13 @@ fn main() {
 		\t-q              Supress unnecessary output.\n\
 		\t-l LEFT_SEP     Specify left separator in parsing.\n\
 		\t-r RIGHT_SEP    Specify right separator in parsing.\n\
-		\t-c DIRECTORY    Directory for CAS files (default \"cas\").\n\
-		\t-k WORD=KEY     Specify a secret KEY for WORD.\n\
-		\t-e WORD         Encrypt WORD segments.\n\
-		\t-E -es          Encrypt and store WORD segments.\n\
-		\t-d WORD         Decrypt WORD segments.\n\
 		\t-s WORD         Store (unencrypted) WORD segments to CAS.\n\
 		\t-f WORD         Fetch (unencrypted) WORD segments from CAS.\n\
+		\t-k WORD=KEY     Specify a secret KEY for WORD.\n\
+		\t-e WORD         Encrypt WORD segments.\n\
+		\t-E WORD         Encrypt and store WORD segments.\n\
+		\t-d WORD         Decrypt WORD segments.\n\
+		\t-c DIRECTORY    Directory for CAS files (default \"cas\").\n\
 		\t-p PREFIX       Use PREFIX for output filenames.\n\
 		\t-o FILE         Specify output file for previous input.\n";
 
@@ -184,7 +184,7 @@ fn main() {
 	// print some of the processing parameters if verbose
 
 	if paops.verbose {
-		println!("left_sep='{}' right_sep='{}' casdir = '{}'", 
+		println!("LEFT_SEP='{}' RIGHT_SEP='{}' casdir = '{}'", 
 			paops.left_sep, paops.right_sep, paops.casdir.display());
 	}
 

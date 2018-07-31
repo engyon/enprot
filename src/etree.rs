@@ -245,14 +245,21 @@ pub fn parse<R>(buf_in: R, paops: &mut ParseOps)
 
 		eprintln!("Parse: Unknown section '{}' at\n{}:{}:{}", 
 					cmd[0], paops.fname, lineno, line);
-		return Err("Parse error");
+		return Err("Parse errorn");
 	}
 
 	if pstack.len() > 0 {
-		for _i in 0..pstack.len() {
-			eprintln!("Parse: BEGIN without END.");
+		loop {
+			match pstack.pop() {
+				Some(TextNode::BeginEnd{ keyw, txt: _ }) => {
+					eprintln!("Parse: BEGIN {} without END.", keyw);
+				},
+				Some(TextNode::Encrypted{ keyw, txt: _ }) => {
+					eprintln!("Parse: ENCRYPTED {} without END.", keyw);
+				},
+				_ => return Err("Unexpected end"),
+			}
 		}
-		return Err("Parse error");
 	}
 
 	Ok(text)
