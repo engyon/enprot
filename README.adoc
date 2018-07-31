@@ -295,7 +295,6 @@ enprot$
 Here I left out the `-k` definition so Enprot asked me to enter a password.
 The `-d` flag will work the same way when the ciphertext is in CAS or in 
 local DATA clauses.
-
 ----
 enprot$ ./target/debug/enprot sample/test.ept -d GEHEIM
 Password for GEHEIM: 
