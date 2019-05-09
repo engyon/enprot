@@ -61,7 +61,7 @@ of BEGIN..END segments. Each such segment has a keyword (or WORD)
 associated with it. Keywords can be used inside other keywords to form
 a tree-like structure.
 
-When invoke `eptree` on a syntactically correct file such as this one,
+When invoke `enprot` on a syntactically correct file such as this one,
 nothing happens:
 ----
 enprot$ ./target/debug/enprot sample/test.ept 
@@ -106,7 +106,7 @@ of flags (as seen before).
 
 In above example we see `casdir = 'cas'`. This means that the default 
 directory for CAS (Content Addressed Storage) is `cas` under current
-directly. If you do not have a `cas` directory set up, these work files are 
+directory. If you do not have a `cas` directory set up, these work files are 
 written to the current directory. This is not a problem, but creates
 clutter. We suggest that you do a `mkdir cas`.
 
