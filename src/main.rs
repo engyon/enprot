@@ -228,7 +228,7 @@ fn main() {
         if paops.verbose {
             println!("Transforming {}", path_in);
         }
-        let tree_out = match etree::transform(tree_in, &mut paops) {
+        let tree_out = match etree::transform(&tree_in, &mut paops) {
             Ok(tree) => tree,
             Err(e) => {
                 eprintln!("{} in {}, aborting.", e, path_in);
