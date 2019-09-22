@@ -387,7 +387,7 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
 
 // perform ops
 
-pub fn transform(text_in: TextTree, mut paops: &mut ParseOps) -> Result<TextTree, &'static str> {
+pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTree, &'static str> {
     let mut text_out = Vec::new();
 
     if paops.level > MAX_DEPTH {
@@ -445,7 +445,7 @@ pub fn transform(text_in: TextTree, mut paops: &mut ParseOps) -> Result<TextTree
 
                 // just recursion
                 paops.level += 1;
-                let block = transform(txt.to_vec(), paops)?;
+                let block = transform(&txt.to_vec(), paops)?;
                 paops.level -= 1;
 
                 text_out.push(TextNode::BeginEnd {
