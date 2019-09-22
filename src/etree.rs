@@ -78,7 +78,7 @@ where
         let line = line_in.expect("read error");
         lineno += 1;
 
-        if !line.trim_left().starts_with(&paops.left_sep) {
+        if !line.trim_start().starts_with(&paops.left_sep) {
             // combine with previous
             if let Some(TextNode::Plain(last)) = text.last_mut() {
                 last.push('\n');
