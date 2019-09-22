@@ -62,6 +62,225 @@ pub enum TextNode {
     BeginEnd { keyw: String, txt: TextTree },
 }
 
+type Parser = fn(
+    &[&str],
+    &String,
+    i32,
+    &mut ParseOps,
+    &mut Vec<TextNode>,
+    &mut Vec<TextNode>,
+) -> Result<(), &'static str>;
+
+fn parse_data(
+    cmd: &[&str],
+    line: &String,
+    lineno: i32,
+    paops: &mut ParseOps,
+    _pstack: &mut Vec<TextNode>,
+    text: &mut Vec<TextNode>,
+) -> Result<(), &'static str> {
+    for i in 0..cmd.len() {
+        let mut data = match base64::decode(cmd[i]) {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!(
+                    "Parse: Error decoding base64.\n\
+                     Parse: '{}': {}\n\
+                     {}:{}:{}",
+                    cmd[i], e, paops.fname, lineno, line
+                );
+                return Err("Parse error");
+            }
+        };
+
+        // combine with previous
+        if let Some(TextNode::Data(last)) = text.last_mut() {
+            last.append(&mut data);
+        } else {
+            text.push(TextNode::Data(data));
+        }
+    }
+    return Ok(());
+}
+
+fn parse_begin(
+    cmd: &[&str],
+    line: &String,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut Vec<TextNode>,
+    text: &mut Vec<TextNode>,
+) -> Result<(), &'static str> {
+    if cmd.len() != 1 {
+        eprintln!(
+            "Parse: BEGIN needs a single keyword.\n\
+             {}:{}:{}",
+            paops.fname, lineno, line
+        );
+        return Err("Parse error");
+    }
+    paops.level += 1;
+    pstack.push(TextNode::BeginEnd {
+        keyw: cmd[0].to_owned(),
+        txt: text.to_vec(),
+    });
+    text.clear();
+    Ok(())
+}
+
+fn parse_encrypted(
+    cmd: &[&str],
+    line: &String,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut Vec<TextNode>,
+    text: &mut Vec<TextNode>,
+) -> Result<(), &'static str> {
+    match cmd.len() {
+        1 => {
+            // immediate data
+            paops.level += 1;
+            pstack.push(TextNode::Encrypted {
+                keyw: cmd[0].to_owned(),
+                txt: text.to_vec(),
+            });
+            text.clear();
+            return Ok(());
+        }
+        2 => {
+            // CAS parameter
+            let node = vec![TextNode::Stored {
+                keyw: "ct".to_string(),
+                cas: cmd[1].to_string(),
+            }];
+            text.push(TextNode::Encrypted {
+                keyw: cmd[0].to_string(),
+                txt: node,
+            });
+        }
+        _ => {
+            eprintln!(
+                "Parse: ENCRYPTED has wrong number of \
+                 parameters.\n{}:{}:{}",
+                paops.fname, lineno, line
+            );
+            return Err("Parse error");
+        }
+    }
+    return Ok(());
+}
+
+fn parse_end(
+    cmd: &[&str],
+    line: &String,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut Vec<TextNode>,
+    text: &mut Vec<TextNode>,
+) -> Result<(), &'static str> {
+    if cmd.len() > 1 {
+        eprintln!(
+            "Parse: Unknown padding in END.\n{}:{}:{}",
+            paops.fname, lineno, line
+        );
+        return Err("Parse error");
+    }
+    match pstack.pop() {
+        Some(TextNode::BeginEnd { keyw, txt }) => {
+            // keyword mismatch ?
+            if cmd.len() >= 1 && keyw != cmd[0] {
+                eprintln!(
+                    "Parse: END mismatch (expected '{}').\n\
+                     {}:{}:{}",
+                    keyw, paops.fname, lineno, line
+                );
+                return Err("Parse error");
+            }
+
+            let node = TextNode::BeginEnd {
+                keyw: keyw,
+                txt: text.to_vec(),
+            };
+            *text = txt;
+            text.push(node);
+            paops.level -= 1;
+        }
+        Some(TextNode::Encrypted { keyw, txt }) => {
+            // keyword mismatch ?
+            if keyw != cmd[0] {
+                eprintln!(
+                    "Parse: END mismatch (expected '{}').\n\
+                     {}:{}:{}",
+                    keyw, paops.fname, lineno, line
+                );
+                return Err("Parse error");
+            }
+            // check that the contents are right type
+            if text.len() != 1 {
+                eprintln!(
+                    "Parse: {} elements in encrypted {} \
+                     (must be a single DATA or STORED).\n{}:{}:{}",
+                    text.len(),
+                    keyw,
+                    paops.fname,
+                    lineno,
+                    line
+                );
+                return Err("Parse error");
+            }
+            match text[0] {
+                TextNode::Data(_) | TextNode::Stored { .. } => {
+                    let node = TextNode::Encrypted {
+                        keyw: keyw,
+                        txt: text.to_vec(),
+                    };
+                    *text = txt;
+                    text.push(node);
+                    paops.level -= 1;
+                }
+                _ => {
+                    eprintln!(
+                        "Parse: not DATA or STORED \
+                         element in encrypted {}.\n{}:{}:{}",
+                        keyw, paops.fname, lineno, line
+                    );
+                    return Err("Parse error");
+                }
+            }
+        }
+        _ => {
+            eprintln!(
+                "Parse: END without a start clause.\n{}:{}:{}",
+                paops.fname, lineno, line
+            );
+            return Err("Parse error");
+        }
+    }
+    Ok(())
+}
+
+fn parse_stored(
+    cmd: &[&str],
+    line: &String,
+    lineno: i32,
+    paops: &mut ParseOps,
+    _pstack: &mut Vec<TextNode>,
+    text: &mut Vec<TextNode>,
+) -> Result<(), &'static str> {
+    if cmd.len() != 2 {
+        eprintln!(
+            "Parse: STORED needs two parameters.\n{}:{}:{}",
+            paops.fname, lineno, line
+        );
+        return Err("Parse error");
+    }
+    text.push(TextNode::Stored {
+        keyw: cmd[0].to_owned(),
+        cas: cmd[1].to_owned(),
+    });
+    Ok(())
+}
+
 pub fn parse<R>(buf_in: R, paops: &mut ParseOps) -> Result<TextTree, &'static str>
 where
     R: BufRead,
@@ -107,192 +326,25 @@ where
         trimmed.truncate(i);
         let cmd: Vec<&str> = trimmed.split_whitespace().collect();
 
-        // parse data
-        if cmd[0] == "DATA" {
-            for i in 1..cmd.len() {
-                let mut data = match base64::decode(cmd[i]) {
-                    Ok(data) => data,
-                    Err(e) => {
-                        eprintln!(
-                            "Parse: Error decoding base64.\n\
-                             Parse: '{}': {}\n\
-                             {}:{}:{}",
-                            cmd[i], e, paops.fname, lineno, line
-                        );
-                        return Err("Parse error");
-                    }
-                };
-
-                // combine with previous
-                if let Some(TextNode::Data(last)) = text.last_mut() {
-                    last.append(&mut data);
-                    continue;
-                }
-                text.push(TextNode::Data(data));
+        let mut cmd_parsers: HashMap<&str, Parser> = HashMap::new();
+        cmd_parsers.insert("DATA", parse_data);
+        cmd_parsers.insert("BEGIN", parse_begin);
+        cmd_parsers.insert("ENCRYPTED", parse_encrypted);
+        cmd_parsers.insert("END", parse_end);
+        cmd_parsers.insert("STORED", parse_stored);
+        match cmd_parsers.get(cmd[0]) {
+            Some(parser) => {
+                parser(&cmd[1..], &line, lineno, paops, &mut pstack, &mut text)?;
+                continue;
             }
-            continue;
-        }
-
-        // parse begin
-        if cmd[0] == "BEGIN" {
-            if cmd.len() != 2 {
+            _ => {
                 eprintln!(
-                    "Parse: BEGIN needs a single keyword.\n\
-                     {}:{}:{}",
-                    paops.fname, lineno, line
+                    "Parse: Unknown section '{}' at\n{}:{}:{}",
+                    cmd[0], paops.fname, lineno, line
                 );
                 return Err("Parse error");
             }
-            paops.level += 1;
-            pstack.push(TextNode::BeginEnd {
-                keyw: cmd[1].to_owned(),
-                txt: text,
-            });
-            text = Vec::new();
-            continue;
         }
-
-        // parse begin
-        if cmd[0] == "ENCRYPTED" {
-            match cmd.len() {
-                2 => {
-                    // immediate data
-                    paops.level += 1;
-                    pstack.push(TextNode::Encrypted {
-                        keyw: cmd[1].to_owned(),
-                        txt: text,
-                    });
-                    text = Vec::new();
-                    continue;
-                }
-                3 => {
-                    // CAS parameter
-                    let node = vec![TextNode::Stored {
-                        keyw: "ct".to_string(),
-                        cas: cmd[2].to_string(),
-                    }];
-                    text.push(TextNode::Encrypted {
-                        keyw: cmd[1].to_string(),
-                        txt: node,
-                    });
-                    continue;
-                }
-                _ => {
-                    eprintln!(
-                        "Parse: ENCRYPTED has wrong number of \
-                         parameters.\n{}:{}:{}",
-                        paops.fname, lineno, line
-                    );
-                    return Err("Parse error");
-                }
-            }
-        }
-
-        // parse end
-        if cmd[0] == "END" {
-            if cmd.len() > 2 {
-                eprintln!(
-                    "Parse: Unknown padding in END.\n{}:{}:{}",
-                    paops.fname, lineno, line
-                );
-                return Err("Parse error");
-            }
-            match pstack.pop() {
-                Some(TextNode::BeginEnd { keyw, txt }) => {
-                    // keyword mismatch ?
-                    if cmd.len() >= 2 && keyw != cmd[1] {
-                        eprintln!(
-                            "Parse: END mismatch (expected '{}').\n\
-                             {}:{}:{}",
-                            keyw, paops.fname, lineno, line
-                        );
-                        return Err("Parse error");
-                    }
-
-                    let node = TextNode::BeginEnd {
-                        keyw: keyw,
-                        txt: text,
-                    };
-                    text = txt;
-                    text.push(node);
-                    paops.level -= 1;
-                }
-                Some(TextNode::Encrypted { keyw, txt }) => {
-                    // keyword mismatch ?
-                    if keyw != cmd[1] {
-                        eprintln!(
-                            "Parse: END mismatch (expected '{}').\n\
-                             {}:{}:{}",
-                            keyw, paops.fname, lineno, line
-                        );
-                        return Err("Parse error");
-                    }
-                    // check that the contents are right type
-                    if text.len() != 1 {
-                        eprintln!(
-                            "Parse: {} elements in encrypted {} \
-                             (must be a single DATA or STORED).\n{}:{}:{}",
-                            text.len(),
-                            keyw,
-                            paops.fname,
-                            lineno,
-                            line
-                        );
-                        return Err("Parse error");
-                    }
-                    match text[0] {
-                        TextNode::Data(_) | TextNode::Stored { .. } => {
-                            let node = TextNode::Encrypted {
-                                keyw: keyw,
-                                txt: text,
-                            };
-                            text = txt;
-                            text.push(node);
-                            paops.level -= 1;
-                        }
-                        _ => {
-                            eprintln!(
-                                "Parse: not DATA or STORED \
-                                 element in encrypted {}.\n{}:{}:{}",
-                                keyw, paops.fname, lineno, line
-                            );
-                            return Err("Parse error");
-                        }
-                    }
-                }
-                _ => {
-                    eprintln!(
-                        "Parse: END without a start clause.\n{}:{}:{}",
-                        paops.fname, lineno, line
-                    );
-                    return Err("Parse error");
-                }
-            }
-
-            continue;
-        }
-
-        // stored
-        if cmd[0] == "STORED" {
-            if cmd.len() != 3 {
-                eprintln!(
-                    "Parse: STORED needs two parameters.\n{}:{}:{}",
-                    paops.fname, lineno, line
-                );
-                return Err("Parse error");
-            }
-            text.push(TextNode::Stored {
-                keyw: cmd[1].to_owned(),
-                cas: cmd[2].to_owned(),
-            });
-            continue;
-        }
-
-        eprintln!(
-            "Parse: Unknown section '{}' at\n{}:{}:{}",
-            cmd[0], paops.fname, lineno, line
-        );
-        return Err("Parse errorn");
     }
 
     if pstack.len() > 0 {
