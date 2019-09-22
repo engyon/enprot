@@ -9,3 +9,7 @@ base64		= "0.9"
 rpassword	= "2"
 miscreant	= "0.4.0-beta2"
 rust-crypto	= "^0.2"
+
+[dev-dependencies]
+tempfile        = "3.1.0"
+

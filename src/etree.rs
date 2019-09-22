@@ -53,7 +53,7 @@ const DATA_BYTES_PER_LINE: usize = 48; // that's 64 characters
 
 type TextTree = Vec<TextNode>;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TextNode {
     Plain(String),
     Data(Vec<u8>),
@@ -578,4 +578,201 @@ fn tree_to_blob(text: &TextTree, mut paops: &mut ParseOps) -> Vec<u8> {
     let mut blob = Vec::new();
     tree_write(&mut blob, text, &mut paops);
     blob
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate tempfile;
+
+    use self::tempfile::tempdir;
+    use super::*;
+    use std::fs;
+    use std::fs::File;
+    use std::io::BufReader;
+    use std::str;
+
+    fn parse_ept(ept_file: &str) -> (TextTree, ParseOps, tempfile::TempDir) {
+        let casdir = tempdir().unwrap();
+        let mut paops = ParseOps {
+            fname: ept_file.to_string(),
+            casdir: casdir.path().to_path_buf(),
+            ..ParseOps::new()
+        };
+        let tree = parse(
+            BufReader::new(File::open(ept_file.to_string()).unwrap()),
+            &mut paops,
+        )
+        .unwrap();
+        (tree, paops, casdir)
+    }
+
+    // test that we can call transform on this file without any options
+    // set and it will remain unchanged
+    #[test]
+    fn transform_test_ept_unchanged() {
+        let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
+        let outtree = transform(&intree, &mut paops).unwrap();
+        assert_eq!(intree, outtree);
+    }
+
+    // test that a store with a non-existant keyword does not change
+    // anything
+    #[test]
+    fn transform_test_ept_store_unchanged() {
+        let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
+        paops.store.insert("noexist".to_string());
+        let outtree = transform(&intree, &mut paops).unwrap();
+        assert_eq!(intree, outtree);
+    }
+
+    // test that we can do a basic store operation on this file
+    #[test]
+    fn transform_test_ept_store_agent007() {
+        let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
+        paops.store.insert("Agent_007".to_string());
+        let outtree = transform(&intree, &mut paops).unwrap();
+        // re-parse
+        parse(
+            BufReader::new(&tree_to_blob(&outtree, &mut paops)[..]),
+            &mut paops,
+        )
+        .unwrap();
+
+        let buf = tree_to_blob(&outtree, &mut paops);
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            &fs::read_to_string("test-data/test-store-agent007.ept").unwrap()
+        );
+        assert_eq!(
+            str::from_utf8(
+                &cas::load(
+                    "d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab",
+                    &mut paops,
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+            "James Bond\n",
+        );
+        assert_eq!(
+            str::from_utf8(
+                &cas::load(
+                    "575d69f5b0034279bc3ef164e94287e6366e9df76729895a302a66a8817cf306",
+                    &mut paops,
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+            "Super secret line 3\n"
+        );
+    }
+
+    // test that we can do a basic fetch operation on this file
+    #[test]
+    fn transform_test_ept_fetch_geheim() {
+        let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
+        // store
+        paops.store.insert("GEHEIM".to_string());
+        let outtree = transform(&intree, &mut paops).unwrap();
+        // re-parse
+        parse(
+            BufReader::new(&tree_to_blob(&outtree, &mut paops)[..]),
+            &mut paops,
+        )
+        .unwrap();
+
+        let buf = tree_to_blob(&outtree, &mut paops);
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            &fs::read_to_string("test-data/test-store-geheim.ept").unwrap()
+        );
+        assert_eq!(
+                str::from_utf8(
+                    &cas::load(
+                        "cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4",
+                        &mut paops,
+                    )
+                    .unwrap(),
+                )
+                .unwrap(),
+                "Secret line 1\nSecret line 2\n// <( BEGIN Agent_007 )>\nJames Bond\n// <( END Agent_007 )>\n"
+            );
+        // fetch
+        paops.store.clear();
+        paops.fetch.insert("GEHEIM".to_string());
+        let outtree = transform(&intree, &mut paops).unwrap();
+        let buf = tree_to_blob(&outtree, &mut paops);
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            &fs::read_to_string("sample/test.ept").unwrap()
+        );
+    }
+
+    // test that we can do a basic encrypt and decrypt on this file
+    #[test]
+    fn transform_test_ept_encrypt_decyprt_geheim() {
+        let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
+        // encrypt
+        paops.encrypt.insert("GEHEIM".to_string());
+        paops
+            .keys
+            .insert("GEHEIM".to_string(), "password".as_bytes().to_vec());
+        let outtree = transform(&intree, &mut paops).unwrap();
+        // re-parse
+        parse(
+            BufReader::new(&tree_to_blob(&outtree, &mut paops)[..]),
+            &mut paops,
+        )
+        .unwrap();
+
+        let buf = tree_to_blob(&outtree, &mut paops);
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            &fs::read_to_string("test-data/test-encrypt-geheim.ept").unwrap()
+        );
+        // decrypt
+        paops.encrypt.clear();
+        paops.decrypt.insert("GEHEIM".to_string());
+        let outtree = transform(&intree, &mut paops).unwrap();
+        let buf = tree_to_blob(&outtree, &mut paops);
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            &fs::read_to_string("sample/test.ept").unwrap()
+        );
+    }
+
+    // test that we can do a basic encrypt & store operation on this file
+    #[test]
+    fn transform_test_ept_encrypt_store_agent007() {
+        let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
+        // encrypt & store
+        paops.encrypt.insert("Agent_007".to_string());
+        paops.store.insert("Agent_007".to_string());
+        paops
+            .keys
+            .insert("Agent_007".to_string(), "password".as_bytes().to_vec());
+        let outtree = transform(&intree, &mut paops).unwrap();
+        // re-parse
+        parse(
+            BufReader::new(&tree_to_blob(&outtree, &mut paops)[..]),
+            &mut paops,
+        )
+        .unwrap();
+
+        let buf = tree_to_blob(&outtree, &mut paops);
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            &fs::read_to_string("test-data/test-encrypt-store-agent007.ept").unwrap()
+        );
+        // decrypt
+        paops.encrypt.clear();
+        paops.store.clear();
+        paops.decrypt.insert("Agent_007".to_string());
+        let outtree = transform(&intree, &mut paops).unwrap();
+        let buf = tree_to_blob(&outtree, &mut paops);
+        assert_eq!(
+            str::from_utf8(&buf).unwrap(),
+            &fs::read_to_string("sample/test.ept").unwrap()
+        );
+    }
 }
