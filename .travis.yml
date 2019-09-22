@@ -1,0 +1,12 @@
+dist: xenial
+language: rust
+
+rust:
+  - stable
+
+cache: cargo
+
+env:
+  # for miscreant
+  - RUSTFLAGS=-Ctarget-feature=+aes,+ssse3
+
