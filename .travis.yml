@@ -10,3 +10,5 @@ env:
   # for miscreant
   - RUSTFLAGS=-Ctarget-feature=+aes,+ssse3
 
+script:
+  - cargo test --verbose
