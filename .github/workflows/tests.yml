@@ -18,3 +18,15 @@ jobs:
         run: cargo test --verbose
         env:
           RUSTFLAGS: -Ctarget-feature=+aes,+ssse3
+
+  check-format:
+    name: Check code format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Validate code format
+        run: cargo fmt -- --check $(find src -name '*.rs')
+        env:
+          RUSTFLAGS: -Ctarget-feature=+aes,+ssse3
