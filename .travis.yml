@@ -12,4 +12,4 @@ env:
 
 script:
   - cargo test --verbose
-  - cargo fmt --verbose -- --check $(find src -name '*.rs')
+  - rustfmt --check $(find src -name '*.rs')
