@@ -1,0 +1,20 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  build-stable:
+    name: Test on stable toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Build program
+        run: cargo build --verbose
+        env:
+          RUSTFLAGS: -Ctarget-feature=+aes,+ssse3
+      - name: Run tests
+        run: cargo test --verbose
+        env:
+          RUSTFLAGS: -Ctarget-feature=+aes,+ssse3
