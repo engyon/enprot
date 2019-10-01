@@ -1,5 +1,7 @@
 [[enprot]]
-== enprot
+== Engyon: enprot
+
+image:https://github.com/riboseinc/enprot/workflows/tests/badge.svg["Build Status", link="https://github.com/riboseinc/enprot/actions?workflow=tests"]
 
 Enprot is a confidentiality processor for text and source code files.
 
