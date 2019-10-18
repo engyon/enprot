@@ -48,21 +48,21 @@ fn verbosity() {
         .arg(&ept.path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("LEFT_SEP").not());
+        .stderr(predicate::str::contains("LEFT_SEP").not());
     Command::cargo_bin("enprot")
         .unwrap()
         .arg("-v")
         .arg(&ept.path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("LEFT_SEP"));
+        .stderr(predicate::str::contains("LEFT_SEP"));
     Command::cargo_bin("enprot")
         .unwrap()
         .arg("--verbose")
         .arg(&ept.path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("LEFT_SEP"));
+        .stderr(predicate::str::contains("LEFT_SEP"));
     // file should be unchanged
     assert_eq!(
         &fs::read_to_string(&ept.source).unwrap(),
