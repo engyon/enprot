@@ -361,7 +361,7 @@ where
 
     // print some of the processing parameters if verbose
     if paops.verbose {
-        println!(
+        eprintln!(
             "LEFT_SEP='{}' RIGHT_SEP='{}' casdir = '{}'",
             paops.left_sep,
             paops.right_sep,
@@ -385,7 +385,7 @@ where
 
     for (path_in, path_out) in files {
         if paops.verbose {
-            println!("Reading {}", path_in);
+            eprintln!("Reading {}", path_in);
         }
 
         // open input file
@@ -409,7 +409,7 @@ where
 
         // transform it
         if paops.verbose {
-            println!("Transforming {}", path_in);
+            eprintln!("Transforming {}", path_in);
         }
         let tree_out = match etree::transform(&tree_in, &mut paops) {
             Ok(tree) => tree,
@@ -421,7 +421,7 @@ where
 
         // write it out
         if paops.verbose {
-            println!("Writing {}", path_out);
+            eprintln!("Writing {}", path_out);
         }
 
         // open output file

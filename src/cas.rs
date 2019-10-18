@@ -54,7 +54,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str
     match file_in.read_to_end(&mut blob) {
         Ok(bytes) => {
             if paops.verbose {
-                println!("cas::load(): {} bytes from {}", bytes, path.display());
+                eprintln!("cas::load(): {} bytes from {}", bytes, path.display());
             }
         }
         Err(e) => {
@@ -85,7 +85,7 @@ pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String, &'static str>
     // check if it exists
     if path.is_file() {
         if paops.verbose {
-            println!("cas:save(): {} already exists. Exiting.", path.display());
+            eprintln!("cas:save(): {} already exists. Exiting.", path.display());
         }
         return Ok(hexhash);
     }
@@ -103,7 +103,7 @@ pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String, &'static str>
     match file_out.write(&blob) {
         Ok(bytes) => {
             if paops.verbose {
-                println!("cas:save(): {} bytes to {}", bytes, path.display());
+                eprintln!("cas:save(): {} bytes to {}", bytes, path.display());
             }
         }
         Err(e) => {
