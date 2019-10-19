@@ -30,7 +30,7 @@ pub mod utils;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
 extern crate clap;
@@ -262,6 +262,7 @@ where
                 .required(true)
                 .index(1)
                 .value_name("FILE")
+                .default_value("-")
                 .multiple(true)
                 .help("The input file(s)"),
         );
@@ -379,7 +380,11 @@ where
         if let Some(output) = outiter.next() {
             files.push((input.to_string(), output.to_string()));
         } else {
-            files.push((input.to_string(), prefix.to_string() + &input));
+            let mut output = prefix.to_string() + &input;
+            if input == "-" {
+                output = "-".to_string();
+            }
+            files.push((input.to_string(), output));
         }
     }
 
@@ -389,16 +394,24 @@ where
         }
 
         // open input file
-        let reader_in = match File::open(&path_in) {
-            Ok(file_in) => BufReader::new(file_in),
-            Err(e) => {
-                eprintln!("Failed to open {} for reading: {}", path_in, e);
-                ::std::process::exit(1);
+        let reader_in: Box<dyn BufRead> = if path_in == "-" {
+            Box::new(BufReader::new(std::io::stdin()))
+        } else {
+            match File::open(&path_in) {
+                Ok(file_in) => Box::new(BufReader::new(file_in)),
+                Err(e) => {
+                    eprintln!("Failed to open {} for reading: {}", path_in, e);
+                    ::std::process::exit(1);
+                }
             }
         };
 
         // parse input
-        paops.fname = path_in.to_string();
+        paops.fname = if path_in == "-" {
+            "<stdin>".to_string()
+        } else {
+            path_in.to_string()
+        };
         let tree_in = match etree::parse(reader_in, &mut paops) {
             Ok(tree) => tree,
             Err(e) => {
@@ -425,11 +438,15 @@ where
         }
 
         // open output file
-        let mut writer_out = match File::create(&path_out) {
-            Ok(file_out) => BufWriter::new(file_out),
-            Err(e) => {
-                eprintln!("Failed to open {} for writing: {}", path_out, e);
-                ::std::process::exit(1);
+        let mut writer_out: Box<dyn Write> = if path_out == "-" {
+            Box::new(BufWriter::new(std::io::stdout()))
+        } else {
+            match File::create(&path_out) {
+                Ok(file_out) => Box::new(BufWriter::new(file_out)),
+                Err(e) => {
+                    eprintln!("Failed to open {} for writing: {}", path_out, e);
+                    ::std::process::exit(1);
+                }
             }
         };
 
