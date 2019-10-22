@@ -1,0 +1,11 @@
+hello, this is a test file
+{ BEGIN GEHEIM }
+Secret line 1
+Secret line 2
+{ BEGIN Agent_007 }
+James Bond
+{ END Agent_007 }
+{ END GEHEIM }
+{ BEGIN Agent_007 }
+Super secret line 3
+{ END Agent_007 }
