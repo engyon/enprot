@@ -29,188 +29,225 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
 
+extern crate clap;
+
+use clap::{App, AppSettings, Arg, ArgSettings};
+
 // Handle command line parameters
 
 pub fn app_main<I>(args: &mut I)
 where
     I: Iterator<Item = String>,
 {
-    let usage = "Usage: enprot [OPTION].. [FILE]...\n\
-                 \t-h -? --help    This simple help.\n\
-                 \t-v              Produce more verbose output.\n\
-                 \t-q              Supress unnecessary output.\n\
-                 \t-l LEFT_SEP     Specify left separator in parsing.\n\
-                 \t-r RIGHT_SEP    Specify right separator in parsing.\n\
-                 \t-s WORD         Store (unencrypted) WORD segments to CAS.\n\
-                 \t-f WORD         Fetch (unencrypted) WORD segments from CAS.\n\
-                 \t-k WORD=KEY     Specify a secret KEY for WORD.\n\
-                 \t-e WORD         Encrypt WORD segments.\n\
-                 \t-E WORD         Encrypt and store WORD segments.\n\
-                 \t-d WORD         Decrypt WORD segments.\n\
-                 \t-c DIRECTORY    Directory for CAS files (default \"cas\").\n\
-                 \t-p PREFIX       Use PREFIX for output filenames.\n\
-                 \t-o FILE         Specify output file for previous input.\n";
+    // <( ENCRYPTED AUTHOR )>
+    // <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
+    // <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
+    // <( END AUTHOR )>
 
-    let mut files = Vec::<(String, String)>::new();
-    let mut paops = etree::ParseOps::new();
-    let mut prefix = "".to_string();
-
-    // set casdir to cas/ if it exists
-
-    let path = Path::new("cas");
-    if path.is_dir() {
-        paops.casdir = path.to_path_buf();
-    }
-
-    // parse command line
-
-    while let Some(arg) = args.next() {
-        match arg.as_ref() {
-            "-h" | "-?" | "--help" => {
-                println!("{}", usage);
-                // <( ENCRYPTED AUTHOR )>
-                // <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
-                // <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
-                // <( END AUTHOR )>
-                ::std::process::exit(0);
-            }
-            "-v" | "--verbose" => {
-                paops.verbose = true;
-            }
-            "-q" | "--quiet" => {
-                paops.verbose = false;
-            }
-            "-l" | "--left" => {
-                if let Some(par) = args.next() {
-                    paops.left_sep = par;
-                } else {
-                    eprintln!("args: -l missing left separator");
-                    ::std::process::exit(1);
-                }
-            }
-            "-r" | "--right" => {
-                if let Some(par) = args.next() {
-                    paops.right_sep = par;
-                } else {
-                    eprintln!("args: -r missing right separator");
-                    ::std::process::exit(1);
-                }
-            }
-            "-c" | "--casdir" => {
-                if let Some(par) = args.next() {
-                    let path = Path::new(&par);
-                    if path.is_dir() {
-                        paops.casdir = path.to_path_buf();
-                    } else {
-                        eprintln!("args: -c: '{}' is not a directory", par);
-                        ::std::process::exit(1);
-                    }
-                } else {
-                    eprintln!("args: -c missing a directory name");
-                    ::std::process::exit(1);
-                }
-            }
-            "-e" | "--encrypt" => {
-                if let Some(par) = args.next() {
-                    for key in par.split(',') {
-                        paops.encrypt.insert(key.to_string());
-                    }
-                } else {
-                    eprintln!("args: -e missing a keyword");
-                    ::std::process::exit(1);
-                }
-            }
-            "-E" | "-es" | "--encrypt-store" => {
-                if let Some(par) = args.next() {
-                    for key in par.split(',') {
-                        paops.encrypt.insert(key.to_string());
-                        paops.store.insert(key.to_string());
-                    }
-                } else {
-                    eprintln!("args: -e missing a keyword");
-                    ::std::process::exit(1);
-                }
-            }
-            "-d" | "--decrypt" => {
-                if let Some(par) = args.next() {
-                    for key in par.split(',') {
-                        paops.decrypt.insert(key.to_string());
-                    }
-                } else {
-                    eprintln!("args: -d missing a keyword");
-                    ::std::process::exit(1);
-                }
-            }
-            "-s" | "--store" => {
-                if let Some(par) = args.next() {
-                    for key in par.split(',') {
-                        paops.store.insert(key.to_string());
-                    }
-                } else {
-                    eprintln!("args: -s missing a keyword");
-                    ::std::process::exit(1);
-                }
-            }
-            "-f" | "--fetch" => {
-                if let Some(par) = args.next() {
-                    for key in par.split(',') {
-                        paops.fetch.insert(key.to_string());
-                    }
-                } else {
-                    eprintln!("args: -u missing a keyword");
-                    ::std::process::exit(1);
-                }
-            }
-            "-k" | "--key" => {
-                if let Some(par) = args.next() {
-                    for key in par.split(',') {
-                        let keyval: Vec<&str> = key.split('=').collect();
-                        if keyval.len() == 2 {
-                            paops
-                                .keys
-                                .insert(keyval[0].to_string(), keyval[1].as_bytes().to_vec());
-                        } else {
-                            eprintln!("args: -k uses key=val pairs.");
-                            ::std::process::exit(1);
+    let matches = App::new("enprot")
+        .setting(AppSettings::DeriveDisplayOrder)
+        .setting(AppSettings::ColoredHelp)
+        .setting(AppSettings::ColorAuto)
+        .arg(
+            Arg::with_name("verbose")
+                .short("v")
+                .long("verbose")
+                .help("Produce more verbose output"),
+        )
+        .arg(
+            Arg::with_name("quiet")
+                .short("q")
+                .long("quiet")
+                .help("Suppress unnecessary output"),
+        )
+        .arg(
+            Arg::with_name("left-separator")
+                .short("l")
+                .long("left-separator")
+                .takes_value(true)
+                .value_name("SEP")
+                .help("Specify left separator in parsing"),
+        )
+        .arg(
+            Arg::with_name("right-separator")
+                .short("r")
+                .long("right-separator")
+                .takes_value(true)
+                .value_name("SEP")
+                .help("Specify right separator in parsing"),
+        )
+        .arg(
+            Arg::with_name("store")
+                .short("s")
+                .long("store")
+                .takes_value(true)
+                .value_name("WORD")
+                .multiple(true)
+                .number_of_values(1)
+                .help("Store (unencrypted) WORD segments to CAS"),
+        )
+        .arg(
+            Arg::with_name("fetch")
+                .short("f")
+                .long("fetch")
+                .takes_value(true)
+                .value_name("WORD")
+                .multiple(true)
+                .number_of_values(1)
+                .help("Fetch (unencrypted) WORD segments to CAS"),
+        )
+        .arg(
+            Arg::with_name("key")
+                .short("k")
+                .long("key")
+                .takes_value(true)
+                .value_name("WORD=KEY")
+                .multiple(true)
+                .number_of_values(1)
+                .validator(|v: String| -> Result<(), String> {
+                    for val in v.split(",") {
+                        let wordkey = val.splitn(2, '=').collect::<Vec<&str>>();
+                        if wordkey.len() != 2 || wordkey[0].len() == 0 || wordkey[1].len() == 0 {
+                            return Err(String::from("Must be of the form WORD=KEY[,WORD=KEY]"));
                         }
                     }
-                } else {
-                    eprintln!("args: -k missing a secret key");
-                    ::std::process::exit(1);
-                }
-            }
-            "-p" | "--prefix" => {
-                if let Some(par) = args.next() {
-                    prefix = par;
-                } else {
-                    eprintln!("args: -p missing a paremeter");
-                    ::std::process::exit(1);
-                }
-            }
-            "-o" | "--out" => {
-                if let Some(path_out) = args.next() {
-                    if let Some((path_in, _)) = files.pop() {
-                        // replace the output file
-                        files.push((path_in, path_out));
+                    Ok(())
+                })
+                .help("Specify a secret KEY for WORD"),
+        )
+        .arg(
+            Arg::with_name("encrypt")
+                .short("e")
+                .long("encrypt")
+                .takes_value(true)
+                .value_name("WORD")
+                .multiple(true)
+                .number_of_values(1)
+                .help("Encrypt WORD segments"),
+        )
+        .arg(
+            Arg::with_name("encrypt-store")
+                .short("E")
+                .long("encrypt-store")
+                .takes_value(true)
+                .value_name("WORD")
+                .multiple(true)
+                .number_of_values(1)
+                .help("Encrypt and store WORD segments"),
+        )
+        .arg(
+            Arg::with_name("decrypt")
+                .short("d")
+                .long("decrypt")
+                .takes_value(true)
+                .value_name("WORD")
+                .multiple(true)
+                .number_of_values(1)
+                .help("Decrypt WORD segments"),
+        )
+        .arg(
+            Arg::with_name("casdir")
+                .short("c")
+                .long("casdir")
+                .takes_value(true)
+                .value_name("DIRECTORY")
+                .default_value("./")
+                .set(ArgSettings::HideDefaultValue)
+                .validator(|v: String| -> Result<(), String> {
+                    if Path::new(&v).is_dir() {
+                        return Ok(());
                     } else {
-                        eprintln!(
-                            "args: -o needs to be after corresponding \
-                             input file"
-                        );
+                        Err(String::from("Must be a directory"))
                     }
-                } else {
-                    eprintln!("args: -o needs output filename");
-                    ::std::process::exit(1);
-                }
-            }
-            _ => {
-                files.push((arg.clone(), prefix.clone() + &arg));
-            }
-        }
+                })
+                .help("Directory for CAS files (default \"cas\" if exists, else \".\")"),
+        )
+        .arg(
+            Arg::with_name("prefix")
+                .short("p")
+                .long("prefix")
+                .takes_value(true)
+                .value_name("PREFIX")
+                .default_value("")
+                .set(ArgSettings::HideDefaultValue)
+                .set(ArgSettings::EmptyValues)
+                .help("Use PREFIX for output filenames"),
+        )
+        .arg(
+            Arg::with_name("output")
+                .short("o")
+                .long("output")
+                .takes_value(true)
+                .value_name("FILE")
+                .multiple(true)
+                .number_of_values(1)
+                .help("Specify output file for previous input"),
+        )
+        .arg(
+            Arg::with_name("input")
+                .required(true)
+                .index(1)
+                .value_name("FILE")
+                .multiple(true)
+                .help("The input file(s)"),
+        )
+        .get_matches_from(args);
+
+    let mut paops = etree::ParseOps::new();
+    // casdir
+    if matches.occurrences_of("casdir") == 0 && Path::new("cas").is_dir() {
+        paops.casdir = Path::new("cas").to_path_buf();
+    } else {
+        paops.casdir = Path::new(matches.value_of("casdir").unwrap()).to_path_buf();
+    }
+    // verbosity
+    paops.verbose = matches.occurrences_of("verbose") != 0;
+    if matches.occurrences_of("quiet") != 0 {
+        paops.verbose = false;
+    }
+    // separators
+    if let Some(sep) = matches.value_of("left-separator") {
+        paops.left_sep = sep.to_string();
+    }
+    if let Some(sep) = matches.value_of("right-separator") {
+        paops.right_sep = sep.to_string();
     }
 
-    // print some of the processing parameters if verbose
+    // transforms arguments like ["a", "b,c", "d"] into ["a", "b", "c", "d"]
+    macro_rules! csep_arg {
+        ( $set:expr, $name:expr ) => {
+            $set.extend(
+                matches
+                    .values_of($name)
+                    .unwrap_or(clap::Values::default())
+                    .flat_map(|arg| arg.split(",").map(|val| val.to_string()))
+                    .collect::<Vec<String>>(),
+            );
+        };
+    }
+    // expand comma-separated args
+    csep_arg!(paops.store, "store");
+    csep_arg!(paops.fetch, "fetch");
+    csep_arg!(paops.encrypt, "encrypt");
+    csep_arg!(paops.encrypt, "encrypt-store");
+    csep_arg!(paops.store, "encrypt-store");
+    csep_arg!(paops.decrypt, "decrypt");
+    // key
+    // ["word1=key1", "word2=key2,word3=key3"] ->
+    //   [(word1, key1), (word2, key2), (word3, key3)]
+    paops.keys.extend(
+        matches
+            .values_of("key")
+            .unwrap_or(clap::Values::default())
+            .flat_map(|arg| {
+                arg.split(",").map(|val| {
+                    let wordkey = val.splitn(2, '=').collect::<Vec<&str>>();
+                    (wordkey[0].to_string(), wordkey[1].as_bytes().to_vec())
+                })
+            }),
+    );
 
+    // print some of the processing parameters if verbose
     if paops.verbose {
         println!(
             "LEFT_SEP='{}' RIGHT_SEP='{}' casdir = '{}'",
@@ -221,6 +258,18 @@ where
     }
 
     // process all files
+    let mut files = Vec::<(String, String)>::new();
+    let prefix = matches.value_of("prefix").unwrap();
+    let mut outiter = matches
+        .values_of("output")
+        .unwrap_or(clap::Values::default());
+    for input in matches.values_of("input").unwrap() {
+        if let Some(output) = outiter.next() {
+            files.push((input.to_string(), output.to_string()));
+        } else {
+            files.push((input.to_string(), prefix.to_string() + &input));
+        }
+    }
 
     for (path_in, path_out) in files {
         if paops.verbose {

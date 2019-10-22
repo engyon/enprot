@@ -33,21 +33,32 @@ There is a simple help built-in with `-h` flag:
 enprot$ cargo run -- -h
     Finished dev [unoptimized + debuginfo] target(s) in 0.04s
      Running `target/debug/enprot -h`
-Usage: enprot [OPTION].. [FILE]...
-        -h -? --help    This simple help.
-        -v              Produce more verbose output.
-        -q              Supress unnecessary output.
-        -l LEFT_SEP     Specify left separator in parsing.
-        -r RIGHT_SEP    Specify right separator in parsing.
-        -s WORD         Store (unencrypted) WORD segments to CAS.
-        -f WORD         Fetch (unencrypted) WORD segments from CAS.
-        -k WORD=KEY     Specify a secret KEY for WORD.
-        -e WORD         Encrypt WORD segments.
-        -E WORD         Encrypt and store WORD segments.
-        -d WORD         Decrypt WORD segments.
-        -c DIRECTORY    Directory for CAS files (default "cas").
-        -p PREFIX       Use PREFIX for output filenames.
-        -o FILE         Specify output file for previous input.
+enprot
+
+USAGE:
+    enprot [FLAGS] [OPTIONS] <FILE>...
+
+FLAGS:
+    -v, --verbose    Produce more verbose output
+    -q, --quiet      Suppress unnecessary output
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+OPTIONS:
+    -l, --left-separator <SEP>       Specify left separator in parsing
+    -r, --right-separator <SEP>      Specify right separator in parsing
+    -s, --store <WORD>...            Store (unencrypted) WORD segments to CAS
+    -f, --fetch <WORD>...            Fetch (unencrypted) WORD segments to CAS
+    -k, --key <WORD=KEY>...          Specify a secret KEY for WORD
+    -e, --encrypt <WORD>...          Encrypt WORD segments
+    -E, --encrypt-store <WORD>...    Encrypt and store WORD segments
+    -d, --decrypt <WORD>...          Decrypt WORD segments
+    -c, --casdir <DIRECTORY>         Directory for CAS files (default "cas" if exists, else ".")
+    -p, --prefix <PREFIX>            Use PREFIX for output filenames
+    -o, --output <FILE>...           Specify output file for previous input
+
+ARGS:
+    <FILE>...    The input file(s)
 
 enprot$
 ----
@@ -273,44 +284,33 @@ in its help message:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot -d AUTHOR -k AUTHOR=markku src/main.rs
+enprot$ ./target/debug/enprot -d AUTHOR -k AUTHOR=markku src/lib.rs
 enprot$ cargo run -- -h
    Compiling enprot v0.1.0 (file:///home/mjos/Desktop/lab/enprot)
     Finished dev [unoptimized + debuginfo] target(s) in 2.17s
      Running `target/debug/enprot -h`
-Usage: enprot [OPTION].. [FILE]...
-	-h -? --help    This simple hlpe
-
-    [....]
-	-o FILE         Specify output file for previous input.
-
 Written 2018 by Markku-Juhani O. Saarinen <mjos@iki.fi>
+[...]
 enprot$
 ----
 
 Notice how that authorship information appeared at the end of help text
 when cargo recompiled the source code (since it was "touched"). This is
-because some source lines in `src/main.rs` originally read:
+because some source lines originally read:
 
 ----
-48:            "-h" | "-?" |"--help" => {
-49:                println!("{}", usage);
-50:// <( ENCRYPTED AUTHOR )>
-51:// <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
-52:// <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
-53:// <( END AUTHOR )>
-54:                ::std::process::exit(0);
+// <( ENCRYPTED AUTHOR )>
+// <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
+// <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
+// <( END AUTHOR )>
 ----
 
 Which was decrypted to
 
 ----
-48:            "-h" | "-?" |"--help" => {
-49:                println!("{}", usage);
-50:// <( BEGIN AUTHOR )>
-51:                println!("Written 2018 by Markku-Juhani O. Saarinen <mjos@iki.fi>");
-52:// <( END AUTHOR )>
-53:                ::std::process::exit(0);
+// <( BEGIN AUTHOR )>
+                println!("Written 2018 by Markku-Juhani O. Saarinen <mjos@iki.fi>");
+// <( END AUTHOR )>
 ----
 Without modifying anything else in the source code.
 
