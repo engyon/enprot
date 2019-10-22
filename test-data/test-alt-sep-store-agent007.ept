@@ -1,0 +1,7 @@
+hello, this is a test file
+{ BEGIN GEHEIM }
+Secret line 1
+Secret line 2
+{ STORED Agent_007 d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab }
+{ END GEHEIM }
+{ STORED Agent_007 575d69f5b0034279bc3ef164e94287e6366e9df76729895a302a66a8817cf306 }
