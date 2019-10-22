@@ -22,5 +22,5 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 fn main() {
-    enprot::app_main(&mut std::env::args().skip(1).peekable());
+    enprot::app_main(&mut std::env::args());
 }

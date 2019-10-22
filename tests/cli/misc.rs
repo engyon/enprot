@@ -16,13 +16,13 @@ fn help_produces_usage() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Usage:"));
+        .stdout(predicate::str::contains("USAGE:"));
     Command::cargo_bin("enprot")
         .unwrap()
         .arg("-h")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Usage:"));
+        .stdout(predicate::str::contains("USAGE:"));
 }
 
 #[test]
@@ -93,5 +93,52 @@ fn output() {
     assert_eq!(
         &fs::read_to_string(&output.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-agent007.ept").unwrap()
+    );
+}
+
+#[test]
+fn output_multiple() {
+    let ept1 = Fixture::copy("sample/test.ept");
+    let ept2 = Fixture::copy("sample/simple.ept");
+    let ept3 = Fixture::copy("sample/simple.ept");
+    let out1 = Fixture::blank("out1.ept");
+    let out2 = Fixture::blank("out2.ept");
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("-e")
+        .arg("Agent_007")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept1.path)
+        .arg("-o")
+        .arg(&out1.path)
+        .arg(&ept2.path)
+        .arg("-o")
+        .arg(&out2.path)
+        .arg(&ept3.path)
+        .assert()
+        .success();
+    // these originals should be unchanged
+    assert_eq!(
+        &fs::read_to_string(&ept1.source).unwrap(),
+        &fs::read_to_string(&ept1.path).unwrap()
+    );
+    assert_eq!(
+        &fs::read_to_string(&ept2.source).unwrap(),
+        &fs::read_to_string(&ept2.path).unwrap()
+    );
+    // these two have outputs specified
+    assert_eq!(
+        &fs::read_to_string(&out1.path).unwrap(),
+        &fs::read_to_string("test-data/test-encrypt-agent007.ept").unwrap()
+    );
+    assert_eq!(
+        &fs::read_to_string(&out2.path).unwrap(),
+        &fs::read_to_string("test-data/simple-encrypt-agent007.ept").unwrap()
+    );
+    // no output specified for this one, so the input is the output
+    assert_eq!(
+        &fs::read_to_string(&ept3.path).unwrap(),
+        &fs::read_to_string("test-data/simple-encrypt-agent007.ept").unwrap()
     );
 }
