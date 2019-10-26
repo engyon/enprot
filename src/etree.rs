@@ -22,6 +22,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern crate base64;
+extern crate botan;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -30,29 +31,54 @@ use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
 
 use cas;
+use consts;
 use prot;
 
-// parse operationsm
+pub struct PBKDFOptions {
+    pub alg: String,                            // algorithm name
+    pub pbkdf2_hash: Option<String>,            // hash alg to use when alg is PBKDF2
+    pub saltlen: usize,                         // desired salt length
+    pub salt: Option<Vec<u8>>,                  // salt (randomly generated if None)
+    pub msec: Option<u32>,                      // desired millis count to determine KDF params
+    pub params: Option<HashMap<String, usize>>, // KDF-specific params (if provided)
+}
+
+impl PBKDFOptions {
+    pub fn new() -> PBKDFOptions {
+        PBKDFOptions {
+            alg: consts::DEFAULT_PBKDF_ALG.to_string(),
+            saltlen: consts::DEFAULT_PBKDF_SALT_LEN,
+            salt: None,
+            msec: Some(consts::DEFAULT_PBKDF_MSEC),
+            pbkdf2_hash: None,
+            params: None,
+        }
+    }
+}
+
+// parse operations
 
 pub struct ParseOps {
-    pub left_sep: String,                    // left separator
-    pub right_sep: String,                   // right separator
-    pub store: HashSet<String>,              // keywords to store
-    pub fetch: HashSet<String>,              // keywords to fetch
-    pub encrypt: HashSet<String>,            // keywords to encrypt
-    pub decrypt: HashSet<String>,            // keywords to decrypt
-    pub passwords: HashMap<String, Vec<u8>>, // passwords
-    pub fname: String,                       // file name being parsed
-    pub casdir: PathBuf,                     // directory for cas objects
-    pub verbose: bool,                       // verbose output to stdout
-    level: isize,                            // current recursion level
+    pub left_sep: String,                          // left separator
+    pub right_sep: String,                         // right separator
+    pub store: HashSet<String>,                    // keywords to store
+    pub fetch: HashSet<String>,                    // keywords to fetch
+    pub encrypt: HashSet<String>,                  // keywords to encrypt
+    pub decrypt: HashSet<String>,                  // keywords to decrypt
+    pub passwords: HashMap<String, String>,        // passwords
+    pub fname: String,                             // file name being parsed
+    pub casdir: PathBuf,                           // directory for cas objects
+    pub verbose: bool,                             // verbose output to stdout
+    pub rng: Option<botan::RandomNumberGenerator>, // RNG to use
+    pub pbkdf: PBKDFOptions,                       // the PBKDF options
+    level: isize,                                  // current recursion level
 }
 
 impl ParseOps {
     pub fn new() -> ParseOps {
         ParseOps {
-            left_sep: "// <(".to_string(),
-            right_sep: ")>".to_string(),
+            left_sep: consts::DEFAULT_LEFT_SEP.to_string(),
+            right_sep: consts::DEFAULT_RIGHT_SEP.to_string(),
             store: HashSet::new(),
             fetch: HashSet::new(),
             encrypt: HashSet::new(),
@@ -62,6 +88,8 @@ impl ParseOps {
             casdir: Path::new("").to_path_buf(),
             level: 0,
             verbose: false,
+            rng: Some(botan::RandomNumberGenerator::new().unwrap()),
+            pbkdf: PBKDFOptions::new(),
         }
     }
 }
@@ -77,9 +105,19 @@ type TextTree = Vec<TextNode>;
 pub enum TextNode {
     Plain(String),
     Data(Vec<u8>),
-    Stored { keyw: String, cas: String },
-    Encrypted { keyw: String, txt: TextTree },
-    BeginEnd { keyw: String, txt: TextTree },
+    Stored {
+        keyw: String,
+        cas: String,
+    },
+    Encrypted {
+        keyw: String,
+        txt: TextTree,
+        pbkdf: Option<String>, // PBKDF PHC string
+    },
+    BeginEnd {
+        keyw: String,
+        txt: TextTree,
+    },
 }
 
 type Parser = fn(
@@ -156,19 +194,47 @@ fn parse_encrypted(
     pstack: &mut Vec<TextNode>,
     text: &mut Vec<TextNode>,
 ) -> Result<(), &'static str> {
-    match cmd.len() {
+    // parse all extended fields, such as pbkdf:
+    let mut extfields: HashMap<String, String> = HashMap::new();
+    for field in cmd.iter().rev() {
+        if field.find(':') == None {
+            // extended fields always come at the end
+            break;
+        }
+        let fields = field.splitn(2, ':').collect::<Vec<&str>>();
+        let key = fields[0];
+        let value = fields[1];
+        if extfields.contains_key(key) {
+            return Err("Duplicate extended field");
+        }
+        extfields.insert(key.to_string(), value.to_string());
+    }
+    let param_count = cmd.len() - extfields.len();
+    let pbkdf: Option<String> = extfields.remove("pbkdf");
+    if !extfields.is_empty() {
+        return Err("Unrecognized extended field(s) present");
+    }
+    match param_count {
         1 => {
             // immediate data
+            // <( ENCRYPTED Agent_007 )>
+            // <( ENCRYPTED Agent_007 pbkdf:... )>
             paops.level += 1;
             pstack.push(TextNode::Encrypted {
                 keyw: cmd[0].to_owned(),
                 txt: text.to_vec(),
+                pbkdf,
             });
             text.clear();
             return Ok(());
         }
         2 => {
             // CAS parameter
+            // <( ENCRYPTED Agent_007 7a8da017c0fe671ba16f4bc55b884444e708849290d8366f19c552c90950b8c2 )>
+            // <( ENCRYPTED Agent_007 7a8da017c0fe671ba16f4bc55b884444e708849290d8366f19c552c90950b8c2 pbkdf:... )>
+            if cmd[1].len() != 64 {
+                return Err("Invalid CAS identifier");
+            }
             let node = vec![TextNode::Stored {
                 keyw: "ct".to_string(),
                 cas: cmd[1].to_string(),
@@ -176,13 +242,14 @@ fn parse_encrypted(
             text.push(TextNode::Encrypted {
                 keyw: cmd[0].to_string(),
                 txt: node,
+                pbkdf,
             });
         }
         _ => {
             eprintln!(
                 "Parse: ENCRYPTED has wrong number of \
-                 parameters.\n{}:{}:{}",
-                paops.fname, lineno, line
+                 parameters ({}).\n{}:{}:{}",
+                param_count, paops.fname, lineno, line
             );
             return Err("Parse error");
         }
@@ -225,7 +292,7 @@ fn parse_end(
             text.push(node);
             paops.level -= 1;
         }
-        Some(TextNode::Encrypted { keyw, txt }) => {
+        Some(TextNode::Encrypted { keyw, txt, pbkdf }) => {
             // keyword mismatch ?
             if keyw != cmd[0] {
                 eprintln!(
@@ -253,6 +320,7 @@ fn parse_end(
                     let node = TextNode::Encrypted {
                         keyw: keyw,
                         txt: text.to_vec(),
+                        pbkdf,
                     };
                     *text = txt;
                     text.push(node);
@@ -373,7 +441,11 @@ where
                 Some(TextNode::BeginEnd { keyw, txt: _ }) => {
                     eprintln!("Parse: BEGIN {} without END.", keyw);
                 }
-                Some(TextNode::Encrypted { keyw, txt: _ }) => {
+                Some(TextNode::Encrypted {
+                    keyw,
+                    txt: _,
+                    pbkdf: _,
+                }) => {
                     eprintln!("Parse: ENCRYPTED {} without END.", keyw);
                 }
                 _ => return Err("Unexpected end"),
@@ -409,21 +481,50 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
             }
 
             // ENCRYPTED block
-            TextNode::Encrypted { keyw, txt } => {
+            TextNode::Encrypted {
+                keyw,
+                txt,
+                ref pbkdf,
+            } => {
                 if let TextNode::Stored { keyw: _, ref cas } = txt[0] {
-                    writeln!(
-                        outw,
-                        "{} ENCRYPTED {} {} {}",
-                        paops.left_sep, keyw, cas, paops.right_sep
-                    )
-                    .unwrap();
+                    if *pbkdf == None {
+                        writeln!(
+                            outw,
+                            "{} ENCRYPTED {} {} {}",
+                            paops.left_sep, keyw, cas, paops.right_sep
+                        )
+                        .unwrap();
+                    } else {
+                        writeln!(
+                            outw,
+                            "{} ENCRYPTED {} {} pbkdf:{} {}",
+                            paops.left_sep,
+                            keyw,
+                            cas,
+                            &pbkdf.clone().unwrap(),
+                            paops.right_sep
+                        )
+                        .unwrap();
+                    }
                 } else {
-                    writeln!(
-                        outw,
-                        "{} ENCRYPTED {} {}",
-                        paops.left_sep, keyw, paops.right_sep
-                    )
-                    .unwrap();
+                    if *pbkdf == None {
+                        writeln!(
+                            outw,
+                            "{} ENCRYPTED {} {}",
+                            paops.left_sep, keyw, paops.right_sep
+                        )
+                        .unwrap();
+                    } else {
+                        writeln!(
+                            outw,
+                            "{} ENCRYPTED {} pbkdf:{} {}",
+                            paops.left_sep,
+                            keyw,
+                            &pbkdf.clone().unwrap(),
+                            paops.right_sep
+                        )
+                        .unwrap();
+                    }
                     paops.level += 1;
                     tree_write(outw, txt, paops);
                     paops.level -= 1;
@@ -477,8 +578,8 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
 
                     // get password
                     let (newpass, pass) = match paops.passwords.get(keyw) {
-                        Some(pass) => (false, pass.to_vec()),
-                        None => (true, prot::get_password(&keyw, true).as_bytes().to_vec()),
+                        Some(pass) => (false, pass.to_string()),
+                        None => (true, prot::get_password(&keyw, true)),
                     };
                     if newpass {
                         paops
@@ -487,7 +588,7 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                     }
 
                     // encrypt
-                    let ct = prot::encrypt(pt, pass);
+                    let (ct, pbkdf) = prot::encrypt(pt, &pass, &paops.rng, &paops.pbkdf)?;
 
                     // also store it (store at CAS) ?
                     let node = if paops.store.contains(keyw) {
@@ -502,6 +603,7 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                     text_out.push(TextNode::Encrypted {
                         keyw: keyw.to_string(),
                         txt: node,
+                        pbkdf,
                     });
                     continue;
                 }
@@ -530,7 +632,11 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
             }
 
             // ENCRYPTED
-            TextNode::Encrypted { ref keyw, ref txt } => {
+            TextNode::Encrypted {
+                ref keyw,
+                ref txt,
+                ref pbkdf,
+            } => {
                 // decrypt it
                 if paops.decrypt.contains(keyw) {
                     // get ciphertext
@@ -545,8 +651,8 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
 
                     // get password
                     let (newpass, pass) = match paops.passwords.get(keyw) {
-                        Some(pass) => (false, pass.to_vec()),
-                        None => (true, prot::get_password(keyw, false).as_bytes().to_vec()),
+                        Some(pass) => (false, pass.to_string()),
+                        None => (true, prot::get_password(keyw, false)),
                     };
                     if newpass {
                         paops
@@ -555,11 +661,11 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                     }
 
                     // decrypt
-                    let pt = match prot::decrypt(ct, pass) {
-                        Some(ct) => ct.to_vec(),
-                        _ => {
-                            eprintln!("Bad password for {}.", &keyw);
-                            return Err("Decryption failure");
+                    let pt = match prot::decrypt(ct, &pass, pbkdf) {
+                        Ok(ct) => ct.to_vec(),
+                        Err(e) => {
+                            eprintln!("Error decrypting {}: {}.", &keyw, e);
+                            return Err(e);
                         }
                     };
 
@@ -588,6 +694,7 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                         text_out.push(TextNode::Encrypted {
                             keyw: keyw.to_string(),
                             txt: node,
+                            pbkdf: None,
                         });
                         continue;
                     }
@@ -607,6 +714,7 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                         text_out.push(TextNode::Encrypted {
                             keyw: keyw.to_string(),
                             txt: node,
+                            pbkdf: None,
                         });
                         continue;
                     };
@@ -786,13 +894,14 @@ mod tests {
 
     // test that we can do a basic encrypt and decrypt on this file
     #[test]
-    fn transform_test_ept_encrypt_decyprt_geheim() {
+    fn transform_test_ept_encrypt_decrypt_geheim() {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
+        paops.pbkdf.alg = "legacy".to_string();
         // encrypt
         paops.encrypt.insert("GEHEIM".to_string());
         paops
             .passwords
-            .insert("GEHEIM".to_string(), "password".as_bytes().to_vec());
+            .insert("GEHEIM".to_string(), "password".to_string());
         let outtree = transform(&intree, &mut paops).unwrap();
         // re-parse
         parse(
@@ -821,12 +930,13 @@ mod tests {
     #[test]
     fn transform_test_ept_encrypt_store_agent007() {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
+        paops.pbkdf.alg = "legacy".to_string();
         // encrypt & store
         paops.encrypt.insert("Agent_007".to_string());
         paops.store.insert("Agent_007".to_string());
         paops
             .passwords
-            .insert("Agent_007".to_string(), "password".as_bytes().to_vec());
+            .insert("Agent_007".to_string(), "password".to_string());
         let outtree = transform(&intree, &mut paops).unwrap();
         // re-parse
         parse(

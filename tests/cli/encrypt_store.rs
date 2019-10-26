@@ -23,6 +23,8 @@ fn encrypt_store_agent007() {
         .arg(casdir.path())
         .arg("--encrypt-store")
         .arg("Agent_007")
+        .arg("--pbkdf")
+        .arg("legacy")
         .arg("-k")
         .arg("Agent_007=password")
         .arg(&ept.path)
@@ -68,6 +70,8 @@ fn encrypt_store_geheim() {
         .arg(casdir.path())
         .arg("--encrypt-store")
         .arg("GEHEIM")
+        .arg("--pbkdf")
+        .arg("legacy")
         .arg("-k")
         .arg("GEHEIM=password")
         .arg(&ept.path)
@@ -110,6 +114,8 @@ fn encrypt_store_both_agent007_geheim() {
         .arg(casdir.path())
         .arg("--encrypt-store")
         .arg("Agent_007,GEHEIM")
+        .arg("--pbkdf")
+        .arg("legacy")
         .arg("-k")
         .arg("Agent_007=password,GEHEIM=password")
         .arg(&ept.path)
@@ -155,6 +161,8 @@ fn encrypt_store_agent007_geheim() {
         .arg(casdir.path())
         .arg("--encrypt-store")
         .arg("Agent_007")
+        .arg("--pbkdf")
+        .arg("legacy")
         .arg("-k")
         .arg("Agent_007=password")
         .arg(&ept.path)
@@ -178,6 +186,8 @@ fn encrypt_store_agent007_geheim() {
         .arg(casdir.path())
         .arg("--encrypt-store")
         .arg("GEHEIM")
+        .arg("--pbkdf")
+        .arg("legacy")
         .arg("-k")
         .arg("GEHEIM=password")
         .arg(&ept.path)
@@ -232,6 +242,8 @@ fn encrypt_store_geheim_agent007() {
         .arg(casdir.path())
         .arg("--encrypt-store")
         .arg("GEHEIM")
+        .arg("--pbkdf")
+        .arg("legacy")
         .arg("-k")
         .arg("GEHEIM=password")
         .arg(&ept.path)
@@ -252,6 +264,8 @@ fn encrypt_store_geheim_agent007() {
         .arg(casdir.path())
         .arg("--encrypt-store")
         .arg("Agent_007")
+        .arg("--pbkdf")
+        .arg("legacy")
         .arg("-k")
         .arg("Agent_007=password")
         .arg(&ept.path)
@@ -291,5 +305,56 @@ fn encrypt_store_geheim_agent007() {
     assert_eq!(
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string(&ept.source).unwrap(),
+    );
+}
+
+#[test]
+fn encrypt_store_agent007_argon2() {
+    let casdir = tempdir().unwrap();
+    let ept = Fixture::copy("sample/test.ept");
+
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("-c")
+        .arg(casdir.path())
+        .arg("--encrypt-store")
+        .arg("Agent_007")
+        .arg("--pbkdf")
+        .arg("argon2")
+        .arg("--pbkdf-params")
+        .arg("t=1,p=1,m=16")
+        .arg("--pbkdf-salt")
+        .arg("0102030405060708")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .assert()
+        .success();
+    assert_eq!(
+        &fs::read_to_string(&ept.path).unwrap(),
+        &fs::read_to_string("test-data/test-encrypt-store-agent007-argon2.ept").unwrap()
+    );
+    for hashval in vec![
+        "03596e1743f8d7e969979d5e4f9f8bf41bca02c723f84a2f12193b2196077805",
+        "b30ccd443bae74afc464822857fad6974f0cbb12197368494cc311441c74ea20",
+    ] {
+        let mut hash = Sha3::sha3_256();
+        hash.input(&fs::read(casdir.path().join(hashval)).unwrap());
+        assert_eq!(hash.result_str(), hashval,);
+    }
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("-c")
+        .arg(casdir.path())
+        .arg("-d")
+        .arg("Agent_007")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .assert()
+        .success();
+    assert_eq!(
+        &fs::read_to_string(&ept.path).unwrap(),
+        &fs::read_to_string(&ept.source).unwrap()
     );
 }

@@ -23,11 +23,15 @@
 
 extern crate crypto;
 extern crate miscreant;
+extern crate phc;
 extern crate rpassword;
 
-use self::crypto::digest::Digest;
-use self::crypto::sha3::Sha3;
 use self::miscreant::siv::Aes256Siv;
+use std::collections::HashMap;
+
+use etree;
+use pbkdf::derive_key;
+use pbkdf::from_phc_alg;
 
 // Get a password
 
@@ -47,28 +51,68 @@ pub fn get_password(name: &str, rep: bool) -> String {
 
 // Encrypt
 
-pub fn encrypt(pt: Vec<u8>, password: Vec<u8>) -> Vec<u8> {
+pub fn encrypt(
+    pt: Vec<u8>,
+    password: &str,
+    rng: &Option<botan::RandomNumberGenerator>,
+    opts: &etree::PBKDFOptions,
+) -> Result<(Vec<u8>, Option<String>), &'static str> {
+    let (key, pbkdf) = derive_key(password, rng, opts)?;
     let no_ad = vec![vec![]];
-    let mut sivkey = [0; 64];
-    let mut khash = Sha3::sha3_512();
-    khash.input(&password);
-    khash.result(&mut sivkey);
-
-    Aes256Siv::new(&sivkey).seal(&no_ad, &pt)
+    Ok((Aes256Siv::new(&key).seal(&no_ad, &pt), pbkdf))
 }
 
 // Decrypt
 
-pub fn decrypt(ct: Vec<u8>, password: Vec<u8>) -> Option<Vec<u8>> {
-    let no_ad = vec![vec![]];
-    let mut sivkey = [0; 64];
-    let mut khash = Sha3::sha3_512();
-    khash.input(&password);
-    khash.result(&mut sivkey);
+pub fn decrypt(
+    ct: Vec<u8>,
+    password: &str,
+    pbkdf: &Option<String>,
+) -> Result<Vec<u8>, &'static str> {
+    let key: Vec<u8>;
+    if let Some(pbkdf) = pbkdf {
+        let phc: phc::raw::RawPHC = pbkdf.parse().map_err(|_| "Failed to parse PHC")?;
+        let (alg, pbkdf2_hash) = from_phc_alg(phc.id());
+        let mut params_map: HashMap<String, usize> = HashMap::new();
+        params_map.extend(
+            phc.params()
+                .iter()
+                .map(|v| (v.0.to_string(), v.1.parse::<usize>().unwrap())),
+        );
+        let salt = match phc.salt().ok_or("Missing salt")? {
+            phc::Salt::Ascii(s) => base64::decode(s).map_err(|_| "Failed to retrieve salt")?,
+            phc::Salt::Binary(b) => base64::decode(b).map_err(|_| "Failed to retrieve salt")?,
+        };
+        let opts = etree::PBKDFOptions {
+            alg: alg,
+            saltlen: 0,
+            salt: Some(salt),
+            msec: None,
+            pbkdf2_hash: pbkdf2_hash,
+            params: Some(params_map),
+        };
+        let (thekey, _) = derive_key(password, &None, &opts)?;
+        key = thekey;
+    } else {
+        let (thekey, _) = derive_key(
+            password,
+            &None,
+            &etree::PBKDFOptions {
+                alg: "legacy".to_string(),
+                saltlen: 0,
+                salt: None,
+                msec: None,
+                pbkdf2_hash: None,
+                params: None,
+            },
+        )?;
+        key = thekey;
+    }
 
     // The miscreant error type is really uninformative (good!)
-    match Aes256Siv::new(&sivkey).open(&no_ad, &ct) {
-        Ok(pt) => Some(pt),
-        Err(_) => None,
+    let no_ad = vec![vec![]];
+    match Aes256Siv::new(&key).open(&no_ad, &ct) {
+        Ok(pt) => Ok(pt),
+        Err(_) => Err("Bad password?"),
     }
 }

@@ -1,0 +1,11 @@
+hello, this is a test file
+// <( BEGIN GEHEIM )>
+Secret line 1
+Secret line 2
+// <( ENCRYPTED Agent_007 pbkdf:$scrypt$ln=2,p=1,r=1$AQIDBAUGBwg= )>
+// <( DATA OFv8DA9OfIY7ro7NIGf1BC9KhFfHpNarnfB6 )>
+// <( END Agent_007 )>
+// <( END GEHEIM )>
+// <( ENCRYPTED Agent_007 pbkdf:$scrypt$ln=2,p=1,r=1$AQIDBAUGBwg= )>
+// <( DATA d0go47Oi5nhn5fVi+h4rntSvn45nfwZqbR+7y4lfJiGIkhgm )>
+// <( END Agent_007 )>
