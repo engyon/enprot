@@ -22,16 +22,30 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod cas;
+mod consts;
 mod etree;
+mod pbkdf;
 mod prot;
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
 
 extern crate clap;
+extern crate num;
 
 use clap::{App, AppSettings, Arg, ArgSettings};
+
+fn validate_positive<T>(v: String) -> Result<(), String>
+where
+    T: std::str::FromStr + num::Unsigned,
+{
+    let err = format!("Expected a number > 0, received '{}'", v);
+    v.parse::<T>()
+        .map_err(|_| err.clone())
+        .and_then(|n| if n != T::zero() { Ok(()) } else { Err(err) })
+}
 
 // Handle command line parameters
 
@@ -44,7 +58,10 @@ where
     // <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
     // <( END AUTHOR )>
 
-    let matches = App::new("enprot")
+    let default_pbkdf_salt_len = consts::DEFAULT_PBKDF_SALT_LEN.to_string();
+    let default_pbkdf_msec = consts::DEFAULT_PBKDF_MSEC.to_string();
+
+    let mut app = App::new("enprot")
         .setting(AppSettings::DeriveDisplayOrder)
         .setting(AppSettings::ColoredHelp)
         .setting(AppSettings::ColorAuto)
@@ -66,6 +83,7 @@ where
                 .long("left-separator")
                 .takes_value(true)
                 .value_name("SEP")
+                .default_value(consts::DEFAULT_LEFT_SEP)
                 .help("Specify left separator in parsing"),
         )
         .arg(
@@ -74,6 +92,7 @@ where
                 .long("right-separator")
                 .takes_value(true)
                 .value_name("SEP")
+                .default_value(consts::DEFAULT_RIGHT_SEP)
                 .help("Specify right separator in parsing"),
         )
         .arg(
@@ -138,6 +157,58 @@ where
                 .help("Encrypt and store WORD segments"),
         )
         .arg(
+            Arg::with_name("pbkdf")
+                .long("pbkdf")
+                .takes_value(true)
+                .value_name("ALG")
+                .default_value(consts::DEFAULT_PBKDF_ALG)
+                .possible_values(consts::VALID_PBKDF_ALGS)
+                .help("Set the PBKDF algorithm to use when encrypting"),
+        )
+        .arg(
+            Arg::with_name("pbkdf-msec")
+                .long("pbkdf-msec")
+                .takes_value(true)
+                .value_name("MSEC")
+                .default_value(&default_pbkdf_msec)
+                .validator(validate_positive::<u32>)
+                .help("Set the millisecond count for the PBKDF algorithm"),
+        )
+        .arg(
+            Arg::with_name("pbkdf-salt-len")
+                .long("pbkdf-salt-len")
+                .takes_value(true)
+                .value_name("BYTES")
+                .default_value(&default_pbkdf_salt_len)
+                .validator(&validate_positive::<usize>)
+                .help("Set the salt length for the PBKDF"),
+        )
+        .arg(
+            Arg::with_name("pbkdf-params")
+                .long("pbkdf-params")
+                .takes_value(true)
+                .value_name("PARAMS")
+                .hidden(true)
+                .help("Advanced option for testing, do not use"),
+        )
+        .arg(
+            Arg::with_name("pbkdf-salt")
+                .long("pbkdf-salt")
+                .takes_value(true)
+                .value_name("HEX")
+                .hidden(true)
+                .help("Advanced option for testing, do not use"),
+        )
+        .arg(
+            Arg::with_name("pbkdf2-hash")
+                .long("pbkdf2-hash")
+                .takes_value(true)
+                .value_name("ALG")
+                .default_value(consts::DEFAULT_PBKDF2_HASH_ALG)
+                .possible_values(consts::VALID_PBKDF2_HASH_ALGS)
+                .help("Set the hash algorithm to use for PBKDF2"),
+        )
+        .arg(
             Arg::with_name("decrypt")
                 .short("d")
                 .long("decrypt")
@@ -192,8 +263,8 @@ where
                 .value_name("FILE")
                 .multiple(true)
                 .help("The input file(s)"),
-        )
-        .get_matches_from(args);
+        );
+    let matches = app.clone().get_matches_from(args);
 
     let mut paops = etree::ParseOps::new();
     // casdir
@@ -208,13 +279,8 @@ where
         paops.verbose = false;
     }
     // separators
-    if let Some(sep) = matches.value_of("left-separator") {
-        paops.left_sep = sep.to_string();
-    }
-    if let Some(sep) = matches.value_of("right-separator") {
-        paops.right_sep = sep.to_string();
-    }
-
+    paops.left_sep = matches.value_of("left-separator").unwrap().to_string();
+    paops.right_sep = matches.value_of("right-separator").unwrap().to_string();
     // transforms arguments like ["a", "b,c", "d"] into ["a", "b", "c", "d"]
     macro_rules! csep_arg {
         ( $set:expr, $name:expr ) => {
@@ -244,10 +310,53 @@ where
             .flat_map(|arg| {
                 arg.split(",").map(|val| {
                     let wordpass = val.splitn(2, '=').collect::<Vec<&str>>();
-                    (wordpass[0].to_string(), wordpass[1].as_bytes().to_vec())
+                    (wordpass[0].to_string(), wordpass[1].to_string())
                 })
             }),
     );
+    // pbkdf
+    paops.pbkdf.alg = matches.value_of("pbkdf").unwrap().to_string();
+    paops.pbkdf.saltlen = matches
+        .value_of("pbkdf-salt-len")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap();
+    paops.pbkdf.msec = Some(
+        matches
+            .value_of("pbkdf-msec")
+            .unwrap()
+            .parse::<u32>()
+            .unwrap(),
+    );
+    if let Some(val) = matches.value_of("pbkdf-params") {
+        paops.pbkdf.msec = None;
+        let mut params: HashMap<String, usize> = HashMap::new();
+        params.extend(val.split(",").map(|val| {
+            let parts = val.splitn(2, '=').collect::<Vec<&str>>();
+            (parts[0].to_string(), parts[1].parse::<usize>().unwrap())
+        }));
+        paops.pbkdf.params = Some(params);
+    }
+    if let Some(val) = matches.value_of("pbkdf-salt") {
+        paops.pbkdf.salt = Some(hex::decode(val).unwrap());
+    }
+    if matches.occurrences_of("pbkdf2-hash") != 0 {
+        if paops.pbkdf.alg != "pbkdf2" {
+            let err = clap::Error::with_description(
+                &format!(
+                    "pbkdf2-specific option provided but pbkdf is set to '{}'",
+                    matches.value_of("pbkdf").unwrap()
+                ),
+                clap::ErrorKind::ArgumentConflict,
+            );
+            eprintln!("{}", err);
+            app.print_help().unwrap();
+            std::process::exit(1);
+        }
+        paops.pbkdf.pbkdf2_hash = matches.value_of("pbkdf2-hash").map(|v| v.to_string());
+    } else if paops.pbkdf.alg == "pbkdf2" {
+        paops.pbkdf.pbkdf2_hash = Some(consts::DEFAULT_PBKDF2_HASH_ALG.to_string());
+    }
 
     // print some of the processing parameters if verbose
     if paops.verbose {

@@ -1,0 +1,7 @@
+hello, this is a test file
+// <( BEGIN GEHEIM )>
+Secret line 1
+Secret line 2
+// <( ENCRYPTED Agent_007 03596e1743f8d7e969979d5e4f9f8bf41bca02c723f84a2f12193b2196077805 pbkdf:$argon2$m=16,p=1,t=1$AQIDBAUGBwg= )>
+// <( END GEHEIM )>
+// <( ENCRYPTED Agent_007 b30ccd443bae74afc464822857fad6974f0cbb12197368494cc311441c74ea20 pbkdf:$argon2$m=16,p=1,t=1$AQIDBAUGBwg= )>

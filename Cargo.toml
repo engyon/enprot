@@ -19,6 +19,10 @@ rpassword   = "2"
 miscreant   = "0.4.0-beta2"
 rust-crypto = "^0.2"
 clap        = "2.33.0"
+phc         = { git = "https://github.com/kstrohbeck/phc", branch = "develop" }
+botan       = "0.6.0"
+num         = "0.2.0"
+phf         = { git = "https://github.com/sfackler/rust-phf", branch = "master", features = ["macros"] }
 
 [dev-dependencies]
 tempfile    = "3.1.0"
