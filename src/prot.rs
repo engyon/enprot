@@ -29,9 +29,9 @@ use self::crypto::digest::Digest;
 use self::crypto::sha3::Sha3;
 use self::miscreant::siv::Aes256Siv;
 
-// Get a key -- currently a password prompt
+// Get a password
 
-pub fn get_key(name: &str, rep: bool) -> String {
+pub fn get_password(name: &str, rep: bool) -> String {
     let prompt = "Password for ".to_string() + name + ": ";
     let mut pass = rpassword::prompt_password_stdout(&prompt).unwrap();
     if rep {
@@ -39,7 +39,7 @@ pub fn get_key(name: &str, rep: bool) -> String {
         let pass2 = rpassword::prompt_password_stdout(&prompt).unwrap();
         if pass != pass2 {
             eprintln!("Password mismatch. Try again.");
-            pass = get_key(name, rep);
+            pass = get_password(name, rep);
         }
     }
     pass
@@ -47,11 +47,11 @@ pub fn get_key(name: &str, rep: bool) -> String {
 
 // Encrypt
 
-pub fn encrypt(pt: Vec<u8>, key: Vec<u8>) -> Vec<u8> {
+pub fn encrypt(pt: Vec<u8>, password: Vec<u8>) -> Vec<u8> {
     let no_ad = vec![vec![]];
     let mut sivkey = [0; 64];
     let mut khash = Sha3::sha3_512();
-    khash.input(&key);
+    khash.input(&password);
     khash.result(&mut sivkey);
 
     Aes256Siv::new(&sivkey).seal(&no_ad, &pt)
@@ -59,11 +59,11 @@ pub fn encrypt(pt: Vec<u8>, key: Vec<u8>) -> Vec<u8> {
 
 // Decrypt
 
-pub fn decrypt(ct: Vec<u8>, key: Vec<u8>) -> Option<Vec<u8>> {
+pub fn decrypt(ct: Vec<u8>, password: Vec<u8>) -> Option<Vec<u8>> {
     let no_ad = vec![vec![]];
     let mut sivkey = [0; 64];
     let mut khash = Sha3::sha3_512();
-    khash.input(&key);
+    khash.input(&password);
     khash.result(&mut sivkey);
 
     // The miscreant error type is really uninformative (good!)
