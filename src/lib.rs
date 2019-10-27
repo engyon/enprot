@@ -97,23 +97,25 @@ where
                 .help("Fetch (unencrypted) WORD segments to CAS"),
         )
         .arg(
-            Arg::with_name("key")
+            Arg::with_name("password")
                 .short("k")
                 .long("key")
                 .takes_value(true)
-                .value_name("WORD=KEY")
+                .value_name("WORD=PASSWORD")
                 .multiple(true)
                 .number_of_values(1)
                 .validator(|v: String| -> Result<(), String> {
                     for val in v.split(",") {
-                        let wordkey = val.splitn(2, '=').collect::<Vec<&str>>();
-                        if wordkey.len() != 2 || wordkey[0].len() == 0 || wordkey[1].len() == 0 {
-                            return Err(String::from("Must be of the form WORD=KEY[,WORD=KEY]"));
+                        let wordpass = val.splitn(2, '=').collect::<Vec<&str>>();
+                        if wordpass.len() != 2 || wordpass[0].len() == 0 || wordpass[1].len() == 0 {
+                            return Err(String::from(
+                                "Must be of the form WORD=PASSWORD[,WORD=PASSWORD]",
+                            ));
                         }
                     }
                     Ok(())
                 })
-                .help("Specify a secret KEY for WORD"),
+                .help("Specify a secret PASSWORD for WORD"),
         )
         .arg(
             Arg::with_name("encrypt")
@@ -232,17 +234,17 @@ where
     csep_arg!(paops.encrypt, "encrypt-store");
     csep_arg!(paops.store, "encrypt-store");
     csep_arg!(paops.decrypt, "decrypt");
-    // key
-    // ["word1=key1", "word2=key2,word3=key3"] ->
-    //   [(word1, key1), (word2, key2), (word3, key3)]
-    paops.keys.extend(
+    // password
+    // ["word1=pass1", "word2=pass2,word3=pass3"] ->
+    //   [(word1, pass1), (word2, pass2), (word3, pass3)]
+    paops.passwords.extend(
         matches
-            .values_of("key")
+            .values_of("password")
             .unwrap_or(clap::Values::default())
             .flat_map(|arg| {
                 arg.split(",").map(|val| {
-                    let wordkey = val.splitn(2, '=').collect::<Vec<&str>>();
-                    (wordkey[0].to_string(), wordkey[1].as_bytes().to_vec())
+                    let wordpass = val.splitn(2, '=').collect::<Vec<&str>>();
+                    (wordpass[0].to_string(), wordpass[1].as_bytes().to_vec())
                 })
             }),
     );

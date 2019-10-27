@@ -35,17 +35,17 @@ use prot;
 // parse operationsm
 
 pub struct ParseOps {
-    pub left_sep: String,               // left separator
-    pub right_sep: String,              // right separator
-    pub store: HashSet<String>,         // keywords to store
-    pub fetch: HashSet<String>,         // keywords to fetch
-    pub encrypt: HashSet<String>,       // keywords to encrypt
-    pub decrypt: HashSet<String>,       // keywords to decrypt
-    pub keys: HashMap<String, Vec<u8>>, // secret keys
-    pub fname: String,                  // file name being parsed
-    pub casdir: PathBuf,                // directory for cas objects
-    pub verbose: bool,                  // verbose output to stdout
-    level: isize,                       // current recursion level
+    pub left_sep: String,                    // left separator
+    pub right_sep: String,                   // right separator
+    pub store: HashSet<String>,              // keywords to store
+    pub fetch: HashSet<String>,              // keywords to fetch
+    pub encrypt: HashSet<String>,            // keywords to encrypt
+    pub decrypt: HashSet<String>,            // keywords to decrypt
+    pub passwords: HashMap<String, Vec<u8>>, // passwords
+    pub fname: String,                       // file name being parsed
+    pub casdir: PathBuf,                     // directory for cas objects
+    pub verbose: bool,                       // verbose output to stdout
+    level: isize,                            // current recursion level
 }
 
 impl ParseOps {
@@ -57,7 +57,7 @@ impl ParseOps {
             fetch: HashSet::new(),
             encrypt: HashSet::new(),
             decrypt: HashSet::new(),
-            keys: HashMap::new(),
+            passwords: HashMap::new(),
             fname: "".to_string(),
             casdir: Path::new("").to_path_buf(),
             level: 0,
@@ -475,17 +475,19 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                     // get blob
                     let pt = tree_to_blob(&txt, paops);
 
-                    // get key
-                    let (newkey, key) = match paops.keys.get(keyw) {
-                        Some(key) => (false, key.to_vec()),
-                        None => (true, prot::get_key(&keyw, true).as_bytes().to_vec()),
+                    // get password
+                    let (newpass, pass) = match paops.passwords.get(keyw) {
+                        Some(pass) => (false, pass.to_vec()),
+                        None => (true, prot::get_password(&keyw, true).as_bytes().to_vec()),
                     };
-                    if newkey {
-                        paops.keys.insert(keyw.clone().to_string(), key.clone());
+                    if newpass {
+                        paops
+                            .passwords
+                            .insert(keyw.clone().to_string(), pass.clone());
                     }
 
                     // encrypt
-                    let ct = prot::encrypt(pt, key);
+                    let ct = prot::encrypt(pt, pass);
 
                     // also store it (store at CAS) ?
                     let node = if paops.store.contains(keyw) {
@@ -541,20 +543,22 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                         _ => panic!("No data in ENCRYPTED."),
                     };
 
-                    // get key
-                    let (newkey, key) = match paops.keys.get(keyw) {
-                        Some(key) => (false, key.to_vec()),
-                        None => (true, prot::get_key(keyw, false).as_bytes().to_vec()),
+                    // get password
+                    let (newpass, pass) = match paops.passwords.get(keyw) {
+                        Some(pass) => (false, pass.to_vec()),
+                        None => (true, prot::get_password(keyw, false).as_bytes().to_vec()),
                     };
-                    if newkey {
-                        paops.keys.insert(keyw.clone().to_string(), key.clone());
+                    if newpass {
+                        paops
+                            .passwords
+                            .insert(keyw.clone().to_string(), pass.clone());
                     }
 
                     // decrypt
-                    let pt = match prot::decrypt(ct, key) {
+                    let pt = match prot::decrypt(ct, pass) {
                         Some(ct) => ct.to_vec(),
                         _ => {
-                            eprintln!("Bad key for {}.", &keyw);
+                            eprintln!("Bad password for {}.", &keyw);
                             return Err("Decryption failure");
                         }
                     };
@@ -787,7 +791,7 @@ mod tests {
         // encrypt
         paops.encrypt.insert("GEHEIM".to_string());
         paops
-            .keys
+            .passwords
             .insert("GEHEIM".to_string(), "password".as_bytes().to_vec());
         let outtree = transform(&intree, &mut paops).unwrap();
         // re-parse
@@ -821,7 +825,7 @@ mod tests {
         paops.encrypt.insert("Agent_007".to_string());
         paops.store.insert("Agent_007".to_string());
         paops
-            .keys
+            .passwords
             .insert("Agent_007".to_string(), "password".as_bytes().to_vec());
         let outtree = transform(&intree, &mut paops).unwrap();
         // re-parse

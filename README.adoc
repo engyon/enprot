@@ -49,7 +49,7 @@ OPTIONS:
     -r, --right-separator <SEP>      Specify right separator in parsing
     -s, --store <WORD>...            Store (unencrypted) WORD segments to CAS
     -f, --fetch <WORD>...            Fetch (unencrypted) WORD segments to CAS
-    -k, --key <WORD=KEY>...          Specify a secret KEY for WORD
+    -k, --key <WORD=PASSWORD>...     Specify a secret PASSWORD for WORD
     -e, --encrypt <WORD>...          Encrypt WORD segments
     -E, --encrypt-store <WORD>...    Encrypt and store WORD segments
     -d, --decrypt <WORD>...          Decrypt WORD segments
