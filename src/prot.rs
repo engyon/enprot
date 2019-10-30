@@ -22,11 +22,9 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 extern crate crypto;
-extern crate miscreant;
 extern crate phc;
 extern crate rpassword;
 
-use self::miscreant::siv::Aes256Siv;
 use std::collections::HashMap;
 
 use etree;
@@ -58,8 +56,11 @@ pub fn encrypt(
     opts: &etree::PBKDFOptions,
 ) -> Result<(Vec<u8>, Option<String>), &'static str> {
     let (key, pbkdf) = derive_key(password, rng, opts)?;
-    let no_ad = vec![vec![]];
-    Ok((Aes256Siv::new(&key).seal(&no_ad, &pt), pbkdf))
+    let enc = botan::Cipher::new("AES-256/SIV", botan::CipherDirection::Encrypt)
+        .map_err(|_| "Botan error")?;
+    enc.set_key(&key).map_err(|_| "Botan error")?;
+    enc.set_associated_data(&[]).map_err(|_| "Botan error")?;
+    Ok((enc.process(&[], &pt).map_err(|_| "Botan error")?, pbkdf))
 }
 
 // Decrypt
@@ -109,9 +110,11 @@ pub fn decrypt(
         key = thekey;
     }
 
-    // The miscreant error type is really uninformative (good!)
-    let no_ad = vec![vec![]];
-    match Aes256Siv::new(&key).open(&no_ad, &ct) {
+    let dec = botan::Cipher::new("AES-256/SIV", botan::CipherDirection::Decrypt)
+        .map_err(|_| "Botan error")?;
+    dec.set_key(&key).map_err(|_| "Botan error")?;
+    dec.set_associated_data(&[]).map_err(|_| "Botan error")?;
+    match dec.process(&[], &ct) {
         Ok(pt) => Ok(pt),
         Err(_) => Err("Bad password?"),
     }
