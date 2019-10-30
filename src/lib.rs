@@ -26,6 +26,7 @@ mod consts;
 mod etree;
 mod pbkdf;
 mod prot;
+pub mod utils;
 
 use std::collections::HashMap;
 use std::fs::File;

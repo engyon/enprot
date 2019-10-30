@@ -21,16 +21,14 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-extern crate crypto;
 extern crate phf;
 
-use self::crypto::digest::Digest;
-use self::crypto::sha3::Sha3;
 use self::phf::phf_map;
 use std::collections::HashMap;
 
 use consts;
 use etree;
+use utils;
 
 pub static BOTAN_PBKDF_PARAM_MAP: phf::Map<&'static str, &[&[&str; 3]; 2]> = phf_map! {
     // alg      derive_key_from_password_timed()    derive_key_from_password()
@@ -67,12 +65,7 @@ fn botan_pbkdf_name(alg: &str, pbkdf2_hash: &Option<String>) -> Result<String, &
 }
 
 fn pbkdf_legacy(password: &str) -> Vec<u8> {
-    let mut key: Vec<u8> = Vec::new();
-    let mut khash = Sha3::sha3_512();
-    khash.input(password.as_bytes());
-    key.resize(consts::AES256_KEY_LENGTH, 0);
-    khash.result(&mut key);
-    key
+    utils::digest("SHA-3(512)", password.as_bytes()).unwrap()
 }
 
 fn pbkdf_timed(
