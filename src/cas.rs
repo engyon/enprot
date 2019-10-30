@@ -23,14 +23,13 @@
 
 //	content addressed storage
 
-extern crate crypto;
 extern crate hex;
 
-use self::crypto::digest::Digest;
-use self::crypto::sha3::Sha3;
 use etree::ParseOps;
 use std::fs::File;
 use std::io::prelude::*;
+
+use utils;
 
 pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str> {
     // check that it is valid
@@ -65,9 +64,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str
     }
 
     // verify hash just because
-    let mut hasher = Sha3::sha3_256();
-    hasher.input(&blob);
-    let verify = hasher.result_str();
+    let verify = utils::hexdigest("SHA-3(256)", &blob)?;
 
     if hexhash != verify {
         eprintln!(
@@ -81,9 +78,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str
 }
 
 pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String, &'static str> {
-    let mut hasher = Sha3::sha3_256();
-    hasher.input(&blob);
-    let hexhash = hasher.result_str();
+    let hexhash = utils::hexdigest("SHA-3(256)", &blob)?;
     let mut path = paops.casdir.clone();
     path.push(&hexhash);
 
