@@ -11,11 +11,21 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: Build program
-        run: cargo build --verbose
+        run: |
+          # we need a fairly recent botan
+          sudo apt update && sudo apt -y install git make g++
+          git clone --depth 1 --branch 2.12.1 https://github.com/randombit/botan
+          cd botan
+          ./configure.py --prefix=/usr --without-documentation
+          make -j2
+          sudo make install
+
+          cargo build --verbose
         env:
           RUSTFLAGS: -Ctarget-feature=+aes,+ssse3
+          RUST_BACKTRACE: full
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --verbose -- --nocapture
         env:
           RUSTFLAGS: -Ctarget-feature=+aes,+ssse3
 
