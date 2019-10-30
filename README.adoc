@@ -17,15 +17,6 @@ the release binary `target/release/enprot` or `cargo run --` to
 build and run the debug version. Some of the dependencies may require
 the latest compiler (developed and tested with `rustc` 1.27.2).
 
-Per the https://docs.rs/miscreant/[miscreant docs] you may also need
-to add the following to `~/.cargo/config`:
-
-[source,toml]
-----
-[build]
-rustflags = ["-Ctarget-feature=+aes,+ssse3"]
-----
-
 There is a simple help built-in with `-h` flag:
 
 [source,sh]
