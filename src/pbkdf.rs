@@ -155,7 +155,7 @@ fn format_phc(alg: &str, params: &HashMap<String, usize>, salt: &Vec<u8>) -> Str
             .map(|v| format!("{}={}", v.0, v.1))
             .collect::<Vec<String>>()
             .join(","),
-        base64::encode(salt)
+        utils::base64_encode(salt).unwrap()
     )
 }
 

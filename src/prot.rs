@@ -29,6 +29,7 @@ use std::collections::HashMap;
 use etree;
 use pbkdf::derive_key;
 use pbkdf::from_phc_alg;
+use utils;
 
 // Get a password
 
@@ -80,8 +81,8 @@ pub fn decrypt(
                 .map(|v| (v.0.to_string(), v.1.parse::<usize>().unwrap())),
         );
         let salt = match phc.salt().ok_or("Missing salt")? {
-            phc::Salt::Ascii(s) => base64::decode(s).map_err(|_| "Failed to retrieve salt")?,
-            phc::Salt::Binary(b) => base64::decode(b).map_err(|_| "Failed to retrieve salt")?,
+            phc::Salt::Ascii(s) => utils::base64_decode(s)?,
+            phc::Salt::Binary(b) => utils::base64_decode(std::str::from_utf8(b).unwrap())?,
         };
         let opts = etree::PBKDFOptions {
             alg: alg,
