@@ -14,7 +14,6 @@ path = "tests/tests.rs"
 
 [dependencies]
 hex         = "0.3"
-base64      = "0.9"
 rpassword   = "2"
 clap        = "2.33.0"
 phc         = { git = "https://github.com/kstrohbeck/phc", branch = "develop" }

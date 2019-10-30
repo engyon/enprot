@@ -21,7 +21,6 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-extern crate base64;
 extern crate botan;
 
 use std::collections::HashMap;
@@ -33,6 +32,7 @@ use std::path::{Path, PathBuf};
 use cas;
 use consts;
 use prot;
+use utils;
 
 pub struct PBKDFOptions {
     pub alg: String,                            // algorithm name
@@ -138,7 +138,7 @@ fn parse_data(
     text: &mut Vec<TextNode>,
 ) -> Result<(), &'static str> {
     for i in 0..cmd.len() {
-        let mut data = match base64::decode(cmd[i]) {
+        let mut data = match utils::base64_decode(cmd[i]) {
             Ok(data) => data,
             Err(e) => {
                 eprintln!(
@@ -548,7 +548,7 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                         outw,
                         "{} DATA {} {}",
                         paops.left_sep,
-                        base64::encode(line),
+                        utils::base64_encode(line).unwrap(),
                         paops.right_sep
                     )
                     .unwrap();
