@@ -186,15 +186,8 @@ fn parse_begin(
     Ok(())
 }
 
-fn parse_encrypted(
-    cmd: &[&str],
-    line: &String,
-    lineno: i32,
-    paops: &mut ParseOps,
-    pstack: &mut Vec<TextNode>,
-    text: &mut Vec<TextNode>,
-) -> Result<(), &'static str> {
-    // parse all extended fields, such as pbkdf:
+// parse trailing extended fields, such as pbkdf:
+fn parse_encrypted_extfields(cmd: &[&str]) -> Result<HashMap<String, String>, &'static str> {
     let mut extfields: HashMap<String, String> = HashMap::new();
     for field in cmd.iter().rev() {
         if field.find(':') == None {
@@ -209,6 +202,18 @@ fn parse_encrypted(
         }
         extfields.insert(key.to_string(), value.to_string());
     }
+    Ok(extfields)
+}
+
+fn parse_encrypted(
+    cmd: &[&str],
+    line: &String,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut Vec<TextNode>,
+    text: &mut Vec<TextNode>,
+) -> Result<(), &'static str> {
+    let mut extfields = parse_encrypted_extfields(cmd)?;
     let param_count = cmd.len() - extfields.len();
     let pbkdf: Option<String> = extfields.remove("pbkdf");
     if !extfields.is_empty() {
