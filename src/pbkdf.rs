@@ -26,7 +26,6 @@ extern crate phf;
 use self::phf::phf_map;
 use std::collections::HashMap;
 
-use consts;
 use etree;
 use utils;
 
@@ -41,6 +40,16 @@ static BOTAN_HASH_ALG_MAP: phf::Map<&'static str, &'static str> = phf_map! {
     "sha256" => "SHA-256",
     "sha512" => "SHA-512",
 };
+
+pub struct PBKDFCacheEntry {
+    pub password: String,
+    pub alg: String,
+    pub msec: u32,
+    pub salt: Vec<u8>,
+    pub key: Vec<u8>,
+    pub params: HashMap<String, usize>,
+}
+pub type PBKDFCache = Vec<PBKDFCacheEntry>;
 
 fn botan_pbkdf_name(alg: &str, pbkdf2_hash: &Option<String>) -> Result<String, &'static str> {
     match alg {
@@ -74,15 +83,11 @@ fn pbkdf_timed(
     password: &str,
     salt: &Vec<u8>,
     msec: u32,
+    key_len: usize,
 ) -> Result<(Vec<u8>, HashMap<String, usize>), &'static str> {
-    let (key, param1, param2, param3) = botan::derive_key_from_password_timed(
-        botan_alg,
-        consts::AES256_KEY_LENGTH,
-        password,
-        &salt,
-        msec,
-    )
-    .map_err(|_| "Botan error")?;
+    let (key, param1, param2, param3) =
+        botan::derive_key_from_password_timed(botan_alg, key_len, password, &salt, msec)
+            .map_err(|_| "Botan error")?;
     let params = [param1, param2, param3];
     let mut params_map = HashMap::new();
     for (i, param) in botan_param_order[0]
@@ -101,6 +106,7 @@ fn pbkdf_manual(
     password: &str,
     salt: &Vec<u8>,
     mut params_map: HashMap<String, usize>,
+    key_len: usize,
 ) -> Result<Vec<u8>, &'static str> {
     let mut params: [usize; 3] = [0, 0, 0];
     for (i, param) in botan_param_order[1].iter().enumerate() {
@@ -113,13 +119,7 @@ fn pbkdf_manual(
         return Err("Extraneous PBKDF parameters");
     }
     let key = botan::derive_key_from_password(
-        botan_alg,
-        consts::AES256_KEY_LENGTH,
-        password,
-        salt,
-        params[0],
-        params[1],
-        params[2],
+        botan_alg, key_len, password, salt, params[0], params[1], params[2],
     )
     .map_err(|_| "Botan error")?;
     Ok(key)
@@ -161,14 +161,16 @@ fn format_phc(alg: &str, params: &HashMap<String, usize>, salt: &Vec<u8>) -> Str
 
 pub fn derive_key(
     password: &str,
+    key_len: usize,
     rng: &Option<botan::RandomNumberGenerator>,
     opts: &etree::PBKDFOptions,
+    cache: &mut PBKDFCache,
 ) -> Result<(Vec<u8>, Option<String>), &'static str> {
     if opts.alg == "legacy" {
         return Ok((pbkdf_legacy(password), None));
     }
     let botan_alg = botan_pbkdf_name(&opts.alg, &opts.pbkdf2_hash)?;
-    let salt = opts.salt.clone().unwrap_or_else(|| {
+    let mut salt = opts.salt.clone().unwrap_or_else(|| {
         rng.as_ref()
             .unwrap()
             .read(opts.saltlen)
@@ -178,15 +180,36 @@ pub fn derive_key(
     let botan_param_order = BOTAN_PBKDF_PARAM_MAP
         .get::<str>(&opts.alg)
         .ok_or("Missing PBKDF param mapping")?;
-    if opts.params != None {
-        return Ok((
-            pbkdf_manual(
+    if let Some(params) = opts.params.as_ref() {
+        let key;
+        if let Some(entry) = cache.iter().find(|e| {
+            e.password == password
+                && e.alg == botan_alg
+                && e.key.len() == key_len
+                && e.msec == 0
+                && e.params == *params
+        }) {
+            key = entry.key.clone();
+        } else {
+            key = pbkdf_manual(
                 &botan_alg,
                 &botan_param_order,
                 password,
                 &salt,
                 opts.params.clone().unwrap(),
-            )?,
+                key_len,
+            )?;
+            cache.push(PBKDFCacheEntry {
+                password: password.to_string(),
+                alg: botan_alg,
+                msec: 0,
+                salt: salt.clone(),
+                key: key.clone(),
+                params: params.clone(),
+            });
+        }
+        return Ok((
+            key,
             Some(format_phc(
                 &to_phc_alg(&opts.alg, &opts.pbkdf2_hash)?,
                 opts.params.as_ref().unwrap(),
@@ -194,13 +217,36 @@ pub fn derive_key(
             )),
         ));
     }
-    let (key, params) = pbkdf_timed(
-        &botan_alg,
-        &botan_param_order,
-        password,
-        &salt,
-        opts.msec.ok_or("Missing PBKDF msec")?,
-    )?;
+    let (key, params);
+    if let Some(entry) = cache.iter().find(|e| {
+        e.password == password
+            && e.alg == botan_alg
+            && e.key.len() == key_len
+            && e.msec == opts.msec.unwrap()
+    }) {
+        salt = entry.salt.clone();
+        key = entry.key.clone();
+        params = entry.params.clone();
+    } else {
+        let results = pbkdf_timed(
+            &botan_alg,
+            &botan_param_order,
+            password,
+            &salt,
+            opts.msec.ok_or("Missing PBKDF msec")?,
+            key_len,
+        )?;
+        key = results.0;
+        params = results.1;
+        cache.push(PBKDFCacheEntry {
+            password: password.to_string(),
+            alg: botan_alg,
+            msec: opts.msec.unwrap(),
+            salt: salt.clone(),
+            key: key.clone(),
+            params: params.clone(),
+        });
+    }
     Ok((
         key,
         Some(format_phc(

@@ -26,9 +26,11 @@ extern crate rpassword;
 
 use std::collections::HashMap;
 
+use consts;
 use etree;
 use pbkdf::derive_key;
 use pbkdf::from_phc_alg;
+use pbkdf::PBKDFCache;
 use utils;
 
 // Get a password
@@ -54,8 +56,9 @@ pub fn encrypt(
     password: &str,
     rng: &Option<botan::RandomNumberGenerator>,
     opts: &etree::PBKDFOptions,
+    cache: &mut PBKDFCache,
 ) -> Result<(Vec<u8>, Option<String>), &'static str> {
-    let (key, pbkdf) = derive_key(password, rng, opts)?;
+    let (key, pbkdf) = derive_key(password, consts::AES256_KEY_LENGTH, rng, opts, cache)?;
     let enc = botan::Cipher::new("AES-256/SIV", botan::CipherDirection::Encrypt)
         .map_err(|_| "Botan error")?;
     enc.set_key(&key).map_err(|_| "Botan error")?;
@@ -69,6 +72,7 @@ pub fn decrypt(
     ct: Vec<u8>,
     password: &str,
     pbkdf: &Option<String>,
+    cache: &mut PBKDFCache,
 ) -> Result<Vec<u8>, &'static str> {
     let key: Vec<u8>;
     if let Some(pbkdf) = pbkdf {
@@ -92,11 +96,12 @@ pub fn decrypt(
             pbkdf2_hash: pbkdf2_hash,
             params: Some(params_map),
         };
-        let (thekey, _) = derive_key(password, &None, &opts)?;
+        let (thekey, _) = derive_key(password, consts::AES256_KEY_LENGTH, &None, &opts, cache)?;
         key = thekey;
     } else {
         let (thekey, _) = derive_key(
             password,
+            consts::AES256_KEY_LENGTH,
             &None,
             &etree::PBKDFOptions {
                 alg: "legacy".to_string(),
@@ -106,6 +111,7 @@ pub fn decrypt(
                 pbkdf2_hash: None,
                 params: None,
             },
+            cache,
         )?;
         key = thekey;
     }
