@@ -56,7 +56,7 @@ pub fn encrypt(
     password: &str,
     rng: &Option<botan::RandomNumberGenerator>,
     opts: &etree::PBKDFOptions,
-    cache: &mut PBKDFCache,
+    cache: &mut Option<PBKDFCache>,
 ) -> Result<(Vec<u8>, Option<String>), &'static str> {
     let (key, pbkdf) = derive_key(password, consts::AES256_KEY_LENGTH, rng, opts, cache)?;
     let enc = botan::Cipher::new("AES-256/SIV", botan::CipherDirection::Encrypt)
@@ -72,7 +72,7 @@ pub fn decrypt(
     ct: Vec<u8>,
     password: &str,
     pbkdf: &Option<String>,
-    cache: &mut PBKDFCache,
+    cache: &mut Option<PBKDFCache>,
 ) -> Result<Vec<u8>, &'static str> {
     let key: Vec<u8>;
     if let Some(pbkdf) = pbkdf {

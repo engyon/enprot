@@ -164,7 +164,7 @@ pub fn derive_key(
     key_len: usize,
     rng: &Option<botan::RandomNumberGenerator>,
     opts: &etree::PBKDFOptions,
-    cache: &mut PBKDFCache,
+    cache: &mut Option<PBKDFCache>,
 ) -> Result<(Vec<u8>, Option<String>), &'static str> {
     if opts.alg == "legacy" {
         return Ok((pbkdf_legacy(password), None));
@@ -182,7 +182,7 @@ pub fn derive_key(
         .ok_or("Missing PBKDF param mapping")?;
     if let Some(params) = opts.params.as_ref() {
         let key;
-        if let Some(entry) = cache.iter().find(|e| {
+        if let Some(entry) = cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
             e.password == password
                 && e.alg == botan_alg
                 && e.key.len() == key_len
@@ -199,14 +199,16 @@ pub fn derive_key(
                 opts.params.clone().unwrap(),
                 key_len,
             )?;
-            cache.push(PBKDFCacheEntry {
-                password: password.to_string(),
-                alg: botan_alg,
-                msec: 0,
-                salt: salt.clone(),
-                key: key.clone(),
-                params: params.clone(),
-            });
+            if cache.is_some() {
+                cache.as_mut().unwrap().push(PBKDFCacheEntry {
+                    password: password.to_string(),
+                    alg: botan_alg,
+                    msec: 0,
+                    salt: salt.clone(),
+                    key: key.clone(),
+                    params: params.clone(),
+                });
+            }
         }
         return Ok((
             key,
@@ -218,7 +220,7 @@ pub fn derive_key(
         ));
     }
     let (key, params);
-    if let Some(entry) = cache.iter().find(|e| {
+    if let Some(entry) = cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
         e.password == password
             && e.alg == botan_alg
             && e.key.len() == key_len
@@ -238,14 +240,16 @@ pub fn derive_key(
         )?;
         key = results.0;
         params = results.1;
-        cache.push(PBKDFCacheEntry {
-            password: password.to_string(),
-            alg: botan_alg,
-            msec: opts.msec.unwrap(),
-            salt: salt.clone(),
-            key: key.clone(),
-            params: params.clone(),
-        });
+        if cache.is_some() {
+            cache.as_mut().unwrap().push(PBKDFCacheEntry {
+                password: password.to_string(),
+                alg: botan_alg,
+                msec: opts.msec.unwrap(),
+                salt: salt.clone(),
+                key: key.clone(),
+                params: params.clone(),
+            });
+        }
     }
     Ok((
         key,

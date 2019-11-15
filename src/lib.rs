@@ -210,6 +210,11 @@ where
                 .help("Set the hash algorithm to use for PBKDF2"),
         )
         .arg(
+            Arg::with_name("pbkdf-disable-cache")
+                .long("pbkdf-disable-cache")
+                .help("Disable the PBKDF cache mechanism"),
+        )
+        .arg(
             Arg::with_name("decrypt")
                 .short("d")
                 .long("decrypt")
@@ -358,6 +363,9 @@ where
         paops.pbkdf.pbkdf2_hash = matches.value_of("pbkdf2-hash").map(|v| v.to_string());
     } else if paops.pbkdf.alg == "pbkdf2" {
         paops.pbkdf.pbkdf2_hash = Some(consts::DEFAULT_PBKDF2_HASH_ALG.to_string());
+    }
+    if matches.occurrences_of("pbkdf-disable-cache") != 0 {
+        paops.pbkdf_cache = None;
     }
 
     // print some of the processing parameters if verbose

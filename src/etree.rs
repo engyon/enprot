@@ -72,7 +72,7 @@ pub struct ParseOps {
     pub verbose: bool,                             // verbose output to stdout
     pub rng: Option<botan::RandomNumberGenerator>, // RNG to use
     pub pbkdf: PBKDFOptions,                       // the PBKDF options
-    pub pbkdf_cache: PBKDFCache,                   // the PBKDF cache
+    pub pbkdf_cache: Option<PBKDFCache>,           // the PBKDF cache
     level: isize,                                  // current recursion level
 }
 
@@ -92,7 +92,7 @@ impl ParseOps {
             verbose: false,
             rng: Some(botan::RandomNumberGenerator::new().unwrap()),
             pbkdf: PBKDFOptions::new(),
-            pbkdf_cache: Vec::new(),
+            pbkdf_cache: Some(Vec::new()),
         }
     }
 }
