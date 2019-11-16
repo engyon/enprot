@@ -403,9 +403,13 @@ fn encrypt_decrypt_agent007_pbkdf2_sha512() {
 #[test]
 fn encrypt_decrypt_agent007_pbkdf2_millis() {
     let casdir = tempdir().unwrap();
-    let ept = Fixture::copy("sample/test.ept");
+    const SAMPLE_COUNT: u32 = 3;
+    let base_ms: u32;
+    let mut elapsed_ms: u32 = 0;
 
-    {
+    // establish a baseline
+    for _ in 0..SAMPLE_COUNT {
+        let ept = Fixture::copy("sample/test.ept");
         let now = Instant::now();
         Command::cargo_bin("enprot")
             .unwrap()
@@ -416,15 +420,20 @@ fn encrypt_decrypt_agent007_pbkdf2_millis() {
             .arg("--pbkdf")
             .arg("pbkdf2")
             .arg("--pbkdf-msec")
-            .arg("50")
+            .arg("1")
             .arg("-k")
             .arg("Agent_007=password")
             .arg(&ept.path)
             .assert()
             .success();
-        assert!(now.elapsed().as_millis() > 50);
+        elapsed_ms += now.elapsed().as_millis() as u32;
     }
-    {
+    base_ms = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
+
+    // 10ms
+    elapsed_ms = 0;
+    for _ in 0..SAMPLE_COUNT {
+        let ept = Fixture::copy("sample/test.ept");
         let now = Instant::now();
         Command::cargo_bin("enprot")
             .unwrap()
@@ -441,8 +450,58 @@ fn encrypt_decrypt_agent007_pbkdf2_millis() {
             .arg(&ept.path)
             .assert()
             .success();
-        assert!(now.elapsed().as_millis() < 20);
+        elapsed_ms += now.elapsed().as_millis() as u32;
     }
+    let avg = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
+    assert!(avg > 10);
+    // allow 20% margin
+    assert!(avg < ((base_ms as f32 * 1.2) as u32 + 10));
+
+    // 50ms
+    elapsed_ms = 0;
+    for _ in 0..SAMPLE_COUNT {
+        let ept = Fixture::copy("sample/test.ept");
+        let now = Instant::now();
+        Command::cargo_bin("enprot")
+            .unwrap()
+            .arg("-c")
+            .arg(casdir.path())
+            .arg("-e")
+            .arg("Agent_007")
+            .arg("--pbkdf")
+            .arg("pbkdf2")
+            .arg("--pbkdf-msec")
+            .arg("50")
+            .arg("-k")
+            .arg("Agent_007=password")
+            .arg(&ept.path)
+            .assert()
+            .success();
+        elapsed_ms += now.elapsed().as_millis() as u32;
+    }
+    let avg = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
+    assert!(avg > 50);
+    // allow 20% margin
+    assert!(avg < ((base_ms as f32 * 1.2) as u32 + 50));
+
+    // one more time
+    let ept = Fixture::copy("sample/test.ept");
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("-c")
+        .arg(casdir.path())
+        .arg("-e")
+        .arg("Agent_007")
+        .arg("--pbkdf")
+        .arg("pbkdf2")
+        .arg("--pbkdf-msec")
+        .arg("10")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .assert()
+        .success();
+    // check output
     assert!(&fs::read_to_string(&ept.path)
         .unwrap()
         .contains("$pbkdf2-sha256$"));
