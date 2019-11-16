@@ -3,7 +3,6 @@ extern crate predicates;
 extern crate tempfile;
 
 use assert_cmd::prelude::*;
-use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
 
@@ -72,7 +71,6 @@ fn pipe_test_1() {
 #[test]
 fn pipe_test_2() {
     let ept = Fixture::copy("sample/test.ept");
-    let out = Fixture::blank("out.ept");
     Command::cargo_bin("enprot")
         .unwrap()
         .arg("-e")
