@@ -498,45 +498,20 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                 txt,
                 ref pbkdf,
             } => {
+                write!(outw, "{} ENCRYPTED {}", paops.left_sep, keyw).unwrap();
                 if let TextNode::Stored { keyw: _, ref cas } = txt[0] {
-                    if *pbkdf == None {
-                        writeln!(
-                            outw,
-                            "{} ENCRYPTED {} {} {}",
-                            paops.left_sep, keyw, cas, paops.right_sep
-                        )
-                        .unwrap();
-                    } else {
-                        writeln!(
-                            outw,
-                            "{} ENCRYPTED {} {} pbkdf:{} {}",
-                            paops.left_sep,
-                            keyw,
-                            cas,
-                            &pbkdf.clone().unwrap(),
-                            paops.right_sep
-                        )
-                        .unwrap();
+                    // Encrypted+Stored
+                    write!(outw, " {}", cas).unwrap();
+                    if *pbkdf != None {
+                        write!(outw, " pbkdf:{}", &pbkdf.clone().unwrap()).unwrap();
                     }
+                    writeln!(outw, " {}", paops.right_sep).unwrap();
                 } else {
-                    if *pbkdf == None {
-                        writeln!(
-                            outw,
-                            "{} ENCRYPTED {} {}",
-                            paops.left_sep, keyw, paops.right_sep
-                        )
-                        .unwrap();
-                    } else {
-                        writeln!(
-                            outw,
-                            "{} ENCRYPTED {} pbkdf:{} {}",
-                            paops.left_sep,
-                            keyw,
-                            &pbkdf.clone().unwrap(),
-                            paops.right_sep
-                        )
-                        .unwrap();
+                    // Encrypted
+                    if *pbkdf != None {
+                        write!(outw, " pbkdf:{}", &pbkdf.clone().unwrap()).unwrap();
                     }
+                    writeln!(outw, " {}", paops.right_sep).unwrap();
                     paops.level += 1;
                     tree_write(outw, txt, paops);
                     paops.level -= 1;
