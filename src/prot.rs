@@ -60,7 +60,7 @@ pub fn encrypt(
     opts: &etree::PBKDFOptions,
     cache: &mut Option<PBKDFCache>,
     policy: &Box<dyn CryptoPolicy>,
-) -> Result<(Vec<u8>, Option<String>), &'static str> {
+) -> Result<(Vec<u8>, BTreeMap<String, String>), &'static str> {
     let (key, pbkdf) = derive_key(
         password,
         consts::AES256_KEY_LENGTH,
@@ -69,9 +69,13 @@ pub fn encrypt(
         cache,
         policy,
     )?;
+    let mut extfields: BTreeMap<String, String> = BTreeMap::new();
+    if pbkdf != None {
+        extfields.insert("pbkdf".to_string(), pbkdf.unwrap());
+    }
     Ok((
         crypto::encrypt("AES-256/SIV", &key, &[], &[], &pt, policy)?,
-        pbkdf,
+        extfields,
     ))
 }
 
@@ -80,7 +84,7 @@ pub fn encrypt(
 pub fn decrypt(
     ct: Vec<u8>,
     password: &str,
-    pbkdf: &Option<String>,
+    pbkdf: &Option<&String>,
     cache: &mut Option<PBKDFCache>,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
