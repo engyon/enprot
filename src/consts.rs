@@ -24,6 +24,7 @@
 extern crate phf;
 
 use self::phf::phf_map;
+use self::phf::phf_set;
 
 // pbkdf
 pub const DEFAULT_PBKDF_ALG: &str = "argon2";
@@ -48,5 +49,19 @@ pub const VALID_PBKDF_ALGS: &[&str] = &["argon2", "scrypt", "pbkdf2", "legacy"];
 pub const VALID_PBKDF2_HASH_ALGS: &[&str] = &["sha256", "sha512"];
 
 // policies
-pub const VALID_POLICIES: &[&str] = &["none"];
+pub const VALID_POLICIES: &[&str] = &["none", "nist"];
 pub const DEFAULT_POLICY: &str = "none";
+
+// NIST
+pub static NIST_APPROVED_PBKDFS: phf::Set<&'static str> = phf_set! {
+    "PBKDF2(SHA-256)",
+    "PBKDF2(SHA-512)",
+};
+pub static NIST_APPROVED_CIPHERS: phf::Set<&'static str> = phf_set! {
+    "AES-256/GCM",
+};
+pub static NIST_APPROVED_HASHES: phf::Set<&'static str> = phf_set! {
+    "SHA-3(256)",
+    "SHA-3(512)",
+};
+pub static NIST_PBKDF_MIN_SALT_LEN: usize = 16;
