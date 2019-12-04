@@ -36,3 +36,7 @@ pub const VALID_PBKDF_ALGS: &[&str] = &["argon2", "scrypt", "pbkdf2", "legacy"];
 pub const VALID_PBKDF2_HASH_ALGS: &[&str] = &["sha256", "sha512"];
 
 pub const AES256_KEY_LENGTH: usize = 64;
+
+// policies
+pub const VALID_POLICIES: &[&str] = &["none"];
+pub const DEFAULT_POLICY: &str = "none";

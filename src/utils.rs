@@ -23,16 +23,6 @@
 
 extern crate botan;
 
-pub fn digest(alg: &str, data: &[u8]) -> Result<Vec<u8>, &'static str> {
-    let hash = botan::HashFunction::new(alg).map_err(|_| "Botan error")?;
-    hash.update(data).map_err(|_| "Botan error")?;
-    hash.finish().map_err(|_| "Botan error")
-}
-
-pub fn hexdigest(alg: &str, data: &[u8]) -> Result<String, &'static str> {
-    Ok(hex::encode(digest(alg, data)?))
-}
-
 pub fn base64_encode(data: &[u8]) -> Result<String, &'static str> {
     botan::base64_encode(data).map_err(|_| "Botan error")
 }

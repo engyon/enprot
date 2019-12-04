@@ -31,6 +31,8 @@ use std::path::{Path, PathBuf};
 
 use cas;
 use consts;
+use crypto::CryptoPolicy;
+use crypto::CryptoPolicyNone;
 use pbkdf::PBKDFCache;
 use prot;
 use utils;
@@ -73,6 +75,7 @@ pub struct ParseOps {
     pub rng: Option<botan::RandomNumberGenerator>, // RNG to use
     pub pbkdf: PBKDFOptions,                       // the PBKDF options
     pub pbkdf_cache: Option<PBKDFCache>,           // the PBKDF cache
+    pub policy: Box<dyn CryptoPolicy>,             // the crypto alg policy
     level: isize,                                  // current recursion level
 }
 
@@ -93,6 +96,7 @@ impl ParseOps {
             rng: Some(botan::RandomNumberGenerator::new().unwrap()),
             pbkdf: PBKDFOptions::new(),
             pbkdf_cache: Some(Vec::new()),
+            policy: Box::new(CryptoPolicyNone {}),
         }
     }
 }
@@ -596,8 +600,14 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                     }
 
                     // encrypt
-                    let (ct, pbkdf) =
-                        prot::encrypt(pt, &pass, &paops.rng, &paops.pbkdf, &mut paops.pbkdf_cache)?;
+                    let (ct, pbkdf) = prot::encrypt(
+                        pt,
+                        &pass,
+                        &paops.rng,
+                        &paops.pbkdf,
+                        &mut paops.pbkdf_cache,
+                        &paops.policy,
+                    )?;
 
                     // also store it (store at CAS) ?
                     let node = if paops.store.contains(keyw) {
@@ -670,7 +680,13 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                     }
 
                     // decrypt
-                    let pt = match prot::decrypt(ct, &pass, pbkdf, &mut paops.pbkdf_cache) {
+                    let pt = match prot::decrypt(
+                        ct,
+                        &pass,
+                        pbkdf,
+                        &mut paops.pbkdf_cache,
+                        &paops.policy,
+                    ) {
                         Ok(ct) => ct.to_vec(),
                         Err(e) => {
                             eprintln!("Error decrypting {}: {}.", &keyw, e);

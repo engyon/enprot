@@ -23,6 +23,7 @@
 
 mod cas;
 mod consts;
+pub mod crypto;
 mod etree;
 mod pbkdf;
 mod prot;
@@ -156,6 +157,15 @@ where
                 .multiple(true)
                 .number_of_values(1)
                 .help("Encrypt and store WORD segments"),
+        )
+        .arg(
+            Arg::with_name("policy")
+                .long("policy")
+                .takes_value(true)
+                .value_name("POLICY")
+                .default_value(consts::DEFAULT_POLICY)
+                .possible_values(consts::VALID_POLICIES)
+                .help("Set the policy to restrict cryptographic algorithms"),
         )
         .arg(
             Arg::with_name("pbkdf")
@@ -367,6 +377,13 @@ where
     if matches.occurrences_of("pbkdf-disable-cache") != 0 {
         paops.pbkdf_cache = None;
     }
+    //policy
+    paops.policy = match matches.value_of("policy").unwrap() {
+        "none" => Box::new(crypto::CryptoPolicyNone {}),
+        _ => {
+            std::process::exit(1);
+        }
+    };
 
     // print some of the processing parameters if verbose
     if paops.verbose {

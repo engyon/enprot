@@ -26,6 +26,8 @@ extern crate phf;
 use self::phf::phf_map;
 use std::collections::HashMap;
 
+use crypto;
+use crypto::CryptoPolicy;
 use etree;
 use utils;
 
@@ -73,8 +75,13 @@ fn botan_pbkdf_name(alg: &str, pbkdf2_hash: &Option<String>) -> Result<String, &
     }
 }
 
-fn pbkdf_legacy(password: &str) -> Vec<u8> {
-    utils::digest("SHA-3(512)", password.as_bytes()).unwrap()
+fn pbkdf_legacy(
+    password: &str,
+    key_len: usize,
+    policy: &Box<dyn CryptoPolicy>,
+) -> Result<Vec<u8>, &'static str> {
+    policy.check_pbkdf("SHA-3(512)", key_len, password, &[], &HashMap::new())?;
+    crypto::digest("SHA-3(512)", password.as_bytes(), policy)
 }
 
 fn pbkdf_timed(
@@ -84,20 +91,17 @@ fn pbkdf_timed(
     salt: &Vec<u8>,
     msec: u32,
     key_len: usize,
+    policy: &Box<dyn CryptoPolicy>,
 ) -> Result<(Vec<u8>, HashMap<String, usize>), &'static str> {
-    let (key, param1, param2, param3) =
-        botan::derive_key_from_password_timed(botan_alg, key_len, password, &salt, msec)
-            .map_err(|_| "Botan error")?;
-    let params = [param1, param2, param3];
-    let mut params_map = HashMap::new();
-    for (i, param) in botan_param_order[0]
-        .iter()
-        .filter(|v| !v.is_empty())
-        .enumerate()
-    {
-        params_map.insert(param.to_string(), params[i]);
-    }
-    Ok((key, params_map))
+    crypto::derive_key_from_password_timed(
+        botan_alg,
+        botan_param_order,
+        key_len,
+        password,
+        salt,
+        msec,
+        policy,
+    )
 }
 
 fn pbkdf_manual(
@@ -105,24 +109,19 @@ fn pbkdf_manual(
     botan_param_order: &[&[&str; 3]; 2],
     password: &str,
     salt: &Vec<u8>,
-    mut params_map: HashMap<String, usize>,
+    params_map: HashMap<String, usize>,
     key_len: usize,
+    policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
-    let mut params: [usize; 3] = [0, 0, 0];
-    for (i, param) in botan_param_order[1].iter().enumerate() {
-        if param.is_empty() {
-            continue;
-        }
-        params[i] = params_map.remove(*param).ok_or("Missing PBKDF parameter")?;
-    }
-    if !params_map.is_empty() {
-        return Err("Extraneous PBKDF parameters");
-    }
-    let key = botan::derive_key_from_password(
-        botan_alg, key_len, password, salt, params[0], params[1], params[2],
+    crypto::derive_key_from_password(
+        botan_alg,
+        botan_param_order,
+        key_len,
+        password,
+        salt,
+        params_map,
+        policy,
     )
-    .map_err(|_| "Botan error")?;
-    Ok(key)
 }
 
 fn to_phc_alg(alg: &str, pbkdf2_hash: &Option<String>) -> Result<String, &'static str> {
@@ -165,9 +164,10 @@ pub fn derive_key(
     rng: &Option<botan::RandomNumberGenerator>,
     opts: &etree::PBKDFOptions,
     cache: &mut Option<PBKDFCache>,
+    policy: &Box<dyn CryptoPolicy>,
 ) -> Result<(Vec<u8>, Option<String>), &'static str> {
     if opts.alg == "legacy" {
-        return Ok((pbkdf_legacy(password), None));
+        return Ok((pbkdf_legacy(password, key_len, policy)?, None));
     }
     let botan_alg = botan_pbkdf_name(&opts.alg, &opts.pbkdf2_hash)?;
     let mut salt = opts.salt.clone().unwrap_or_else(|| {
@@ -198,6 +198,7 @@ pub fn derive_key(
                 &salt,
                 opts.params.clone().unwrap(),
                 key_len,
+                policy,
             )?;
             if cache.is_some() {
                 cache.as_mut().unwrap().push(PBKDFCacheEntry {
@@ -237,6 +238,7 @@ pub fn derive_key(
             &salt,
             opts.msec.ok_or("Missing PBKDF msec")?,
             key_len,
+            policy,
         )?;
         key = results.0;
         params = results.1;
