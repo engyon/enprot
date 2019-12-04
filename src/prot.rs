@@ -24,7 +24,7 @@
 extern crate phc;
 extern crate rpassword;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use consts;
 use crypto;
@@ -88,7 +88,7 @@ pub fn decrypt(
     if let Some(pbkdf) = pbkdf {
         let phc: phc::raw::RawPHC = pbkdf.parse().map_err(|_| "Failed to parse PHC")?;
         let (alg, pbkdf2_hash) = from_phc_alg(phc.id());
-        let mut params_map: HashMap<String, usize> = HashMap::new();
+        let mut params_map: BTreeMap<String, usize> = BTreeMap::new();
         params_map.extend(
             phc.params()
                 .iter()

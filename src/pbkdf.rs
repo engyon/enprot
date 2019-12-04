@@ -24,7 +24,7 @@
 extern crate phf;
 
 use self::phf::phf_map;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crypto;
 use crypto::CryptoPolicy;
@@ -49,7 +49,7 @@ pub struct PBKDFCacheEntry {
     pub msec: u32,
     pub salt: Vec<u8>,
     pub key: Vec<u8>,
-    pub params: HashMap<String, usize>,
+    pub params: BTreeMap<String, usize>,
 }
 pub type PBKDFCache = Vec<PBKDFCacheEntry>;
 
@@ -80,7 +80,7 @@ fn pbkdf_legacy(
     key_len: usize,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
-    policy.check_pbkdf("SHA-3(512)", key_len, password, &[], &HashMap::new())?;
+    policy.check_pbkdf("SHA-3(512)", key_len, password, &[], &BTreeMap::new())?;
     crypto::digest("SHA-3(512)", password.as_bytes(), policy)
 }
 
@@ -92,7 +92,7 @@ fn pbkdf_timed(
     msec: u32,
     key_len: usize,
     policy: &Box<dyn CryptoPolicy>,
-) -> Result<(Vec<u8>, HashMap<String, usize>), &'static str> {
+) -> Result<(Vec<u8>, BTreeMap<String, usize>), &'static str> {
     crypto::derive_key_from_password_timed(
         botan_alg,
         botan_param_order,
@@ -109,7 +109,7 @@ fn pbkdf_manual(
     botan_param_order: &[&[&str; 3]; 2],
     password: &str,
     salt: &Vec<u8>,
-    params_map: HashMap<String, usize>,
+    params_map: BTreeMap<String, usize>,
     key_len: usize,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
@@ -143,9 +143,7 @@ pub fn from_phc_alg(alg: &str) -> (String, Option<String>) {
     return (alg.to_string(), None);
 }
 
-fn format_phc(alg: &str, params: &HashMap<String, usize>, salt: &Vec<u8>) -> String {
-    let mut params: Vec<_> = params.iter().collect();
-    params.sort_by(|a, b| a.0.cmp(b.0));
+fn format_phc(alg: &str, params: &BTreeMap<String, usize>, salt: &Vec<u8>) -> String {
     format!(
         "${}${}${}",
         alg,

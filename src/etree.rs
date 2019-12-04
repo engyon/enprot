@@ -23,6 +23,7 @@
 
 extern crate botan;
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::prelude::*;
@@ -38,12 +39,12 @@ use prot;
 use utils;
 
 pub struct PBKDFOptions {
-    pub alg: String,                            // algorithm name
-    pub pbkdf2_hash: Option<String>,            // hash alg to use when alg is PBKDF2
-    pub saltlen: usize,                         // desired salt length
-    pub salt: Option<Vec<u8>>,                  // salt (randomly generated if None)
-    pub msec: Option<u32>,                      // desired millis count to determine KDF params
-    pub params: Option<HashMap<String, usize>>, // KDF-specific params (if provided)
+    pub alg: String,                             // algorithm name
+    pub pbkdf2_hash: Option<String>,             // hash alg to use when alg is PBKDF2
+    pub saltlen: usize,                          // desired salt length
+    pub salt: Option<Vec<u8>>,                   // salt (randomly generated if None)
+    pub msec: Option<u32>,                       // desired millis count to determine KDF params
+    pub params: Option<BTreeMap<String, usize>>, // KDF-specific params (if provided)
 }
 
 impl PBKDFOptions {
@@ -194,8 +195,8 @@ fn parse_begin(
 }
 
 // parse trailing extended fields, such as pbkdf:
-fn parse_encrypted_extfields(cmd: &[&str]) -> Result<HashMap<String, String>, &'static str> {
-    let mut extfields: HashMap<String, String> = HashMap::new();
+fn parse_encrypted_extfields(cmd: &[&str]) -> Result<BTreeMap<String, String>, &'static str> {
+    let mut extfields: BTreeMap<String, String> = BTreeMap::new();
     for field in cmd.iter().rev() {
         if field.find(':') == None {
             // extended fields always come at the end

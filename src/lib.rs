@@ -29,7 +29,7 @@ mod pbkdf;
 mod prot;
 pub mod utils;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
@@ -347,7 +347,7 @@ where
     );
     if let Some(val) = matches.value_of("pbkdf-params") {
         paops.pbkdf.msec = None;
-        let mut params: HashMap<String, usize> = HashMap::new();
+        let mut params: BTreeMap<String, usize> = BTreeMap::new();
         params.extend(val.split(",").map(|val| {
             let parts = val.splitn(2, '=').collect::<Vec<&str>>();
             (parts[0].to_string(), parts[1].parse::<usize>().unwrap())
