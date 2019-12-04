@@ -26,7 +26,6 @@ extern crate rpassword;
 
 use std::collections::BTreeMap;
 
-use consts;
 use crypto;
 use crypto::CryptoPolicy;
 use etree;
@@ -57,24 +56,40 @@ pub fn encrypt(
     pt: Vec<u8>,
     password: &str,
     rng: &Option<botan::RandomNumberGenerator>,
-    opts: &etree::PBKDFOptions,
+    pbkdfopts: &etree::PBKDFOptions,
+    cipheropts: &etree::CipherOptions,
     cache: &mut Option<PBKDFCache>,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<(Vec<u8>, BTreeMap<String, String>), &'static str> {
-    let (key, pbkdf) = derive_key(
-        password,
-        consts::AES256_KEY_LENGTH,
-        rng,
-        opts,
-        cache,
-        policy,
-    )?;
+    let botan_cipher = crypto::to_botan_cipher(&cipheropts.alg)?;
+    let key_len = crypto::cipher_key_len_min(botan_cipher)?;
+    let (key, pbkdf) = derive_key(password, key_len, rng, pbkdfopts, cache, policy)?;
     let mut extfields: BTreeMap<String, String> = BTreeMap::new();
     if pbkdf != None {
         extfields.insert("pbkdf".to_string(), pbkdf.unwrap());
     }
+    let mut iv: Vec<u8> = Vec::new();
+    if !cipheropts.alg.ends_with("siv") {
+        // IV required
+        iv = if let Some(myiv) = cipheropts.iv.clone() {
+            myiv
+        } else {
+            let ivlen = crypto::cipher_nonce_len(botan_cipher)?;
+            rng.as_ref()
+                .ok_or("Missing RNG")?
+                .read(ivlen)
+                .map_err(|_| "RNG error")?
+        };
+        extfields.insert(
+            "cipher".to_string(),
+            format!("{}$iv={}", &cipheropts.alg, utils::base64_encode(&iv)?).to_string(),
+        );
+    } else if cipheropts.iv != None {
+        // IV not required
+        return Err("IV was supplied but not expected");
+    }
     Ok((
-        crypto::encrypt("AES-256/SIV", &key, &[], &[], &pt, policy)?,
+        crypto::encrypt(&botan_cipher, &key, &iv, &[], &pt, policy)?,
         extfields,
     ))
 }
@@ -85,9 +100,30 @@ pub fn decrypt(
     ct: Vec<u8>,
     password: &str,
     pbkdf: &Option<&String>,
+    cipher: &Option<&String>,
     cache: &mut Option<PBKDFCache>,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
+    let cipher_alg;
+    let mut iv = Vec::new();
+    if let Some(cipher) = cipher {
+        let mut it = cipher.split("$");
+        cipher_alg = it.next().ok_or("Invalid cipher extfield")?;
+        let mut fields = BTreeMap::new();
+        for val in it {
+            let mut it = val.splitn(2, '=');
+            let key = it.next().ok_or("Missing field key")?;
+            let value = it.collect::<String>();
+            fields.insert(key, value);
+        }
+        if let Some(myiv) = fields.get("iv") {
+            iv = utils::base64_decode(myiv)?;
+        }
+    } else {
+        cipher_alg = "aes-256-siv";
+    }
+    let botan_cipher = crypto::to_botan_cipher(&cipher_alg)?;
+    let key_len = crypto::cipher_key_len_min(&botan_cipher)?;
     let key: Vec<u8>;
     if let Some(pbkdf) = pbkdf {
         let phc: phc::raw::RawPHC = pbkdf.parse().map_err(|_| "Failed to parse PHC")?;
@@ -102,7 +138,7 @@ pub fn decrypt(
             phc::Salt::Ascii(s) => utils::base64_decode(s)?,
             phc::Salt::Binary(b) => utils::base64_decode(std::str::from_utf8(b).unwrap())?,
         };
-        let opts = etree::PBKDFOptions {
+        let pbkdfopts = etree::PBKDFOptions {
             alg: alg,
             saltlen: 0,
             salt: Some(salt),
@@ -110,19 +146,12 @@ pub fn decrypt(
             pbkdf2_hash: pbkdf2_hash,
             params: Some(params_map),
         };
-        let (thekey, _) = derive_key(
-            password,
-            consts::AES256_KEY_LENGTH,
-            &None,
-            &opts,
-            cache,
-            policy,
-        )?;
+        let (thekey, _) = derive_key(password, key_len, &None, &pbkdfopts, cache, policy)?;
         key = thekey;
     } else {
         let (thekey, _) = derive_key(
             password,
-            consts::AES256_KEY_LENGTH,
+            key_len,
             &None,
             &etree::PBKDFOptions {
                 alg: "legacy".to_string(),
@@ -138,7 +167,7 @@ pub fn decrypt(
         key = thekey;
     }
 
-    match crypto::decrypt("AES-256/SIV", &key, &[], &[], &ct, policy) {
+    match crypto::decrypt(botan_cipher, &key, &iv, &[], &ct, policy) {
         Ok(pt) => Ok(pt),
         Err(_) => Err("Bad password?"),
     }

@@ -26,6 +26,8 @@ extern crate phf;
 
 use std::collections::BTreeMap;
 
+use consts;
+
 pub trait CryptoPolicy {
     fn check_hash(&self, _alg: &str) -> Result<(), &'static str> {
         Ok(())
@@ -86,10 +88,42 @@ fn symmetric_cipher(
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
     policy.check_cipher(alg, key, iv, ad)?;
-    let cipher = botan::Cipher::new(alg, direction).map_err(|_| "Botan error")?;
-    cipher.set_key(key).map_err(|_| "Botan error")?;
-    cipher.set_associated_data(ad).map_err(|_| "Botan error")?;
-    cipher.process(iv, data).map_err(|_| "Botan error")
+    let cipher = botan::Cipher::new(alg, direction).map_err(|_| "Botan error creating cipher")?;
+    cipher
+        .set_key(key)
+        .map_err(|_| "Botan error setting cipher key")?;
+    cipher
+        .set_associated_data(ad)
+        .map_err(|_| "Botan error setting AD")?;
+    cipher
+        .process(iv, data)
+        .map_err(|_| "Botan error processing cipher data")
+}
+
+pub fn to_botan_cipher(alg: &str) -> Result<&'static str, &'static str> {
+    Ok(consts::BOTAN_CIPHER_ALG_MAP
+        .get::<str>(alg)
+        .ok_or("Unrecognized cipher")?)
+}
+
+fn cipher_keylen(alg: &str) -> Result<botan::KeySpec, &'static str> {
+    let cipher = botan::Cipher::new(alg, botan::CipherDirection::Encrypt)
+        .map_err(|_| "Botan error creating cipher")?;
+    cipher.key_spec().map_err(|_| "Botan error")
+}
+
+pub fn cipher_key_len_min(alg: &str) -> Result<usize, &'static str> {
+    Ok(cipher_keylen(alg)?.minimum_keylength())
+}
+
+pub fn cipher_key_len_max(alg: &str) -> Result<usize, &'static str> {
+    Ok(cipher_keylen(alg)?.maximum_keylength())
+}
+
+pub fn cipher_nonce_len(alg: &str) -> Result<usize, &'static str> {
+    let cipher = botan::Cipher::new(alg, botan::CipherDirection::Encrypt)
+        .map_err(|_| "Botan error creating cipher")?;
+    Ok(cipher.default_nonce_length())
 }
 
 pub fn encrypt(

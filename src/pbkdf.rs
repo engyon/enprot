@@ -81,7 +81,9 @@ fn pbkdf_legacy(
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
     policy.check_pbkdf("SHA-3(512)", key_len, password, &[], &BTreeMap::new())?;
-    crypto::digest("SHA-3(512)", password.as_bytes(), policy)
+    let mut result = crypto::digest("SHA-3(512)", password.as_bytes(), policy)?;
+    result.truncate(key_len);
+    Ok(result)
 }
 
 fn pbkdf_timed(
