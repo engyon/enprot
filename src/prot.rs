@@ -27,6 +27,8 @@ extern crate rpassword;
 use std::collections::HashMap;
 
 use consts;
+use crypto;
+use crypto::CryptoPolicy;
 use etree;
 use pbkdf::derive_key;
 use pbkdf::from_phc_alg;
@@ -57,13 +59,20 @@ pub fn encrypt(
     rng: &Option<botan::RandomNumberGenerator>,
     opts: &etree::PBKDFOptions,
     cache: &mut Option<PBKDFCache>,
+    policy: &Box<dyn CryptoPolicy>,
 ) -> Result<(Vec<u8>, Option<String>), &'static str> {
-    let (key, pbkdf) = derive_key(password, consts::AES256_KEY_LENGTH, rng, opts, cache)?;
-    let enc = botan::Cipher::new("AES-256/SIV", botan::CipherDirection::Encrypt)
-        .map_err(|_| "Botan error")?;
-    enc.set_key(&key).map_err(|_| "Botan error")?;
-    enc.set_associated_data(&[]).map_err(|_| "Botan error")?;
-    Ok((enc.process(&[], &pt).map_err(|_| "Botan error")?, pbkdf))
+    let (key, pbkdf) = derive_key(
+        password,
+        consts::AES256_KEY_LENGTH,
+        rng,
+        opts,
+        cache,
+        policy,
+    )?;
+    Ok((
+        crypto::encrypt("AES-256/SIV", &key, &[], &[], &pt, policy)?,
+        pbkdf,
+    ))
 }
 
 // Decrypt
@@ -73,6 +82,7 @@ pub fn decrypt(
     password: &str,
     pbkdf: &Option<String>,
     cache: &mut Option<PBKDFCache>,
+    policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
     let key: Vec<u8>;
     if let Some(pbkdf) = pbkdf {
@@ -96,7 +106,14 @@ pub fn decrypt(
             pbkdf2_hash: pbkdf2_hash,
             params: Some(params_map),
         };
-        let (thekey, _) = derive_key(password, consts::AES256_KEY_LENGTH, &None, &opts, cache)?;
+        let (thekey, _) = derive_key(
+            password,
+            consts::AES256_KEY_LENGTH,
+            &None,
+            &opts,
+            cache,
+            policy,
+        )?;
         key = thekey;
     } else {
         let (thekey, _) = derive_key(
@@ -112,15 +129,12 @@ pub fn decrypt(
                 params: None,
             },
             cache,
+            policy,
         )?;
         key = thekey;
     }
 
-    let dec = botan::Cipher::new("AES-256/SIV", botan::CipherDirection::Decrypt)
-        .map_err(|_| "Botan error")?;
-    dec.set_key(&key).map_err(|_| "Botan error")?;
-    dec.set_associated_data(&[]).map_err(|_| "Botan error")?;
-    match dec.process(&[], &ct) {
+    match crypto::decrypt("AES-256/SIV", &key, &[], &[], &ct, policy) {
         Ok(pt) => Ok(pt),
         Err(_) => Err("Bad password?"),
     }

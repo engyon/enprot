@@ -29,7 +29,7 @@ use etree::ParseOps;
 use std::fs::File;
 use std::io::prelude::*;
 
-use utils;
+use crypto;
 
 pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str> {
     // check that it is valid
@@ -64,7 +64,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str
     }
 
     // verify hash just because
-    let verify = utils::hexdigest("SHA-3(256)", &blob)?;
+    let verify = crypto::hexdigest("SHA-3(256)", &blob, &paops.policy)?;
 
     if hexhash != verify {
         eprintln!(
@@ -78,7 +78,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str
 }
 
 pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String, &'static str> {
-    let hexhash = utils::hexdigest("SHA-3(256)", &blob)?;
+    let hexhash = crypto::hexdigest("SHA-3(256)", &blob, &paops.policy)?;
     let mut path = paops.casdir.clone();
     path.push(&hexhash);
 
