@@ -60,6 +60,20 @@ impl PBKDFOptions {
     }
 }
 
+pub struct CipherOptions {
+    pub alg: String,
+    pub iv: Option<Vec<u8>>,
+}
+
+impl CipherOptions {
+    pub fn new() -> CipherOptions {
+        CipherOptions {
+            alg: consts::DEFAULT_CIPHER_ALG.to_string(),
+            iv: None,
+        }
+    }
+}
+
 // parse operations
 
 pub struct ParseOps {
@@ -77,6 +91,7 @@ pub struct ParseOps {
     pub pbkdf: PBKDFOptions,                       // the PBKDF options
     pub pbkdf_cache: Option<PBKDFCache>,           // the PBKDF cache
     pub policy: Box<dyn CryptoPolicy>,             // the crypto alg policy
+    pub cipheropts: CipherOptions,                 // cipher options
     level: isize,                                  // current recursion level
 }
 
@@ -98,6 +113,7 @@ impl ParseOps {
             pbkdf: PBKDFOptions::new(),
             pbkdf_cache: Some(Vec::new()),
             policy: Box::new(CryptoPolicyNone {}),
+            cipheropts: CipherOptions::new(),
         }
     }
 }
@@ -594,6 +610,7 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                         &pass,
                         &paops.rng,
                         &paops.pbkdf,
+                        &paops.cipheropts,
                         &mut paops.pbkdf_cache,
                         &paops.policy,
                     )?;
@@ -673,6 +690,7 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                         ct,
                         &pass,
                         &extfields.get("pbkdf"),
+                        &extfields.get("cipher"),
                         &mut paops.pbkdf_cache,
                         &paops.policy,
                     ) {

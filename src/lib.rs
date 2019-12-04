@@ -225,6 +225,23 @@ where
                 .help("Disable the PBKDF cache mechanism"),
         )
         .arg(
+            Arg::with_name("cipher")
+                .long("cipher")
+                .takes_value(true)
+                .value_name("ALG")
+                .default_value(consts::DEFAULT_CIPHER_ALG)
+                .possible_values(consts::VALID_CIPHER_ALGS)
+                .help("Set the cipher algorithm to use when encrypting"),
+        )
+        .arg(
+            Arg::with_name("cipher-iv")
+                .long("cipher-iv")
+                .takes_value(true)
+                .value_name("ALG")
+                .hidden(true)
+                .help("Advanced option for testing, do not use"),
+        )
+        .arg(
             Arg::with_name("decrypt")
                 .short("d")
                 .long("decrypt")
@@ -376,6 +393,11 @@ where
     }
     if matches.occurrences_of("pbkdf-disable-cache") != 0 {
         paops.pbkdf_cache = None;
+    }
+    // cipher
+    paops.cipheropts.alg = matches.value_of("cipher").unwrap().to_string();
+    if let Some(iv) = matches.value_of("cipher-iv") {
+        paops.cipheropts.iv = Some(hex::decode(iv).unwrap());
     }
     //policy
     paops.policy = match matches.value_of("policy").unwrap() {
