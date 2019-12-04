@@ -24,7 +24,7 @@
 extern crate botan;
 extern crate phf;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub trait CryptoPolicy {
     fn check_hash(&self, _alg: &str) -> Result<(), &'static str> {
@@ -37,7 +37,7 @@ pub trait CryptoPolicy {
         _key_len: usize,
         _password: &str,
         _salt: &[u8],
-        _params: &HashMap<String, usize>,
+        _params: &BTreeMap<String, usize>,
     ) -> Result<(), &'static str> {
         Ok(())
     }
@@ -136,7 +136,7 @@ pub fn derive_key_from_password(
     key_len: usize,
     password: &str,
     salt: &[u8],
-    mut params_map: HashMap<String, usize>,
+    mut params_map: BTreeMap<String, usize>,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
     policy.check_pbkdf(alg, key_len, password, salt, &params_map)?;
@@ -165,12 +165,12 @@ pub fn derive_key_from_password_timed(
     salt: &[u8],
     msec: u32,
     policy: &Box<dyn CryptoPolicy>,
-) -> Result<(Vec<u8>, HashMap<String, usize>), &'static str> {
+) -> Result<(Vec<u8>, BTreeMap<String, usize>), &'static str> {
     let (key, param1, param2, param3) =
         botan::derive_key_from_password_timed(alg, key_len, password, &salt, msec)
             .map_err(|_| "Botan error")?;
     let params = [param1, param2, param3];
-    let mut params_map = HashMap::new();
+    let mut params_map = BTreeMap::new();
     for (i, param) in param_order[0].iter().filter(|v| !v.is_empty()).enumerate() {
         params_map.insert(param.to_string(), params[i]);
     }
