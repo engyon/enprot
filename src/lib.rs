@@ -402,6 +402,7 @@ where
     //policy
     paops.policy = match matches.value_of("policy").unwrap() {
         "none" => Box::new(crypto::CryptoPolicyNone {}),
+        "nist" => Box::new(crypto::CryptoPolicyNIST::new()),
         _ => {
             std::process::exit(1);
         }

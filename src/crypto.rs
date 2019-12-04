@@ -59,6 +59,77 @@ pub struct CryptoPolicyNone {}
 
 impl CryptoPolicy for CryptoPolicyNone {}
 
+pub struct CryptoPolicyNIST {
+    pub ciphers: &'static phf::Set<&'static str>,
+    pub hashes: &'static phf::Set<&'static str>,
+    pub pbkdfs: &'static phf::Set<&'static str>,
+}
+
+impl CryptoPolicyNIST {
+    pub fn new() -> CryptoPolicyNIST {
+        CryptoPolicyNIST {
+            ciphers: &consts::NIST_APPROVED_CIPHERS,
+            hashes: &consts::NIST_APPROVED_HASHES,
+            pbkdfs: &consts::NIST_APPROVED_PBKDFS,
+        }
+    }
+
+    fn check_alg(&self, kind: &str, alg: &str) -> Result<(), &'static str> {
+        let lst = match kind {
+            "Cipher" => &self.ciphers,
+            "Hash" => &self.hashes,
+            "PBKDF" => &self.pbkdfs,
+            _ => return Err("Invalid algorithm kind"),
+        };
+        if lst.contains(alg) {
+            Ok(())
+        } else {
+            eprintln!("{} algorithm is not permitted by policy: {}", kind, alg);
+            Err("Algorithm not permitted by policy")
+        }
+    }
+}
+
+impl CryptoPolicy for CryptoPolicyNIST {
+    fn check_hash(&self, alg: &str) -> Result<(), &'static str> {
+        self.check_alg("Hash", alg)
+    }
+
+    fn check_pbkdf(
+        &self,
+        alg: &str,
+        _key_len: usize,
+        _password: &str,
+        salt: &[u8],
+        params: &BTreeMap<String, usize>,
+    ) -> Result<(), &'static str> {
+        self.check_alg("PBKDF", alg)?;
+        if salt.len() < consts::NIST_PBKDF_MIN_SALT_LEN {
+            return Err("Salt length violates policy");
+        }
+        if let Some(iters) = params.get("i") {
+            if *iters < 1000 {
+                return Err("Iteration count violates policy");
+            }
+        }
+        Ok(())
+    }
+
+    fn check_cipher(
+        &self,
+        alg: &str,
+        _key: &[u8],
+        iv: &[u8],
+        _ad: &[u8],
+    ) -> Result<(), &'static str> {
+        self.check_alg("Cipher", alg)?;
+        if alg == "AES-256/GCM" && iv.len() != 96 / 8 {
+            return Err("IV length does not match NIST recommendations for this cipher.");
+        }
+        Ok(())
+    }
+}
+
 pub fn digest(
     alg: &str,
     data: &[u8],
