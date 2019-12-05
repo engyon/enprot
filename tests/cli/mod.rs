@@ -1,3 +1,4 @@
+mod cipher;
 mod encrypt_decrypt;
 mod encrypt_store;
 mod misc;
