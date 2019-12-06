@@ -2,6 +2,9 @@ name: tests
 
 on: [push, pull_request]
 
+env:
+  RUST_BACKTRACE: full
+
 jobs:
   build-stable:
     name: Test on stable toolchain
@@ -12,19 +15,39 @@ jobs:
       - uses: actions/checkout@v1
       - name: Build program
         run: |
-          # we need a fairly recent botan
-          sudo apt update && sudo apt -y install git make g++
-          git clone --depth 1 --branch 2.12.1 https://github.com/randombit/botan
-          cd botan
-          ./configure.py --prefix=/usr --without-documentation
-          make -j2
-          sudo make install
-
+          ./ci/install.sh
           cargo build --verbose
-        env:
-          RUST_BACKTRACE: full
       - name: Run tests
         run: cargo test --verbose -- --nocapture
+
+  coverage:
+    name: Code coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CODECOV_TOKEN: 79f7256d-b5a9-4843-923f-43dceef2fdc1
+      CARGO_INCREMENTAL: 0
+      RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install rust nightly
+        uses: actions-rs/toolchain@v1
+        with:
+            profile: minimal
+            toolchain: nightly
+            override: true
+      - name: Build program
+        run: |
+          ./ci/install.sh
+          cargo build --verbose
+      - name: Run tests
+        run: |
+          cargo test --verbose -- --nocapture
+          # coverage
+          curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
+          zip -0 ccov.zip `find . \( -name "enprot*.gc*" \) -print`;
+          ./grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info;
+          bash <(curl -s https://codecov.io/bash) -f lcov.info;
 
   check-format:
     name: Check code format
@@ -35,3 +58,4 @@ jobs:
       - uses: actions/checkout@v1
       - name: Validate code format
         run: cargo fmt -- --check $(find src -name '*.rs')
+
