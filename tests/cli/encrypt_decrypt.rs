@@ -1,11 +1,12 @@
 extern crate assert_cmd;
+extern crate cpu_time;
 extern crate predicates;
 extern crate tempfile;
 
+use self::cpu_time::ThreadTime;
 use assert_cmd::prelude::*;
 use std::fs;
 use std::process::Command;
-use std::time::Instant;
 use tempfile::tempdir;
 
 use Fixture;
@@ -400,130 +401,55 @@ fn encrypt_decrypt_agent007_pbkdf2_sha512() {
     );
 }
 
+// This test ensures that pbkdf-msec is actually utilized.
 #[test]
 fn encrypt_decrypt_agent007_pbkdf2_millis() {
-    let casdir = tempdir().unwrap();
     const SAMPLE_COUNT: u32 = 3;
-    let base_ms: u32;
-    let mut elapsed_ms: u32 = 0;
-
-    // establish a baseline
-    for _ in 0..SAMPLE_COUNT {
-        let ept = Fixture::copy("sample/test.ept");
-        let now = Instant::now();
-        Command::cargo_bin("enprot")
-            .unwrap()
-            .arg("-c")
-            .arg(casdir.path())
-            .arg("-e")
-            .arg("Agent_007")
-            .arg("--pbkdf")
-            .arg("pbkdf2")
-            .arg("--pbkdf-msec")
-            .arg("1")
-            .arg("-k")
-            .arg("Agent_007=password")
-            .arg(&ept.path)
-            .assert()
-            .success();
-        elapsed_ms += now.elapsed().as_millis() as u32;
-    }
-    base_ms = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
+    let mut elapsed_ms: u32;
 
     // 10ms
     elapsed_ms = 0;
     for _ in 0..SAMPLE_COUNT {
         let ept = Fixture::copy("sample/test.ept");
-        let now = Instant::now();
-        Command::cargo_bin("enprot")
-            .unwrap()
-            .arg("-c")
-            .arg(casdir.path())
-            .arg("-e")
-            .arg("Agent_007")
-            .arg("--pbkdf")
-            .arg("pbkdf2")
-            .arg("--pbkdf-msec")
-            .arg("10")
-            .arg("-k")
-            .arg("Agent_007=password")
-            .arg(&ept.path)
-            .assert()
-            .success();
+        let now = ThreadTime::now();
+        enprot::app_main(vec![
+            "enprot",
+            "-e",
+            "Agent_007",
+            "--pbkdf",
+            "pbkdf2",
+            "--pbkdf-msec",
+            "10",
+            "-k",
+            "Agent_007=password",
+            &ept.path.to_str().unwrap(),
+        ]);
         elapsed_ms += now.elapsed().as_millis() as u32;
     }
-    let avg = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
-    assert!(avg > 10);
-    // allow 20% margin
-    assert!(avg < ((base_ms as f32 * 1.2) as u32 + 10));
+    let avg10 = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
 
     // 50ms
     elapsed_ms = 0;
     for _ in 0..SAMPLE_COUNT {
         let ept = Fixture::copy("sample/test.ept");
-        let now = Instant::now();
-        Command::cargo_bin("enprot")
-            .unwrap()
-            .arg("-c")
-            .arg(casdir.path())
-            .arg("-e")
-            .arg("Agent_007")
-            .arg("--pbkdf")
-            .arg("pbkdf2")
-            .arg("--pbkdf-msec")
-            .arg("50")
-            .arg("-k")
-            .arg("Agent_007=password")
-            .arg(&ept.path)
-            .assert()
-            .success();
+        let now = ThreadTime::now();
+        enprot::app_main(vec![
+            "enprot",
+            "-e",
+            "Agent_007",
+            "--pbkdf",
+            "pbkdf2",
+            "--pbkdf-msec",
+            "50",
+            "-k",
+            "Agent_007=password",
+            &ept.path.to_str().unwrap(),
+        ]);
         elapsed_ms += now.elapsed().as_millis() as u32;
     }
-    let avg = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
-    assert!(avg > 50);
-    // allow 20% margin
-    assert!(avg < ((base_ms as f32 * 1.2) as u32 + 50));
+    let avg50 = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
 
-    // one more time
-    let ept = Fixture::copy("sample/test.ept");
-    Command::cargo_bin("enprot")
-        .unwrap()
-        .arg("-c")
-        .arg(casdir.path())
-        .arg("-e")
-        .arg("Agent_007")
-        .arg("--pbkdf")
-        .arg("pbkdf2")
-        .arg("--pbkdf-msec")
-        .arg("10")
-        .arg("-k")
-        .arg("Agent_007=password")
-        .arg(&ept.path)
-        .assert()
-        .success();
-    // check output
-    assert!(&fs::read_to_string(&ept.path)
-        .unwrap()
-        .contains("$pbkdf2-sha256$"));
-    assert_ne!(
-        &fs::read_to_string(&ept.path).unwrap(),
-        &fs::read_to_string(&ept.source).unwrap(),
-    );
-    Command::cargo_bin("enprot")
-        .unwrap()
-        .arg("-c")
-        .arg(casdir.path())
-        .arg("-d")
-        .arg("Agent_007")
-        .arg("-k")
-        .arg("Agent_007=password")
-        .arg(&ept.path)
-        .assert()
-        .success();
-    assert_eq!(
-        &fs::read_to_string(&ept.path).unwrap(),
-        &fs::read_to_string(&ept.source).unwrap()
-    );
+    assert!(avg50 > avg10);
 }
 
 #[test]

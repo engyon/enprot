@@ -30,6 +30,7 @@ mod prot;
 pub mod utils;
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
@@ -51,9 +52,10 @@ where
 
 // Handle command line parameters
 
-pub fn app_main<I>(args: &mut I)
+pub fn app_main<I, T>(args: I)
 where
-    I: Iterator<Item = String>,
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
 {
     // <( ENCRYPTED AUTHOR )>
     // <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
