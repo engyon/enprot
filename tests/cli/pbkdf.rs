@@ -10,9 +10,27 @@ use Fixture;
 
 #[test]
 fn pbkdf_cache() {
-    let ept = Fixture::copy("sample/test.ept");
+    let ept = Fixture::blank("in.ept");
+    fs::write(
+        &ept.path.to_str().unwrap(),
+        "
+// <( BEGIN Agent_007 )>
+Secret 1
+// <( END Agent_007 )>
+// <( BEGIN Agent_007 )>
+Secret 2
+// <( END Agent_007 )>
+// <( BEGIN Agent_007 )>
+Secret 3
+// <( END Agent_007 )>
+// <( BEGIN Agent_007 )>
+Secret 4
+// <( END Agent_007 )>
+",
+    )
+    .unwrap();
     let out = Fixture::blank("out.ept");
-    const MSEC: &str = "10";
+    const MSEC: &str = "20";
     const SAMPLE_COUNT: u32 = 3;
     let (encms_cache, encms_nocache, decms_cache, decms_nocache): (u32, u32, u32, u32);
     let mut elapsed_ms: u32 = 0;
