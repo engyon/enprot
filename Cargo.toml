@@ -2,6 +2,11 @@
 name        = "enprot"
 version     = "0.1.0"
 authors     = ["Ribose Inc. <open.source@ribose.com>"]
+license     = "BSD-2-Clause"
+description = "enprot command line tool for Engyon"
+repository  = "https://github.com/riboseinc/enprot"
+categories  = ["command-line-utilities", "cryptography"]
+keywords    = ["encryption", "engyon"]
 autotests   = false
 
 [[bin]]
