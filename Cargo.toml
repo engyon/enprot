@@ -21,7 +21,7 @@ path = "tests/tests.rs"
 hex         = "0.3"
 rpassword   = "2"
 clap        = "2.33.0"
-phc         = { git = "https://github.com/kstrohbeck/phc", branch = "develop" }
+phc         = "0.2.0"
 botan       = "0.6.0"
 num         = "0.2.0"
 phf         = { version = "0.8.0", features = ["macros"] }
