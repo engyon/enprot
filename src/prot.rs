@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2020 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -23,11 +23,10 @@
 
 use std::collections::BTreeMap;
 
-use crypto;
+use cipher;
 use crypto::CryptoPolicy;
 use etree;
 use pbkdf::derive_key;
-use pbkdf::from_phc_alg;
 use pbkdf::PBKDFCache;
 use utils;
 
@@ -58,20 +57,20 @@ pub fn encrypt(
     cache: &mut Option<PBKDFCache>,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<(Vec<u8>, BTreeMap<String, String>), &'static str> {
-    let botan_cipher = crypto::to_botan_cipher(&cipheropts.alg)?;
-    let key_len = crypto::cipher_key_len_min(botan_cipher)?;
+    let enc = cipher::encryption(&cipheropts.alg)?;
+    let key_len = enc.key_len_max();
     let (key, pbkdf) = derive_key(password, key_len, rng, pbkdfopts, cache, policy)?;
     let mut extfields: BTreeMap<String, String> = BTreeMap::new();
     if pbkdf != None {
         extfields.insert("pbkdf".to_string(), pbkdf.unwrap());
     }
     let mut iv: Vec<u8> = Vec::new();
-    if !cipheropts.alg.ends_with("siv") {
+    if cipheropts.alg != "aes-256-siv" {
         // IV required
         iv = if let Some(myiv) = cipheropts.iv.clone() {
             myiv
         } else {
-            let ivlen = crypto::cipher_nonce_len(botan_cipher)?;
+            let ivlen = enc.nonce_len();
             rng.as_ref()
                 .ok_or("Missing RNG")?
                 .read(ivlen)
@@ -85,10 +84,7 @@ pub fn encrypt(
         // IV not required
         return Err("IV was supplied but not expected");
     }
-    Ok((
-        crypto::encrypt(&botan_cipher, &key, &iv, &[], &pt, policy)?,
-        extfields,
-    ))
+    Ok((enc.process(&key, &iv, &[], &pt, policy)?, extfields))
 }
 
 // Decrypt
@@ -119,12 +115,12 @@ pub fn decrypt(
     } else {
         cipher_alg = "aes-256-siv";
     }
-    let botan_cipher = crypto::to_botan_cipher(&cipher_alg)?;
-    let key_len = crypto::cipher_key_len_min(&botan_cipher)?;
+    let dec = cipher::decryption(&cipher_alg)?;
+    let key_len = dec.key_len_max();
     let key: Vec<u8>;
     if let Some(pbkdf) = pbkdf {
         let phc: phc::raw::RawPHC = pbkdf.parse().map_err(|_| "Failed to parse PHC")?;
-        let (alg, pbkdf2_hash) = from_phc_alg(phc.id());
+        let alg = phc.id();
         let mut params_map: BTreeMap<String, usize> = BTreeMap::new();
         params_map.extend(
             phc.params()
@@ -136,11 +132,10 @@ pub fn decrypt(
             phc::Salt::Binary(b) => utils::base64_decode(std::str::from_utf8(b).unwrap())?,
         };
         let pbkdfopts = etree::PBKDFOptions {
-            alg: alg,
+            alg: alg.to_string(),
             saltlen: 0,
             salt: Some(salt),
             msec: None,
-            pbkdf2_hash: pbkdf2_hash,
             params: Some(params_map),
         };
         let (thekey, _) = derive_key(password, key_len, &None, &pbkdfopts, cache, policy)?;
@@ -155,7 +150,6 @@ pub fn decrypt(
                 saltlen: 0,
                 salt: None,
                 msec: None,
-                pbkdf2_hash: None,
                 params: None,
             },
             cache,
@@ -164,7 +158,7 @@ pub fn decrypt(
         key = thekey;
     }
 
-    match crypto::decrypt(botan_cipher, &key, &iv, &[], &ct, policy) {
+    match dec.process(&key, &iv, &[], &ct, policy) {
         Ok(pt) => Ok(pt),
         Err(_) => Err("Bad password?"),
     }

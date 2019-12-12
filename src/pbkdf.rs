@@ -1,4 +1,4 @@
-// Copyright (c) 2019 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2019-2020 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -33,12 +33,8 @@ pub static BOTAN_PBKDF_PARAM_MAP: phf::Map<&'static str, &[&[&str; 3]; 2]> = phf
     // alg      derive_key_from_password_timed()    derive_key_from_password()
     "argon2" => &[&["t", "p", "m"],                 &["m", "t", "p"]],
     "scrypt" => &[&["r", "p", "ln"],                &["ln", "r", "p"]],
-    "pbkdf2" => &[&["i", "", ""],                   &["i", "", ""]],
-};
-
-static BOTAN_HASH_ALG_MAP: phf::Map<&'static str, &'static str> = phf_map! {
-    "sha256" => "SHA-256",
-    "sha512" => "SHA-512",
+    "pbkdf2-sha256" => &[&["i", "", ""],                   &["i", "", ""]],
+    "pbkdf2-sha512" => &[&["i", "", ""],                   &["i", "", ""]],
 };
 
 pub struct PBKDFCacheEntry {
@@ -51,41 +47,19 @@ pub struct PBKDFCacheEntry {
 }
 pub type PBKDFCache = Vec<PBKDFCacheEntry>;
 
-fn botan_pbkdf_name(alg: &str, pbkdf2_hash: &Option<String>) -> Result<String, &'static str> {
-    match alg {
-        "argon2" => Ok("Argon2id".to_string()),
-        "scrypt" => Ok("Scrypt".to_string()),
-        "pbkdf2" => {
-            let hash = pbkdf2_hash
-                .as_ref()
-                .ok_or("Missing PBKDF2 hash algorithm")?;
-            if let Some(hash) = BOTAN_HASH_ALG_MAP.get::<str>(&hash) {
-                Ok(format!("PBKDF2({})", hash))
-            } else {
-                eprintln!("Invalid hash algorithm: '{}'", hash);
-                Err("Invalid hash algorithm")
-            }
-        }
-        _ => {
-            eprintln!("Invalid KDF: '{}'", alg);
-            Err("Invalid KDF")
-        }
-    }
-}
-
 fn pbkdf_legacy(
     password: &str,
     key_len: usize,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
-    policy.check_pbkdf("SHA-3(512)", key_len, password, &[], &BTreeMap::new())?;
-    let mut result = crypto::digest("SHA-3(512)", password.as_bytes(), policy)?;
+    policy.check_pbkdf("sha3-512", key_len, password, &[], &BTreeMap::new())?;
+    let mut result = crypto::digest("sha3-512", password.as_bytes(), policy)?;
     result.truncate(key_len);
     Ok(result)
 }
 
 fn pbkdf_timed(
-    botan_alg: &str,
+    alg: &str,
     botan_param_order: &[&[&str; 3]; 2],
     password: &str,
     salt: &Vec<u8>,
@@ -94,7 +68,7 @@ fn pbkdf_timed(
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<(Vec<u8>, BTreeMap<String, usize>), &'static str> {
     crypto::derive_key_from_password_timed(
-        botan_alg,
+        alg,
         botan_param_order,
         key_len,
         password,
@@ -105,7 +79,7 @@ fn pbkdf_timed(
 }
 
 fn pbkdf_manual(
-    botan_alg: &str,
+    alg: &str,
     botan_param_order: &[&[&str; 3]; 2],
     password: &str,
     salt: &Vec<u8>,
@@ -114,7 +88,7 @@ fn pbkdf_manual(
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
     crypto::derive_key_from_password(
-        botan_alg,
+        alg,
         botan_param_order,
         key_len,
         password,
@@ -122,25 +96,6 @@ fn pbkdf_manual(
         params_map,
         policy,
     )
-}
-
-fn to_phc_alg(alg: &str, pbkdf2_hash: &Option<String>) -> Result<String, &'static str> {
-    match alg {
-        "pbkdf2" => Ok(format!(
-            "{}-{}",
-            alg,
-            pbkdf2_hash.as_ref().ok_or("Missing PBKDF2 hash")?
-        )),
-        _ => Ok(alg.to_string()),
-    }
-}
-
-pub fn from_phc_alg(alg: &str) -> (String, Option<String>) {
-    if alg.starts_with("pbkdf2-") {
-        let parts = alg.splitn(2, "-").collect::<Vec<&str>>();
-        return (parts[0].to_string(), Some(parts[1].to_string()));
-    }
-    return (alg.to_string(), None);
 }
 
 fn format_phc(alg: &str, params: &BTreeMap<String, usize>, salt: &Vec<u8>) -> String {
@@ -167,7 +122,6 @@ pub fn derive_key(
     if opts.alg == "legacy" {
         return Ok((pbkdf_legacy(password, key_len, policy)?, None));
     }
-    let botan_alg = botan_pbkdf_name(&opts.alg, &opts.pbkdf2_hash)?;
     let mut salt = opts.salt.clone().unwrap_or_else(|| {
         rng.as_ref()
             .unwrap()
@@ -182,7 +136,7 @@ pub fn derive_key(
         let key;
         if let Some(entry) = cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
             e.password == password
-                && e.alg == botan_alg
+                && e.alg == opts.alg
                 && e.key.len() == key_len
                 && e.msec == 0
                 && e.params == *params
@@ -190,7 +144,7 @@ pub fn derive_key(
             key = entry.key.clone();
         } else {
             key = pbkdf_manual(
-                &botan_alg,
+                &opts.alg,
                 &botan_param_order,
                 password,
                 &salt,
@@ -201,7 +155,7 @@ pub fn derive_key(
             if cache.is_some() {
                 cache.as_mut().unwrap().push(PBKDFCacheEntry {
                     password: password.to_string(),
-                    alg: botan_alg,
+                    alg: opts.alg.clone(),
                     msec: 0,
                     salt: salt.clone(),
                     key: key.clone(),
@@ -211,17 +165,13 @@ pub fn derive_key(
         }
         return Ok((
             key,
-            Some(format_phc(
-                &to_phc_alg(&opts.alg, &opts.pbkdf2_hash)?,
-                opts.params.as_ref().unwrap(),
-                &salt,
-            )),
+            Some(format_phc(&opts.alg, opts.params.as_ref().unwrap(), &salt)),
         ));
     }
     let (key, params);
     if let Some(entry) = cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
         e.password == password
-            && e.alg == botan_alg
+            && e.alg == opts.alg
             && e.key.len() == key_len
             && e.msec == opts.msec.unwrap()
     }) {
@@ -230,7 +180,7 @@ pub fn derive_key(
         params = entry.params.clone();
     } else {
         let results = pbkdf_timed(
-            &botan_alg,
+            &opts.alg,
             &botan_param_order,
             password,
             &salt,
@@ -243,7 +193,7 @@ pub fn derive_key(
         if cache.is_some() {
             cache.as_mut().unwrap().push(PBKDFCacheEntry {
                 password: password.to_string(),
-                alg: botan_alg,
+                alg: opts.alg.clone(),
                 msec: opts.msec.unwrap(),
                 salt: salt.clone(),
                 key: key.clone(),
@@ -251,12 +201,5 @@ pub fn derive_key(
             });
         }
     }
-    Ok((
-        key,
-        Some(format_phc(
-            &to_phc_alg(&opts.alg, &opts.pbkdf2_hash)?,
-            &params,
-            &salt,
-        )),
-    ))
+    Ok((key, Some(format_phc(&opts.alg, &params, &salt))))
 }

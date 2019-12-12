@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2020 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -62,7 +62,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str
     }
 
     // verify hash just because
-    let verify = crypto::hexdigest("SHA-3(256)", &blob, &paops.policy)?;
+    let verify = crypto::hexdigest("sha3-256", &blob, &paops.policy)?;
 
     if hexhash != verify {
         eprintln!(
@@ -76,7 +76,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str
 }
 
 pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String, &'static str> {
-    let hexhash = crypto::hexdigest("SHA-3(256)", &blob, &paops.policy)?;
+    let hexhash = crypto::hexdigest("sha3-256", &blob, &paops.policy)?;
     let mut path = paops.casdir.clone();
     path.push(&hexhash);
 

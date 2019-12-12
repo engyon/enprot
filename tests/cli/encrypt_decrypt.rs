@@ -320,7 +320,7 @@ fn encrypt_decrypt_agent007_pbkdf2() {
         .arg("-e")
         .arg("Agent_007")
         .arg("--pbkdf")
-        .arg("pbkdf2")
+        .arg("pbkdf2-sha256")
         .arg("--pbkdf-params")
         .arg("i=1")
         .arg("--pbkdf-salt")
@@ -363,9 +363,7 @@ fn encrypt_decrypt_agent007_pbkdf2_sha512() {
         .arg("-e")
         .arg("Agent_007")
         .arg("--pbkdf")
-        .arg("pbkdf2")
-        .arg("--pbkdf2-hash")
-        .arg("sha512")
+        .arg("pbkdf2-sha512")
         .arg("--pbkdf-params")
         .arg("i=1")
         .arg("--pbkdf-salt")
@@ -412,7 +410,7 @@ fn encrypt_decrypt_agent007_pbkdf2_millis() {
             "-e",
             "Agent_007",
             "--pbkdf",
-            "pbkdf2",
+            "pbkdf2-sha256",
             "--pbkdf-msec",
             "10",
             "-k",
@@ -433,7 +431,7 @@ fn encrypt_decrypt_agent007_pbkdf2_millis() {
             "-e",
             "Agent_007",
             "--pbkdf",
-            "pbkdf2",
+            "pbkdf2-sha256",
             "--pbkdf-msec",
             "50",
             "-k",

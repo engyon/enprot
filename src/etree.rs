@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2020 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -38,7 +38,6 @@ use utils;
 
 pub struct PBKDFOptions {
     pub alg: String,                             // algorithm name
-    pub pbkdf2_hash: Option<String>,             // hash alg to use when alg is PBKDF2
     pub saltlen: usize,                          // desired salt length
     pub salt: Option<Vec<u8>>,                   // salt (randomly generated if None)
     pub msec: Option<u32>,                       // desired millis count to determine KDF params
@@ -52,7 +51,6 @@ impl PBKDFOptions {
             saltlen: consts::DEFAULT_PBKDF_SALT_LEN,
             salt: None,
             msec: Some(consts::DEFAULT_PBKDF_MSEC),
-            pbkdf2_hash: None,
             params: None,
         }
     }

@@ -18,13 +18,16 @@ name = "integration"
 path = "tests/tests.rs"
 
 [dependencies]
-hex         = "0.3"
-rpassword   = "2"
-clap        = "2.33.0"
-phc         = "0.2.0"
-botan       = "0.6.0"
-num         = "0.2.0"
-phf         = { version = "0.8.0", features = ["macros"] }
+hex                = "0.3"
+rpassword          = "2"
+clap               = "2.33.0"
+phc                = "0.2.0"
+botan              = "0.6.0"
+num                = "0.2.0"
+phf                = { version = "0.8.0", features = ["macros"] }
+aes                = "0.3.2"
+aes-gcm-siv        = "0.3.0"
+block-cipher-trait = "0.6.2"
 
 [dev-dependencies]
 tempfile    = "3.1.0"
