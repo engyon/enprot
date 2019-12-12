@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 extern crate assert_cmd;
+extern crate cpu_time;
 extern crate predicates;
 extern crate tempfile;
 

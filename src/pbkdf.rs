@@ -21,9 +21,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-extern crate phf;
-
-use self::phf::phf_map;
+use phf::phf_map;
 use std::collections::BTreeMap;
 
 use crypto;
