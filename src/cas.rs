@@ -23,8 +23,6 @@
 
 //	content addressed storage
 
-extern crate hex;
-
 use etree::ParseOps;
 use std::fs::File;
 use std::io::prelude::*;

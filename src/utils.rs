@@ -21,8 +21,6 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-extern crate botan;
-
 pub fn base64_encode(data: &[u8]) -> Result<String, &'static str> {
     botan::base64_encode(data).map_err(|_| "Botan error")
 }

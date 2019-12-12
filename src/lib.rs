@@ -21,6 +21,14 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+extern crate botan;
+extern crate clap;
+extern crate hex;
+extern crate num;
+extern crate phc;
+extern crate phf;
+extern crate rpassword;
+
 mod cas;
 mod consts;
 pub mod crypto;
@@ -34,9 +42,6 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
-
-extern crate clap;
-extern crate num;
 
 use clap::{App, AppSettings, Arg, ArgSettings};
 

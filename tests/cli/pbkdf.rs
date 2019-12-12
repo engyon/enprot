@@ -1,9 +1,4 @@
-extern crate assert_cmd;
-extern crate cpu_time;
-extern crate predicates;
-extern crate tempfile;
-
-use self::cpu_time::ThreadTime;
+use cpu_time::ThreadTime;
 use std::fs;
 
 use Fixture;

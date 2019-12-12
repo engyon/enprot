@@ -1,10 +1,5 @@
-extern crate assert_cmd;
-extern crate cpu_time;
-extern crate predicates;
-extern crate tempfile;
-
-use self::cpu_time::ThreadTime;
 use assert_cmd::prelude::*;
+use cpu_time::ThreadTime;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
