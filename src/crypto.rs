@@ -1,4 +1,4 @@
-// Copyright (c) 2019 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2019-2020 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -21,9 +21,23 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use phf::phf_map;
 use std::collections::BTreeMap;
 
 use consts;
+
+pub static BOTAN_HASH_ALG_MAP: phf::Map<&'static str, &'static str> = phf_map! {
+    "sha256" => "SHA-256",
+    "sha512" => "SHA-512",
+    "sha3-256" => "SHA-3(256)",
+    "sha3-512" => "SHA-3(512)",
+};
+
+pub fn to_botan_hash(alg: &str) -> Result<&'static str, &'static str> {
+    Ok(BOTAN_HASH_ALG_MAP
+        .get::<str>(alg)
+        .ok_or("Unrecognized hash algorithm")?)
+}
 
 pub trait CryptoPolicy {
     fn check_hash(&self, _alg: &str) -> Result<(), &'static str> {
@@ -120,7 +134,7 @@ impl CryptoPolicy for CryptoPolicyNIST {
         _ad: &[u8],
     ) -> Result<(), &'static str> {
         self.check_alg("Cipher", alg)?;
-        if alg == "AES-256/GCM" && iv.len() != 96 / 8 {
+        if alg == "aes-256-gcm" && iv.len() != 96 / 8 {
             return Err("IV length does not match NIST recommendations for this cipher.");
         }
         Ok(())
@@ -133,9 +147,10 @@ pub fn digest(
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<Vec<u8>, &'static str> {
     policy.check_hash(alg)?;
-    let hash = botan::HashFunction::new(alg).map_err(|_| "Botan error")?;
-    hash.update(data).map_err(|_| "Botan error")?;
-    hash.finish().map_err(|_| "Botan error")
+    let hash =
+        botan::HashFunction::new(to_botan_hash(alg)?).map_err(|_| "Botan error creating hash")?;
+    hash.update(data).map_err(|_| "Botan error updating hash")?;
+    hash.finish().map_err(|_| "Botan error finishing hash")
 }
 
 pub fn hexdigest(
@@ -146,90 +161,19 @@ pub fn hexdigest(
     Ok(hex::encode(digest(alg, data, policy)?))
 }
 
-fn symmetric_cipher(
-    alg: &str,
-    key: &[u8],
-    iv: &[u8],
-    ad: &[u8],
-    data: &[u8],
-    direction: botan::CipherDirection,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<Vec<u8>, &'static str> {
-    policy.check_cipher(alg, key, iv, ad)?;
-    let cipher = botan::Cipher::new(alg, direction).map_err(|_| "Botan error creating cipher")?;
-    cipher
-        .set_key(key)
-        .map_err(|_| "Botan error setting cipher key")?;
-    cipher
-        .set_associated_data(ad)
-        .map_err(|_| "Botan error setting AD")?;
-    cipher
-        .process(iv, data)
-        .map_err(|_| "Botan error processing cipher data")
-}
-
-pub fn to_botan_cipher(alg: &str) -> Result<&'static str, &'static str> {
-    Ok(consts::BOTAN_CIPHER_ALG_MAP
-        .get::<str>(alg)
-        .ok_or("Unrecognized cipher")?)
-}
-
-fn cipher_keylen(alg: &str) -> Result<botan::KeySpec, &'static str> {
-    let cipher = botan::Cipher::new(alg, botan::CipherDirection::Encrypt)
-        .map_err(|_| "Botan error creating cipher")?;
-    cipher.key_spec().map_err(|_| "Botan error")
-}
-
-pub fn cipher_key_len_min(alg: &str) -> Result<usize, &'static str> {
-    Ok(cipher_keylen(alg)?.minimum_keylength())
-}
-
-pub fn cipher_key_len_max(alg: &str) -> Result<usize, &'static str> {
-    Ok(cipher_keylen(alg)?.maximum_keylength())
-}
-
-pub fn cipher_nonce_len(alg: &str) -> Result<usize, &'static str> {
-    let cipher = botan::Cipher::new(alg, botan::CipherDirection::Encrypt)
-        .map_err(|_| "Botan error creating cipher")?;
-    Ok(cipher.default_nonce_length())
-}
-
-pub fn encrypt(
-    alg: &str,
-    key: &[u8],
-    iv: &[u8],
-    ad: &[u8],
-    pt: &[u8],
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<Vec<u8>, &'static str> {
-    symmetric_cipher(
-        alg,
-        key,
-        iv,
-        ad,
-        pt,
-        botan::CipherDirection::Encrypt,
-        policy,
-    )
-}
-
-pub fn decrypt(
-    alg: &str,
-    key: &[u8],
-    iv: &[u8],
-    ad: &[u8],
-    ct: &[u8],
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<Vec<u8>, &'static str> {
-    symmetric_cipher(
-        alg,
-        key,
-        iv,
-        ad,
-        ct,
-        botan::CipherDirection::Decrypt,
-        policy,
-    )
+fn to_botan_pbkdf(alg: &str) -> Result<String, &'static str> {
+    if alg.starts_with("pbkdf2-") {
+        let hash = alg.splitn(2, "-").skip(1).collect::<String>();
+        return Ok(format!("PBKDF2({})", to_botan_hash(&hash)?));
+    }
+    match alg {
+        "argon2" => Ok("Argon2id".to_string()),
+        "scrypt" => Ok("Scrypt".to_string()),
+        _ => {
+            eprintln!("Invalid KDF: '{}'", alg);
+            Err("Invalid KDF")
+        }
+    }
 }
 
 pub fn derive_key_from_password(
@@ -253,9 +197,15 @@ pub fn derive_key_from_password(
         return Err("Extraneous PBKDF parameters");
     }
     let key = botan::derive_key_from_password(
-        alg, key_len, password, salt, params[0], params[1], params[2],
+        &to_botan_pbkdf(alg)?,
+        key_len,
+        password,
+        salt,
+        params[0],
+        params[1],
+        params[2],
     )
-    .map_err(|_| "Botan error")?;
+    .map_err(|_| "Botan error deriving key")?;
     Ok(key)
 }
 
@@ -268,9 +218,14 @@ pub fn derive_key_from_password_timed(
     msec: u32,
     policy: &Box<dyn CryptoPolicy>,
 ) -> Result<(Vec<u8>, BTreeMap<String, usize>), &'static str> {
-    let (key, param1, param2, param3) =
-        botan::derive_key_from_password_timed(alg, key_len, password, &salt, msec)
-            .map_err(|_| "Botan error")?;
+    let (key, param1, param2, param3) = botan::derive_key_from_password_timed(
+        &to_botan_pbkdf(alg)?,
+        key_len,
+        password,
+        &salt,
+        msec,
+    )
+    .map_err(|_| "Botan error deriving key (timed)")?;
     let params = [param1, param2, param3];
     let mut params_map = BTreeMap::new();
     for (i, param) in param_order[0].iter().filter(|v| !v.is_empty()).enumerate() {

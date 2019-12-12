@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2020 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -21,6 +21,9 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+extern crate aes;
+extern crate aes_gcm_siv;
+extern crate block_cipher_trait;
 extern crate botan;
 extern crate clap;
 extern crate hex;
@@ -30,6 +33,7 @@ extern crate phf;
 extern crate rpassword;
 
 mod cas;
+mod cipher;
 mod consts;
 pub mod crypto;
 mod etree;
@@ -71,7 +75,7 @@ where
     let default_pbkdf_msec = consts::DEFAULT_PBKDF_MSEC.to_string();
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-    let mut app = App::new("enprot")
+    let app = App::new("enprot")
         .version(VERSION)
         .setting(AppSettings::DeriveDisplayOrder)
         .setting(AppSettings::ColoredHelp)
@@ -218,15 +222,6 @@ where
                 .value_name("HEX")
                 .hidden(true)
                 .help("Advanced option for testing, do not use"),
-        )
-        .arg(
-            Arg::with_name("pbkdf2-hash")
-                .long("pbkdf2-hash")
-                .takes_value(true)
-                .value_name("ALG")
-                .default_value(consts::DEFAULT_PBKDF2_HASH_ALG)
-                .possible_values(consts::VALID_PBKDF2_HASH_ALGS)
-                .help("Set the hash algorithm to use for PBKDF2"),
         )
         .arg(
             Arg::with_name("pbkdf-disable-cache")
@@ -382,23 +377,6 @@ where
     }
     if let Some(val) = matches.value_of("pbkdf-salt") {
         paops.pbkdf.salt = Some(hex::decode(val).unwrap());
-    }
-    if matches.occurrences_of("pbkdf2-hash") != 0 {
-        if paops.pbkdf.alg != "pbkdf2" {
-            let err = clap::Error::with_description(
-                &format!(
-                    "pbkdf2-specific option provided but pbkdf is set to '{}'",
-                    matches.value_of("pbkdf").unwrap()
-                ),
-                clap::ErrorKind::ArgumentConflict,
-            );
-            eprintln!("{}", err);
-            app.print_help().unwrap();
-            std::process::exit(1);
-        }
-        paops.pbkdf.pbkdf2_hash = matches.value_of("pbkdf2-hash").map(|v| v.to_string());
-    } else if paops.pbkdf.alg == "pbkdf2" {
-        paops.pbkdf.pbkdf2_hash = Some(consts::DEFAULT_PBKDF2_HASH_ALG.to_string());
     }
     if matches.occurrences_of("pbkdf-disable-cache") != 0 {
         paops.pbkdf_cache = None;
