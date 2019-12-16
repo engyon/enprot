@@ -1,0 +1,98 @@
+name: deploy
+
+on:
+  push:
+    tags: '[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  CROSS_VERSION: 0.1.16
+  BOTAN: 2.12.1
+  PROJECT_NAME: enprot
+  EXE_NAME: enprot
+
+jobs:
+  release-archive:
+    name: Create release archive
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        target: [x86_64-unknown-linux-musl, x86_64-apple-darwin, x86_64-pc-windows-gnu]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            env:
+              TARGET: x86_64-unknown-linux-musl
+              PREFIX: /usr/local/x86_64-linux-musl
+              TARGET_CC: x86_64-linux-musl-gcc
+              TARGET_CXX: x86_64-linux-musl-g++
+              TARGET_AR: x86_64-linux-musl-gcc-ar
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            env:
+              TARGET: x86_64-apple-darwin
+              PREFIX: /usr/local
+          - os: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+            env:
+              TARGET: x86_64-pc-windows-gnu
+              TARGET_CC: x86_64-w64-mingw32-gcc-posix
+              TARGET_CXX: x86_64-w64-mingw32-g++-posix
+              TARGET_AR: x86_64-w64-mingw32-gcc-ar-posix
+              EXE_NAME: enprot.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v1
+      # install rust
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+            profile: minimal
+            toolchain: stable
+            target: ${{ matrix.env.TARGET }}
+            default: true
+      # create our archives
+      - name: Create archive
+        env: ${{ matrix.env }}
+        run: |
+          set -euxo pipefail
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          EXE_PATH="target/$TARGET/release/$EXE_NAME"
+          . ci/build-static.sh
+          . ci/archive.sh
+      # upload archives for use by release jobs
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v1
+        with:
+          name: archives
+          path: archives
+
+  github-release:
+    name: Create github release
+    needs: [release-archive]
+    runs-on: ubuntu-latest
+    steps:
+      # download our archive artifacts
+      - name: Download artifacts
+        uses: actions/download-artifact@v1
+        with:
+          name: archives
+      # create a github release
+      # this is ultimately easier than @actions/create-release et al
+      - name: Create release
+        env:
+          GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          git clone https://github.com/riboseinc/create-github-release
+          cd create-github-release
+          sudo apt-get -y install ruby
+          export GEM_HOME="$(ruby -e 'print Gem.user_dir')"
+          export PATH="$PATH:$GEM_HOME/bin"
+          gem install --no-document bundler -v "$(grep -A 1 "BUNDLED WITH" Gemfile.lock | tail -n 1)"
+          bundle install
+          bundle exec ./create-github-release.rb \
+            ${{ github.repository }} \
+            "$RELEASE_TAG" \
+            ../archives/*
+
