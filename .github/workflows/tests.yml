@@ -6,13 +6,21 @@ env:
   RUST_BACKTRACE: full
 
 jobs:
-  build-stable:
+  test-unix-stable:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     name: Test on stable toolchain
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
-
     steps:
       - uses: actions/checkout@v1
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+            profile: minimal
+            toolchain: stable
+            default: true
       - name: Build program
         run: |
           ./ci/install.sh
