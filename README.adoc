@@ -12,10 +12,10 @@ Engyon Protected Text (EPT) is a human-editable annotation method that
 allows a text format document to contain finely grained cryptographic
 confidentiality and integrity features.
 
-Enprot is a pure Rust project. Use `cargo build --release` to build
-the release binary `target/release/enprot` or `cargo run --` to
-build and run the debug version. Some of the dependencies may require
-the latest compiler (developed and tested with `rustc` 1.27.2).
+Enprot requires a recent version of https://github.com/randombit/botan[botan].
+Use `cargo build --release` to build the release binary `target/release/enprot`
+or `cargo run --` to build and run the debug version. Some dependencies may
+require the latest compiler.
 
 There is a simple help built-in with `-h` flag:
 
