@@ -69,8 +69,10 @@ where
 
     let default_pbkdf_salt_len = consts::DEFAULT_PBKDF_SALT_LEN.to_string();
     let default_pbkdf_msec = consts::DEFAULT_PBKDF_MSEC.to_string();
+    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
     let mut app = App::new("enprot")
+        .version(VERSION)
         .setting(AppSettings::DeriveDisplayOrder)
         .setting(AppSettings::ColoredHelp)
         .setting(AppSettings::ColorAuto)
