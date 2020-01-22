@@ -9,7 +9,7 @@ FROM rustembedded/cross:$TARGET-$CROSS_VERSION
 ENV CARGO_TARGET_${target//-/_}_LINKER ./linker
 RUN apt-get -y update && \
     apt-get -y install python && \
-    git clone --depth 1 --branch $BOTAN https://github.com/randombit/botan && \
+    git clone --depth 1 --branch $BOTAN_VERSION https://github.com/randombit/botan && \
     cd botan && \
     ./configure.py --prefix=$PREFIX --cc-bin=$TARGET_CXX --ar-command=$TARGET_AR \
     --without-documentation --build-targets=static --minimized-build \

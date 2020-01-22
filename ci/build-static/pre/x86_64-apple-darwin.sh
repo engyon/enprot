@@ -1,4 +1,4 @@
-git clone --depth 1 --branch $BOTAN https://github.com/randombit/botan && \
+git clone --depth 1 --branch "$BOTAN_VERSION" https://github.com/randombit/botan && \
 cd botan
 ./configure.py --prefix=$PREFIX --without-documentation --without-openssl \
   --build-targets=static --minimized-build --enable-modules=$BOTAN_MODULES

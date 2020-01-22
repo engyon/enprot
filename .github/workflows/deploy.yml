@@ -6,7 +6,7 @@ on:
 
 env:
   CROSS_VERSION: 0.1.16
-  BOTAN: 2.12.1
+  BOTAN_VERSION: 2.12.1
   PROJECT_NAME: enprot
   EXE_NAME: enprot
 
