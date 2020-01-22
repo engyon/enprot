@@ -1,6 +1,3 @@
-#!/bin/bash -eux
-. ci/common.inc.sh
-
 # build a docker image with native deps
 img="$PROJECT_NAME/cross-build:$TARGET"
 target=${TARGET^^}
