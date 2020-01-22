@@ -1,5 +1,3 @@
-: "${PREFIX:=$GITHUB_WORKSPACE/installs}"
-: "${RELEASE_TAG=${GITHUB_REF#refs/tags/}}"
 . ci/common.inc.sh
 
 # strip
