@@ -12,11 +12,11 @@ env:
 
 jobs:
   release-archive:
-    name: Create release archive
+    name: archive
     timeout-minutes: 15
     strategy:
       matrix:
-        target: [x86_64-unknown-linux-musl, x86_64-apple-darwin, x86_64-pc-windows-gnu]
+        target: [x86_64-unknown-linux-musl, x86_64-apple-darwin, x86_64-pc-windows-gnu, x86_64-pc-windows-msvc]
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
@@ -39,18 +39,35 @@ jobs:
               TARGET_CXX: x86_64-w64-mingw32-g++-posix
               TARGET_AR: x86_64-w64-mingw32-gcc-ar-posix
               EXE_NAME: enprot.exe
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            env:
+              TARGET: x86_64-pc-windows-msvc
+              EXE_NAME: enprot.exe
+              GIT_REDIRECT_STDERR: '2>&1'
+
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v1
 
       # set environment
-      - name: Set environment
+      - name: Set environment (unix)
+        if: "!startsWith(matrix.os, 'windows')"
         env: ${{ matrix.env }}
         run: |
           set -euxo pipefail
           echo "::set-env name=RELEASE_TAG::${GITHUB_REF#refs/tags/}"
           echo "::set-env name=PREFIX::${PREFIX-$GITHUB_WORKSPACE/installs}"
           echo "::set-env name=EXE_PATH::target/$TARGET/release/$EXE_NAME"
+      - name: Set environment (windows)
+        if: startsWith(matrix.os, 'windows')
+        env: ${{ matrix.env }}
+        run: |
+          Set-StrictMode -Version 3.0
+          Set-PSDebug -Trace 2
+          echo "::set-env name=RELEASE_TAG::$($Env:GITHUB_REF.Replace('refs/tags/', ''))"
+          echo "::set-env name=PREFIX::$($($PWD -join 'installs').Replace('\', '/'))"
+          echo "::set-env name=EXE_PATH::target/$Env:TARGET/release/$Env:EXE_NAME"
 
       # install rust
       - name: Install rust toolchain
@@ -60,20 +77,43 @@ jobs:
             toolchain: stable
             target: ${{ matrix.env.TARGET }}
             default: true
+      - name: Install python (windows)
+        if: startsWith(matrix.os, 'windows')
+        uses: actions/setup-python@v1
+        with:
+          python-version: '3.x'
 
       # build
-      - name: Build
+      - name: Build (unix)
+        if: "!startsWith(matrix.os, 'windows')"
         env: ${{ matrix.env }}
         run: |
           set -euxo pipefail
           . ci/build-static.sh
+      - name: Build (windows)
+        if: startsWith(matrix.os, 'windows')
+        env: ${{ matrix.env }}
+        shell: powershell
+        run: |
+          Set-StrictMode -Version 3.0
+          Set-PSDebug -Trace 2
+          . .\ci\build-static.ps1
 
       # archive
-      - name: Archive
+      - name: Archive (unix)
+        if: "!startsWith(matrix.os, 'windows')"
         env: ${{ matrix.env }}
         run: |
           set -euxo pipefail
           . ci/archive.sh
+      - name: Archive (windows)
+        if: startsWith(matrix.os, 'windows')
+        env: ${{ matrix.env }}
+        shell: powershell
+        run: |
+          Set-StrictMode -Version 3.0
+          Set-PSDebug -Trace 2
+          . .\ci\archive.ps1
 
       # upload archives for use by release jobs
       - name: Upload artifacts
@@ -83,7 +123,7 @@ jobs:
           path: archives
 
   github-release:
-    name: Create github release
+    name: github release
     needs: [release-archive]
     runs-on: ubuntu-latest
     steps:

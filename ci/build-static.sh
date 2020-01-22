@@ -9,7 +9,7 @@ EOF
 
 . "ci/build-static/pre/$TARGET.sh"
 
-# use cross to build
+# install cross
 cargo install --version "$CROSS_VERSION" cross
 # update version in manifest to match our tag
 sed -ie "s/^version.*/version = \"$RELEASE_TAG\"/" Cargo.toml
