@@ -60,13 +60,21 @@ jobs:
             toolchain: stable
             target: ${{ matrix.env.TARGET }}
             default: true
-      # create our archives
-      - name: Create archive
+
+      # build
+      - name: Build
         env: ${{ matrix.env }}
         run: |
           set -euxo pipefail
           . ci/build-static.sh
+
+      # archive
+      - name: Archive
+        env: ${{ matrix.env }}
+        run: |
+          set -euxo pipefail
           . ci/archive.sh
+
       # upload archives for use by release jobs
       - name: Upload artifacts
         uses: actions/upload-artifact@v1
