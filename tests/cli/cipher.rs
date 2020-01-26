@@ -167,3 +167,50 @@ fn encrypt_siv() {
         &fs::read_to_string(&ept.source).unwrap(),
     );
 }
+
+#[test]
+fn encrypt_gcm_siv() {
+    let ept = Fixture::copy("sample/simple.ept");
+
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("-e")
+        .arg("Agent_007")
+        .arg("--pbkdf")
+        .arg("argon2")
+        .arg("--pbkdf-params")
+        .arg("t=1,p=1,m=16")
+        .arg("--pbkdf-salt")
+        .arg("0102030405060708")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg("--cipher")
+        .arg("aes-256-gcm-siv")
+        .arg("--cipher-iv")
+        .arg("010203040506070809101112")
+        .arg(&ept.path)
+        .assert()
+        .success();
+    assert!(&fs::read_to_string(&ept.path)
+        .unwrap()
+        .contains("aes-256-gcm-siv"));
+    assert_eq!(
+        &fs::read_to_string(&ept.path).unwrap(),
+        &fs::read_to_string("test-data/simple-encrypt-agent007-gcm-siv.ept").unwrap()
+    );
+    // decrypt
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("-d")
+        .arg("Agent_007")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .assert()
+        .success();
+    // make sure we can decrypt correctly
+    assert_eq!(
+        &fs::read_to_string(&ept.path).unwrap(),
+        &fs::read_to_string(&ept.source).unwrap(),
+    );
+}
