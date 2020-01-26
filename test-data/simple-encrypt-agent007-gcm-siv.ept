@@ -1,0 +1,5 @@
+Regular text
+// <( ENCRYPTED Agent_007 cipher:aes-256-gcm-siv$iv=AQIDBAUGBwgJEBES pbkdf:$argon2$m=16,p=1,t=1$AQIDBAUGBwg= )>
+// <( DATA PHsVelLwtISLjnP6XyrbyqzqQ1SLf6mBk8+jpw== )>
+// <( END Agent_007 )>
+More regular text

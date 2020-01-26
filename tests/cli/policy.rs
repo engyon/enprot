@@ -159,4 +159,26 @@ fn policy_nist_cipher() {
         .stderr(predicates::str::contains(
             "Cipher algorithm is not permitted by policy",
         ));
+
+    // aes-256-gcm-siv is not allowed
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("--policy")
+        .arg("nist")
+        .arg("-e")
+        .arg("Agent_007")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg("--pbkdf")
+        .arg("pbkdf2-sha256")
+        .arg("--cipher")
+        .arg("aes-256-gcm-siv")
+        .arg(&ept.path)
+        .arg("-o")
+        .arg("-")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Cipher algorithm is not permitted by policy",
+        ));
 }
