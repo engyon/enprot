@@ -220,3 +220,92 @@ pub fn encryption(alg: &str) -> Result<Box<dyn SymmetricCipher>, &'static str> {
 pub fn decryption(alg: &str) -> Result<Box<dyn SymmetricCipher>, &'static str> {
     create(alg, CipherDirection::Decrypt)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn cipher_create_invalid() {
+        create("aes-128-gcm", CipherDirection::Encrypt).unwrap();
+    }
+
+    #[test]
+    fn aes_256_gcm() {
+        let policy: Box<dyn crypto::CryptoPolicy> = Box::new(crypto::CryptoPolicyNone {});
+        let key: &[u8] =
+            &hex::decode("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308")
+                .unwrap();
+        let iv: &[u8] = &hex::decode("cafebabefacedbaddecaf888").unwrap();
+        let pt: &[u8] = &hex::decode(concat!(
+            "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a72",
+            "1c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255"
+        ))
+        .unwrap();
+        let ct;
+        {
+            let enc = encryption("aes-256-gcm").unwrap();
+            assert_eq!(enc.alg(), "aes-256-gcm");
+            assert_eq!(enc.nonce_len(), 12);
+            assert_eq!(enc.key_len_min(), 32);
+            assert_eq!(enc.key_len_max(), 32);
+
+            ct = enc.process(&key, &iv, &[], &pt, &policy).unwrap();
+            assert_eq!(
+                ct,
+                hex::decode(
+                    concat!(
+                        "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3d",
+                        "a7b08b1056828838c5f61e6393ba7a0abcc9f662898015adb094dac5d93471bdec1a502270e3cc6c"
+                        )).unwrap()
+            );
+        }
+
+        let dec = decryption("aes-256-gcm").unwrap();
+        assert_eq!(dec.alg(), "aes-256-gcm");
+        assert_eq!(dec.nonce_len(), 12);
+        assert_eq!(dec.key_len_min(), 32);
+        assert_eq!(dec.key_len_max(), 32);
+        assert_eq!(dec.process(&key, &iv, &[], &ct, &policy).unwrap(), pt);
+    }
+
+    #[test]
+    fn aes_256_gcm_siv() {
+        let policy: Box<dyn crypto::CryptoPolicy> = Box::new(crypto::CryptoPolicyNone {});
+        let key: &[u8] =
+            &hex::decode("0100000000000000000000000000000000000000000000000000000000000000")
+                .unwrap();
+        let iv: &[u8] = &hex::decode("030000000000000000000000").unwrap();
+        let pt: &[u8] = &hex::decode(concat!(
+            "0100000000000000000000000000000002000000000000000000000000000000",
+            "0300000000000000000000000000000004000000000000000000000000000000"
+        ))
+        .unwrap();
+        let ct;
+        {
+            let enc = encryption("aes-256-gcm-siv").unwrap();
+            assert_eq!(enc.alg(), "aes-256-gcm-siv");
+            assert_eq!(enc.nonce_len(), 12);
+            assert_eq!(enc.key_len_min(), 32);
+            assert_eq!(enc.key_len_max(), 32);
+
+            ct = enc.process(&key, &iv, &[], &pt, &policy).unwrap();
+            assert_eq!(
+                ct,
+                hex::decode(
+                    concat!(
+                        "c2d5160a1f8683834910acdafc41fbb1632d4a353e8b905ec9a5499ac34f96c7e1049eb080883891",
+                        "a4db8caaa1f99dd004d80487540735234e3744512c6f90ce112864c269fc0d9d88c61fa47e39aa08"
+                        )).unwrap()
+            );
+        }
+
+        let dec = decryption("aes-256-gcm-siv").unwrap();
+        assert_eq!(dec.alg(), "aes-256-gcm-siv");
+        assert_eq!(dec.nonce_len(), 12);
+        assert_eq!(dec.key_len_min(), 32);
+        assert_eq!(dec.key_len_max(), 32);
+        assert_eq!(dec.process(&key, &iv, &[], &ct, &policy).unwrap(), pt);
+    }
+}
