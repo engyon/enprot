@@ -43,12 +43,12 @@ impl Fixture {
 
 pub fn digest(alg: &str, data: &[u8]) -> Result<Vec<u8>, &'static str> {
     let policy: Box<dyn enprot::crypto::CryptoPolicy> =
-        Box::new(enprot::crypto::CryptoPolicyNone {});
+        Box::new(enprot::crypto::CryptoPolicyDefault {});
     enprot::crypto::digest(alg, data, &policy)
 }
 
 pub fn hexdigest(alg: &str, data: &[u8]) -> Result<String, &'static str> {
     let policy: Box<dyn enprot::crypto::CryptoPolicy> =
-        Box::new(enprot::crypto::CryptoPolicyNone {});
+        Box::new(enprot::crypto::CryptoPolicyDefault {});
     enprot::crypto::hexdigest(alg, data, &policy)
 }

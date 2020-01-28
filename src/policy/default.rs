@@ -21,21 +21,59 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub const VALID_CIPHER_ALGS: &[&str] = &["aes-256-siv", "aes-256-gcm", "aes-256-gcm-siv"];
+use std::collections::BTreeMap;
 
-// parsing separators
-pub const DEFAULT_LEFT_SEP: &str = "// <(";
-pub const DEFAULT_RIGHT_SEP: &str = ")>";
+use policy::CryptoPolicy;
 
-// valid value lists
-pub const VALID_PBKDF_ALGS: &[&str] = &[
-    "argon2",
-    "scrypt",
-    "pbkdf2-sha256",
-    "pbkdf2-sha512",
-    "legacy",
-];
+pub struct CryptoPolicyDefault {}
 
-// policies
-pub const VALID_POLICIES: &[&str] = &["default", "nist"];
-pub const DEFAULT_POLICY: &str = "default";
+impl CryptoPolicyDefault {
+    const DEFAULT_PBKDF_ALG: &'static str = "argon2";
+    const DEFAULT_PBKDF_SALT_LEN: usize = 16;
+    pub const DEFAULT_PBKDF_MSEC: u32 = 100;
+    const DEFAULT_CIPHER_ALG: &'static str = "aes-256-siv";
+}
+
+// allow everything
+impl CryptoPolicy for CryptoPolicyDefault {
+    fn check_hash(&self, _alg: &str) -> Result<(), &'static str> {
+        Ok(())
+    }
+
+    fn check_pbkdf(
+        &self,
+        _alg: &str,
+        _key_len: usize,
+        _password: &str,
+        _salt: &[u8],
+        _params: &BTreeMap<String, usize>,
+    ) -> Result<(), &'static str> {
+        Ok(())
+    }
+
+    fn check_cipher(
+        &self,
+        _alg: &str,
+        _key: &[u8],
+        _iv: &[u8],
+        _ad: &[u8],
+    ) -> Result<(), &'static str> {
+        Ok(())
+    }
+
+    fn default_pbkdf_alg(&self) -> String {
+        Self::DEFAULT_PBKDF_ALG.to_string()
+    }
+
+    fn default_pbkdf_salt_length(&self) -> usize {
+        Self::DEFAULT_PBKDF_SALT_LEN
+    }
+
+    fn default_pbkdf_millis(&self) -> u32 {
+        Self::DEFAULT_PBKDF_MSEC
+    }
+
+    fn default_cipher_alg(&self) -> String {
+        Self::DEFAULT_CIPHER_ALG.to_string()
+    }
+}

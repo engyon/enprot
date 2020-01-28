@@ -38,16 +38,18 @@ mod consts;
 pub mod crypto;
 mod etree;
 mod pbkdf;
+mod policy;
 mod prot;
 pub mod utils;
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
-use clap::{App, AppSettings, Arg, ArgSettings};
+use clap::{App, AppSettings, Arg, ArgSettings, ErrorKind};
 
 fn validate_positive<T>(v: String) -> Result<(), String>
 where
@@ -57,6 +59,32 @@ where
     v.parse::<T>()
         .map_err(|_| err.clone())
         .and_then(|n| if n != T::zero() { Ok(()) } else { Err(err) })
+}
+
+fn err_exit(app: &mut App, desc: &str, kind: ErrorKind, show_help: bool) -> ! {
+    if show_help {
+        app.print_help().unwrap();
+        eprintln!("");
+    }
+    let err = clap::Error::with_description(desc, kind);
+    eprintln!("{}", err);
+    std::process::exit(1);
+}
+
+fn make_policy(app: &mut App, name: &str) -> Box<dyn crypto::CryptoPolicy> {
+    match name {
+        "default" => Box::new(crypto::CryptoPolicyDefault {}),
+        "nist" => Box::new(crypto::CryptoPolicyNIST {}),
+        value => {
+            // shouldn't happen
+            err_exit(
+                app,
+                &format!("Invalid policy: '{}'", value),
+                ErrorKind::InvalidValue,
+                true,
+            );
+        }
+    }
 }
 
 // Handle command line parameters
@@ -71,11 +99,9 @@ where
     // <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
     // <( END AUTHOR )>
 
-    let default_pbkdf_salt_len = consts::DEFAULT_PBKDF_SALT_LEN.to_string();
-    let default_pbkdf_msec = consts::DEFAULT_PBKDF_MSEC.to_string();
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-    let app = App::new("enprot")
+    let mut app = App::new("enprot")
         .version(VERSION)
         .setting(AppSettings::DeriveDisplayOrder)
         .setting(AppSettings::ColoredHelp)
@@ -181,11 +207,21 @@ where
                 .help("Set the policy to restrict cryptographic algorithms"),
         )
         .arg(
+            Arg::with_name("defaults")
+                .long("defaults")
+                .takes_value(true)
+                .value_name("POLICY")
+                .possible_values(consts::VALID_POLICIES)
+                .help("Load settings from POLICY, but do not enforce the policy"),
+        )
+        .arg(Arg::with_name("fips").long("fips").help(
+            "Select and enforce the use of FIPS-compliant algorithms (implies --policy=nist)",
+        ))
+        .arg(
             Arg::with_name("pbkdf")
                 .long("pbkdf")
                 .takes_value(true)
                 .value_name("ALG")
-                .default_value(consts::DEFAULT_PBKDF_ALG)
                 .possible_values(consts::VALID_PBKDF_ALGS)
                 .help("Set the PBKDF algorithm to use when encrypting"),
         )
@@ -194,7 +230,6 @@ where
                 .long("pbkdf-msec")
                 .takes_value(true)
                 .value_name("MSEC")
-                .default_value(&default_pbkdf_msec)
                 .validator(validate_positive::<u32>)
                 .help("Set the millisecond count for the PBKDF algorithm"),
         )
@@ -203,7 +238,6 @@ where
                 .long("pbkdf-salt-len")
                 .takes_value(true)
                 .value_name("BYTES")
-                .default_value(&default_pbkdf_salt_len)
                 .validator(&validate_positive::<usize>)
                 .help("Set the salt length for the PBKDF"),
         )
@@ -233,7 +267,6 @@ where
                 .long("cipher")
                 .takes_value(true)
                 .value_name("ALG")
-                .default_value(consts::DEFAULT_CIPHER_ALG)
                 .possible_values(consts::VALID_CIPHER_ALGS)
                 .help("Set the cipher algorithm to use when encrypting"),
         )
@@ -304,7 +337,40 @@ where
         );
     let matches = app.clone().get_matches_from(args);
 
-    let mut paops = etree::ParseOps::new();
+    let mut policy = matches.value_of("policy").unwrap();
+    // check if fips mode is requested (implicitly or explicitly)
+    let fips = matches.occurrences_of("fips") != 0
+        || (cfg!(unix)
+            && match fs::read_to_string("/proc/sys/crypto/fips_enabled") {
+                Ok(str) => str.chars().next() == Some('1'),
+                Err(_) => false,
+            });
+    if fips {
+        // check if the user specified a conflicting policy
+        if matches.occurrences_of("policy") != 0 && policy != "nist" {
+            err_exit(
+                &mut app,
+                &format!("Policy setting of '{}' conflicts with --fips", policy),
+                ErrorKind::ArgumentConflict,
+                false,
+            );
+        }
+        // override policy
+        policy = "nist";
+    }
+    assert!(!fips || (fips && policy == "nist"));
+    // instantiate the actual policy
+    let policy = make_policy(&mut app, policy);
+
+    // the policy will set default crypto-related values
+    let mut paops;
+    if let Some(defaults) = matches.value_of("defaults") {
+        paops = etree::ParseOps::new(make_policy(&mut app, defaults));
+        paops.policy = policy;
+    } else {
+        paops = etree::ParseOps::new(policy);
+    }
+
     // casdir
     if matches.occurrences_of("casdir") == 0 && Path::new("cas").is_dir() {
         paops.casdir = Path::new("cas").to_path_buf();
@@ -352,48 +418,39 @@ where
                 })
             }),
     );
+
     // pbkdf
-    paops.pbkdf.alg = matches.value_of("pbkdf").unwrap().to_string();
-    paops.pbkdf.saltlen = matches
-        .value_of("pbkdf-salt-len")
-        .unwrap()
-        .parse::<usize>()
-        .unwrap();
-    paops.pbkdf.msec = Some(
-        matches
-            .value_of("pbkdf-msec")
-            .unwrap()
-            .parse::<u32>()
-            .unwrap(),
-    );
+    if let Some(pbkdf) = matches.value_of("pbkdf") {
+        paops.pbkdfopts.alg = pbkdf.to_string();
+    }
+    if let Some(saltlen) = matches.value_of("pbkdf-salt-len") {
+        paops.pbkdfopts.saltlen = saltlen.parse::<usize>().unwrap();
+    }
+    if let Some(msec) = matches.value_of("pbkdf-msec") {
+        paops.pbkdfopts.msec = Some(msec.parse::<u32>().unwrap());
+    }
     if let Some(val) = matches.value_of("pbkdf-params") {
-        paops.pbkdf.msec = None;
+        paops.pbkdfopts.msec = None;
         let mut params: BTreeMap<String, usize> = BTreeMap::new();
         params.extend(val.split(",").map(|val| {
             let parts = val.splitn(2, '=').collect::<Vec<&str>>();
             (parts[0].to_string(), parts[1].parse::<usize>().unwrap())
         }));
-        paops.pbkdf.params = Some(params);
+        paops.pbkdfopts.params = Some(params);
     }
     if let Some(val) = matches.value_of("pbkdf-salt") {
-        paops.pbkdf.salt = Some(hex::decode(val).unwrap());
+        paops.pbkdfopts.salt = Some(hex::decode(val).unwrap());
     }
     if matches.occurrences_of("pbkdf-disable-cache") != 0 {
         paops.pbkdf_cache = None;
     }
     // cipher
-    paops.cipheropts.alg = matches.value_of("cipher").unwrap().to_string();
+    if let Some(cipher) = matches.value_of("cipher") {
+        paops.cipheropts.alg = cipher.to_string();
+    }
     if let Some(iv) = matches.value_of("cipher-iv") {
         paops.cipheropts.iv = Some(hex::decode(iv).unwrap());
     }
-    //policy
-    paops.policy = match matches.value_of("policy").unwrap() {
-        "none" => Box::new(crypto::CryptoPolicyNone {}),
-        "nist" => Box::new(crypto::CryptoPolicyNIST::new()),
-        _ => {
-            std::process::exit(1);
-        }
-    };
 
     // print some of the processing parameters if verbose
     if paops.verbose {
@@ -401,7 +458,7 @@ where
             "LEFT_SEP='{}' RIGHT_SEP='{}' casdir = '{}'",
             paops.left_sep,
             paops.right_sep,
-            paops.casdir.display()
+            paops.casdir.display(),
         );
     }
 

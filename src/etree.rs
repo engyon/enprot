@@ -31,7 +31,6 @@ use std::path::{Path, PathBuf};
 use cas;
 use consts;
 use crypto::CryptoPolicy;
-use crypto::CryptoPolicyNone;
 use pbkdf::PBKDFCache;
 use prot;
 use utils;
@@ -45,12 +44,12 @@ pub struct PBKDFOptions {
 }
 
 impl PBKDFOptions {
-    pub fn new() -> PBKDFOptions {
+    pub fn new(policy: &Box<dyn CryptoPolicy>) -> PBKDFOptions {
         PBKDFOptions {
-            alg: consts::DEFAULT_PBKDF_ALG.to_string(),
-            saltlen: consts::DEFAULT_PBKDF_SALT_LEN,
+            alg: policy.default_pbkdf_alg(),
+            saltlen: policy.default_pbkdf_salt_length(),
             salt: None,
-            msec: Some(consts::DEFAULT_PBKDF_MSEC),
+            msec: Some(policy.default_pbkdf_millis()),
             params: None,
         }
     }
@@ -62,9 +61,9 @@ pub struct CipherOptions {
 }
 
 impl CipherOptions {
-    pub fn new() -> CipherOptions {
+    pub fn new(policy: &Box<dyn CryptoPolicy>) -> CipherOptions {
         CipherOptions {
-            alg: consts::DEFAULT_CIPHER_ALG.to_string(),
+            alg: policy.default_cipher_alg(),
             iv: None,
         }
     }
@@ -84,15 +83,15 @@ pub struct ParseOps {
     pub casdir: PathBuf,                           // directory for cas objects
     pub verbose: bool,                             // verbose output to stdout
     pub rng: Option<botan::RandomNumberGenerator>, // RNG to use
-    pub pbkdf: PBKDFOptions,                       // the PBKDF options
-    pub pbkdf_cache: Option<PBKDFCache>,           // the PBKDF cache
     pub policy: Box<dyn CryptoPolicy>,             // the crypto alg policy
+    pub pbkdfopts: PBKDFOptions,                   // the PBKDF options
+    pub pbkdf_cache: Option<PBKDFCache>,           // the PBKDF cache
     pub cipheropts: CipherOptions,                 // cipher options
     level: isize,                                  // current recursion level
 }
 
 impl ParseOps {
-    pub fn new() -> ParseOps {
+    pub fn new(policy: Box<dyn CryptoPolicy>) -> ParseOps {
         ParseOps {
             left_sep: consts::DEFAULT_LEFT_SEP.to_string(),
             right_sep: consts::DEFAULT_RIGHT_SEP.to_string(),
@@ -106,10 +105,10 @@ impl ParseOps {
             level: 0,
             verbose: false,
             rng: Some(botan::RandomNumberGenerator::new().unwrap()),
-            pbkdf: PBKDFOptions::new(),
+            pbkdfopts: PBKDFOptions::new(&policy),
             pbkdf_cache: Some(Vec::new()),
-            policy: Box::new(CryptoPolicyNone {}),
-            cipheropts: CipherOptions::new(),
+            cipheropts: CipherOptions::new(&policy),
+            policy: policy,
         }
     }
 }
@@ -605,7 +604,7 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                         pt,
                         &pass,
                         &paops.rng,
-                        &paops.pbkdf,
+                        &paops.pbkdfopts,
                         &paops.cipheropts,
                         &mut paops.pbkdf_cache,
                         &paops.policy,
@@ -803,12 +802,14 @@ mod tests {
     use std::io::BufReader;
     use std::str;
 
+    use crypto::CryptoPolicyDefault;
+
     fn parse_ept(ept_file: &str) -> (TextTree, ParseOps, tempfile::TempDir) {
         let casdir = tempdir().unwrap();
         let mut paops = ParseOps {
             fname: ept_file.to_string(),
             casdir: casdir.path().to_path_buf(),
-            ..ParseOps::new()
+            ..ParseOps::new(Box::new(CryptoPolicyDefault {}))
         };
         let tree = parse(
             BufReader::new(File::open(ept_file.to_string()).unwrap()),
@@ -924,7 +925,7 @@ mod tests {
     #[test]
     fn transform_test_ept_encrypt_decrypt_geheim() {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
-        paops.pbkdf.alg = "legacy".to_string();
+        paops.pbkdfopts.alg = "legacy".to_string();
         // encrypt
         paops.encrypt.insert("GEHEIM".to_string());
         paops
@@ -958,7 +959,7 @@ mod tests {
     #[test]
     fn transform_test_ept_encrypt_store_agent007() {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
-        paops.pbkdf.alg = "legacy".to_string();
+        paops.pbkdfopts.alg = "legacy".to_string();
         // encrypt & store
         paops.encrypt.insert("Agent_007".to_string());
         paops.store.insert("Agent_007".to_string());
