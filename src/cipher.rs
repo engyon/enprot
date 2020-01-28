@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn aes_256_gcm() {
-        let policy: Box<dyn crypto::CryptoPolicy> = Box::new(crypto::CryptoPolicyNone {});
+        let policy: Box<dyn crypto::CryptoPolicy> = Box::new(crypto::CryptoPolicyDefault {});
         let key: &[u8] =
             &hex::decode("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308")
                 .unwrap();
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn aes_256_gcm_siv() {
-        let policy: Box<dyn crypto::CryptoPolicy> = Box::new(crypto::CryptoPolicyNone {});
+        let policy: Box<dyn crypto::CryptoPolicy> = Box::new(crypto::CryptoPolicyDefault {});
         let key: &[u8] =
             &hex::decode("0100000000000000000000000000000000000000000000000000000000000000")
                 .unwrap();
