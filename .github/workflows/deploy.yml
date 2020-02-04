@@ -11,7 +11,22 @@ env:
   EXE_NAME: enprot
 
 jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v1
+      - name: Check version
+        run: |
+          set -euxo pipefail
+          if [ "$(grep '^version' Cargo.toml | cut -d '"' -f2)" != "${GITHUB_REF#refs/tags/}" ]; then
+            echo "Version tag does not match manifest"
+            exit 1
+          fi
+
   release-archive:
+    needs: [checks]
     name: archive
     timeout-minutes: 15
     strategy:
@@ -155,4 +170,19 @@ jobs:
             ${{ github.repository }} \
             "$RELEASE_TAG" \
             ../archives/*
+
+  publish-crate:
+    name: crates.io
+    needs: [checks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euxo pipefail
+          ci/install.sh
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          cargo publish
 
