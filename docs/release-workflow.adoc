@@ -1,0 +1,12 @@
+= Enprot Release Workflow
+
+All development takes place on the `master` branch.
+
+To publish a new release, follow these steps:
+
+1. Update the version in `Cargo.toml`.
+2. Create a new release tag: `git tag -a 0.2.0 -m ''`
+3. Push the new tag: `git push origin 0.2.0`
+
+This will automatically publish a GitHub Release and publish the crate on crates.io.
+

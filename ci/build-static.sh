@@ -11,8 +11,6 @@ EOF
 
 # install cross
 cargo install --version "$CROSS_VERSION" cross
-# update version in manifest to match our tag
-sed -ie "s/^version.*/version = \"$RELEASE_TAG\"/" Cargo.toml
 # build
 cross -vv build --target "$TARGET" --release
 
