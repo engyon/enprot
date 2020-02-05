@@ -1,6 +1,6 @@
 [package]
 name        = "enprot"
-version     = "0.2.0"
+version     = "0.3.0"
 authors     = ["Ribose Inc. <open.source@ribose.com>"]
 license     = "BSD-2-Clause"
 description = "enprot command line tool for Engyon"
