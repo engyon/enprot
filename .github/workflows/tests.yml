@@ -9,16 +9,20 @@ on:
 
 env:
   RUST_BACKTRACE: full
+  BOTAN_VERSION: 2.13.0
+  PREFIX: /usr
 
 jobs:
   test-unix-stable:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     name: Test on stable toolchain
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
+      - if: "startsWith(matrix.os, 'windows')"
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v1
       - name: Install rust toolchain
         uses: actions-rs/toolchain@v1
@@ -26,10 +30,27 @@ jobs:
             profile: minimal
             toolchain: stable
             default: true
-      - name: Build program
+      - name: Install dependencies
+        if: "!startsWith(matrix.os, 'windows')"
+        run: ./ci/install.sh
+      - name: Install dependencies
+        if: "startsWith(matrix.os, 'windows')"
+        env:
+          GIT_REDIRECT_STDERR: '2>&1'
+        shell: powershell
         run: |
-          ./ci/install.sh
-          cargo build --verbose
+          $Env:PREFIX = ($PWD -join 'botan-install').Replace('\', '/')
+          $Env:Path += "$Env:PREFIX/lib"
+          $Env:TARGET = "x86_64-pc-windows-msvc"
+          ./ci/install.ps1
+          New-Item -ItemType Directory -Force -Path '.cargo'
+          Write-Output @"
+          [target.$Env:TARGET.botan-2]
+          rustc-link-search = ["native=${Env:PREFIX}/lib"]
+          rustc-link-lib = ["static=botan-2"]
+          "@ | Out-File -Append -Encoding UTF8 -LiteralPath .cargo\config
+      - name: Build
+        run: cargo build --verbose
       - name: Run tests
         run: cargo test --verbose -- --nocapture
 
