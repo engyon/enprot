@@ -45,6 +45,7 @@ fn encrypt_decrypt_agent007() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn encrypt_decrypt_agent007_stdin_pass() {
     let casdir = tempdir().unwrap();
