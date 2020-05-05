@@ -72,6 +72,7 @@ impl CipherOptions {
 // parse operations
 
 pub struct ParseOps {
+    pub max_depth: usize,
     pub left_sep: String,                          // left separator
     pub right_sep: String,                         // right separator
     pub store: HashSet<String>,                    // keywords to store
@@ -87,12 +88,13 @@ pub struct ParseOps {
     pub pbkdfopts: PBKDFOptions,                   // the PBKDF options
     pub pbkdf_cache: Option<PBKDFCache>,           // the PBKDF cache
     pub cipheropts: CipherOptions,                 // cipher options
-    level: isize,                                  // current recursion level
+    level: usize,                                  // current recursion level
 }
 
 impl ParseOps {
     pub fn new(policy: Box<dyn CryptoPolicy>) -> ParseOps {
         ParseOps {
+            max_depth: consts::DEFAULT_MAX_DEPTH,
             left_sep: consts::DEFAULT_LEFT_SEP.to_string(),
             right_sep: consts::DEFAULT_RIGHT_SEP.to_string(),
             store: HashSet::new(),
@@ -113,7 +115,6 @@ impl ParseOps {
     }
 }
 
-const MAX_DEPTH: isize = 100; // at least bail out of infinite loop
 const DATA_BYTES_PER_LINE: usize = 48; // that's 64 characters
 
 // the actual tree
@@ -410,7 +411,7 @@ pub fn parse<R>(buf_in: R, paops: &mut ParseOps) -> Result<TextTree, &'static st
 where
     R: BufRead,
 {
-    if paops.level > MAX_DEPTH {
+    if paops.max_depth != 0 && paops.level > paops.max_depth {
         panic!("Maximum recursion depth!");
     }
 
@@ -575,7 +576,7 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
 pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTree, &'static str> {
     let mut text_out = Vec::new();
 
-    if paops.level > MAX_DEPTH {
+    if paops.max_depth != 0 && paops.level > paops.max_depth {
         panic!("Maximum recursion depth!");
     }
 
@@ -585,9 +586,12 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
             TextNode::BeginEnd { ref keyw, ref txt } => {
                 // encrypt it ?
                 if paops.encrypt.contains(keyw) {
-                    // get blob
-                    let pt = tree_to_blob(&txt, paops);
+                    paops.level += 1;
+                    let block = transform(&txt.to_vec(), paops)?;
+                    paops.level -= 1;
 
+                    // get blob
+                    let pt = tree_to_blob(&block, paops);
                     // get password
                     let (newpass, pass) = match paops.passwords.get(keyw) {
                         Some(pass) => (false, pass.to_string()),
@@ -630,7 +634,11 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
 
                 // just store it without encryption ?
                 if paops.store.contains(keyw) {
-                    let blob = tree_to_blob(&txt, paops);
+                    paops.level += 1;
+                    let block = transform(&txt.to_vec(), paops)?;
+                    paops.level -= 1;
+
+                    let blob = tree_to_blob(&block, paops);
                     let hexhash = cas::save(blob, paops)?;
                     text_out.push(TextNode::Stored {
                         keyw: keyw.to_string(),
@@ -697,10 +705,15 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                     };
 
                     // parse to tree
-                    let subtree = blob_to_tree(pt, "decrypted".to_string(), &mut paops)?;
+                    let mut block = blob_to_tree(pt, "decrypted".to_string(), &mut paops)?;
+
+                    paops.level += 1;
+                    block = transform(&block, paops)?;
+                    paops.level -= 1;
+
                     text_out.push(TextNode::BeginEnd {
                         keyw: keyw.to_string(),
-                        txt: subtree,
+                        txt: block,
                     });
                     continue;
                 } else {
@@ -755,10 +768,15 @@ pub fn transform(text_in: &TextTree, mut paops: &mut ParseOps) -> Result<TextTre
                 // fetch it ?
                 if paops.fetch.contains(keyw) {
                     let blob = cas::load(&cas, paops)?;
-                    let subtree = blob_to_tree(blob, cas.to_string(), paops)?;
+                    let mut block = blob_to_tree(blob, cas.to_string(), paops)?;
+
+                    paops.level += 1;
+                    block = transform(&block, paops)?;
+                    paops.level -= 1;
+
                     text_out.push(TextNode::BeginEnd {
                         keyw: keyw.to_string(),
-                        txt: subtree,
+                        txt: block,
                     });
                     continue;
                 }

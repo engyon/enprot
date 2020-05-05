@@ -23,6 +23,8 @@
 
 pub const VALID_CIPHER_ALGS: &[&str] = &["aes-256-siv", "aes-256-gcm", "aes-256-gcm-siv"];
 
+pub const DEFAULT_MAX_DEPTH: usize = 100;
+
 // parsing separators
 pub const DEFAULT_LEFT_SEP: &str = "// <(";
 pub const DEFAULT_RIGHT_SEP: &str = ")>";
