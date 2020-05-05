@@ -123,7 +123,8 @@ fn encrypt_store_both_agent007_geheim() {
     );
     for hashval in vec![
         "7a8da017c0fe671ba16f4bc55b884444e708849290d8366f19c552c90950b8c2",
-        "ab664af9ef8ed0a7a542c4bcc0d2d2bf06973038d83ddbfcdd031eb80a308d5a",
+        "1749eaec9b40e6757ddd29b58002b01cf210e46119a8345421de80c6a3dd672a",
+        "86117980a54565a74cc5195865827aab44cfafc138e723e3a409631384d74ee2",
     ] {
         assert_eq!(
             hexdigest("sha3-256", &fs::read(casdir.path().join(hashval)).unwrap()).unwrap(),

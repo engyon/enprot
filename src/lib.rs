@@ -61,6 +61,14 @@ where
         .and_then(|n| if n != T::zero() { Ok(()) } else { Err(err) })
 }
 
+fn validate_non_negative<T>(v: String) -> Result<(), String>
+where
+    T: std::str::FromStr + num::Unsigned,
+{
+    let err = format!("Expected a number 0 or greater, received '{}'", v);
+    v.parse::<T>().map_err(|_| err.clone()).map(|_| ())
+}
+
 fn err_exit(app: &mut App, desc: &str, kind: ErrorKind, show_help: bool) -> ! {
     if show_help {
         app.print_help().unwrap();
@@ -101,6 +109,8 @@ where
 
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
+    let default_max_depth = consts::DEFAULT_MAX_DEPTH.to_string();
+
     let mut app = App::new("enprot")
         .version(VERSION)
         .setting(AppSettings::DeriveDisplayOrder)
@@ -117,6 +127,15 @@ where
                 .short("q")
                 .long("quiet")
                 .help("Suppress unnecessary output"),
+        )
+        .arg(
+            Arg::with_name("max-depth")
+                .long("max-depth")
+                .takes_value(true)
+                .value_name("DEPTH")
+                .validator(validate_non_negative::<usize>)
+                .default_value(&default_max_depth)
+                .help("Maximum recursion depth (use 0 for infinite)"),
         )
         .arg(
             Arg::with_name("left-separator")
@@ -382,6 +401,12 @@ where
     if matches.occurrences_of("quiet") != 0 {
         paops.verbose = false;
     }
+    // max recursion depth
+    paops.max_depth = matches
+        .value_of("max-depth")
+        .unwrap()
+        .parse::<usize>()
+        .unwrap();
     // separators
     paops.left_sep = matches.value_of("left-separator").unwrap().to_string();
     paops.right_sep = matches.value_of("right-separator").unwrap().to_string();

@@ -83,14 +83,21 @@ fn store_fetch_both_single_arg() {
         &fs::read_to_string(
             casdir
                 .path()
-                .join("cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4")
+                .join("d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab")
+        )
+        .unwrap(),
+        "James Bond\n"
+    );
+    assert_eq!(
+        &fs::read_to_string(
+            casdir
+                .path()
+                .join("af24962e45e3a7486189769ccda19167ac0b199aca28a5122ab3d647eec7d893")
         )
         .unwrap(),
         "Secret line 1
 Secret line 2
-// <( BEGIN Agent_007 )>
-James Bond
-// <( END Agent_007 )>\n"
+// <( STORED Agent_007 d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab )>\n"
     );
     assert_eq!(
         &fs::read_to_string(&ept.path).unwrap(),
@@ -140,14 +147,21 @@ fn store_fetch_both_multiple_args() {
         &fs::read_to_string(
             casdir
                 .path()
-                .join("cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4")
+                .join("d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab")
+        )
+        .unwrap(),
+        "James Bond\n"
+    );
+    assert_eq!(
+        &fs::read_to_string(
+            casdir
+                .path()
+                .join("af24962e45e3a7486189769ccda19167ac0b199aca28a5122ab3d647eec7d893")
         )
         .unwrap(),
         "Secret line 1
 Secret line 2
-// <( BEGIN Agent_007 )>
-James Bond
-// <( END Agent_007 )>\n"
+// <( STORED Agent_007 d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab )>\n"
     );
     assert_eq!(
         &fs::read_to_string(&ept.path).unwrap(),

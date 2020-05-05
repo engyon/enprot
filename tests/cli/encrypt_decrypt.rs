@@ -165,7 +165,7 @@ fn encrypt_decrypt_geheim_agent007() {
         .success();
     assert_eq!(
         &fs::read_to_string(&ept.path).unwrap(),
-        &fs::read_to_string("test-data/test-encrypt-geheim-agent007.ept").unwrap()
+        &fs::read_to_string("test-data/test-encrypt-geheim-then-agent007.ept").unwrap()
     );
     Command::cargo_bin("enprot")
         .unwrap()
