@@ -1,0 +1,50 @@
+* alice
+  * alice
+    * bob
+      * alice
+    * bob
+      * dave
+  * alice
+* alice
+* bob
+
+plaintext 1
+// <( ENCRYPTED alice pbkdf:$pbkdf2-sha256$i=1$AQIDBAUGBwg= )>
+// <( DATA l6aqHSnNfHQG52CpzY8d+RuY2KUMJJgT/ufAEtGwoIJLqaWQeRHUV3hRZAdfntW/ )>
+// <( DATA FXutixZJ0zPaGFQ7FtlzJ5IsJzIlXhqNFsiUzPcee+Ohvx2szUh6r/7M3TrqfIjP )>
+// <( DATA lEbrL6jRChj2qAOE/iK7gE5C1CMcuKO5a6boBv53vgxzMp27H6tCTZXfx82H7iy1 )>
+// <( DATA CHod5fkZUTqkV/3dBdfgnaagvROksyyTNuX1Uq2XjvUNG6H11iS4OFkrdrkgyKq0 )>
+// <( DATA ir9Hr+Z0l6qrVzrChmuQEhBGfZMsf4TosO2/K9EgINKgdUbnBccu/LyrZ/7ubLZa )>
+// <( DATA IFmRrd2IxIKN7bYPTcBUzjA1rYLdLZUODWY3RQw8erR99NwnTGsKBIIPXdA5bzlo )>
+// <( DATA 6GUWJjvwYjxm70ur0jWg4l5lwV7X2K2i/WNnvhlFua4/uueiwJlyOI8bVYwlRML0 )>
+// <( DATA mQlv6CzzTw+/hlR6L+SDvWqvs9zeb558zwwtRVxoQWF+VDtlgg6L6Sl891qwa6u+ )>
+// <( DATA YD+hlAaW0DbMH6+A3D7I0TjhKE0y3eL5q1v/JUWbtuGwoVR4sIwXA+tgj2nnsbme )>
+// <( DATA LK+Afg0q0AnVRPUfQJU3lnanbZB9/v/rY20qnQJGaUAVgqWm6zulqV6vMItoe6MQ )>
+// <( DATA APlPkDjzJu4um17cVs0mlP4GyNDWpJtqXzgRrPs4RgozGlKDUTwI5/6WJsusIJHW )>
+// <( DATA QwoZvOtZKV6PoRVYbw2XkyIvOpQFzjEHmGsO9W6XMoRq24pr4dzyPbam5pL2KVxM )>
+// <( DATA JsjyJt7uc76wQ7L1UQ/dcdD4xseGwQ78a5xhhULXIpW+jne3g+KKBaDHN1F/iDD2 )>
+// <( DATA GoP6dwNyrKYjYoSwDayJUmdFmgOpUxmMF88XVXa8keLwW4b9+BbAtTXKrxPN9058 )>
+// <( DATA DRZ3AjkRiMfASiqUOR6Xg/NUNtLMZYaRkJmCbBP8Tg0NQ+gsdOHM0gK+4LNQN9wL )>
+// <( DATA hca9ksj7Pd3Bjwvw10+PGcNMla5KCLMZSpRzYGkodMtYb7If1C+lwyNsNqG+gJZM )>
+// <( DATA n1A8yOn+uLpb2k3S2ZZMtGNoJTNlhT9nz7TzUD67GoSeymjxGl92h2zb/gR9vAJw )>
+// <( DATA UvNiAOh0yxhdKvB4AmrXUkzaroV/RYbQbDLVhWtxzrspOaTpb2JhJ5MSmTRTN4oJ )>
+// <( DATA 9y10/8Og9ZxOhmPz5xQ55ZKnqxuevbOV4nJTxKEaWTblcsbCRlbVNlqgvWHOy8fw )>
+// <( DATA 22VvkGQtLeRmbq6xTJk/wzB3ZVNwo/bwANVGPT6pvKuuRJ9SxjKlg51/ERsO7lv1 )>
+// <( DATA SLq8i1KA3W3N0SlQMQSPkZNnlMRD8HDAmZ3Ejx96YeHRlIdZJVjwGpV0RiavG6HQ )>
+// <( DATA 6dezEfuL5IcAkwvSW6CzBQwYqmLSVAZpSozIZZc2pDBlMcTXVdYfBLyRfCC2p9eN )>
+// <( DATA F7aMrRsdIYXuMO8YhCUOSov3czl2/lgQQNFbf28Ah61ZORlR5BIVM4GOX0MN6zNE )>
+// <( DATA yb4SwalAfIkGpkH1xqD54X80iVmNihz2OaN3HI2B4n0EmA94H9oVRWozz9MEjNkt )>
+// <( DATA wZtac4Lb8NydzvR+iez9oBdRs/1DRaaixyUvKutqCJG/6/w/f/gOSQ/hcK/7VDU0 )>
+// <( DATA 0juA3fAa98jQe78O5cx2OTWNMdA2NdISVEz2dJ6lfrR0ClPGIcpwmKc2gfEsnNJj )>
+// <( DATA sy5grYh6vaEbvdEFNjKQ/DgX+cLq2AhNT9nAYR2UUGnSpa6WuJC0LnYjjBrKYAO3 )>
+// <( DATA wjmEwhEvWjM1XcUxMK/VE9to0p9o )>
+// <( END alice )>
+plaintext 2
+// <( ENCRYPTED alice pbkdf:$pbkdf2-sha256$i=1$AQIDBAUGBwg= )>
+// <( DATA A/TVEc3FZl6fj57i2/pVRO/1s3tSpm+dxX2VFL/lPg== )>
+// <( END alice )>
+// <( ENCRYPTED bob pbkdf:$pbkdf2-sha256$i=1$AQIDBAUGBwg= )>
+// <( DATA +yGTX8QbK9O6ICLGJMtKHHRn9ObstH+y4Kuj6y0= )>
+// <( END bob )>
+plaintext 3
+

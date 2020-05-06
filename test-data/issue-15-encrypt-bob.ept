@@ -1,0 +1,39 @@
+* alice
+  * alice
+    * bob
+      * alice
+    * bob
+      * dave
+  * alice
+* alice
+* bob
+
+plaintext 1
+// <( BEGIN alice )>
+alice secret 1
+// <( BEGIN alice )>
+alice secret 2
+// <( ENCRYPTED bob pbkdf:$pbkdf2-sha256$i=1$AQIDBAUGBwg= )>
+// <( DATA J5OTB8pru/t25nAoMn+pTKaOu7ZNL8PLUNP2l3JUXj16LrDLbk4+RGE1X1rcJudX )>
+// <( DATA xpWuKRwv/PDzNBrvBLPHC+m7pS/mJPppXpmRpHdHCaAQCIcA )>
+// <( END bob )>
+bob secret 2
+// <( ENCRYPTED bob pbkdf:$pbkdf2-sha256$i=1$AQIDBAUGBwg= )>
+// <( DATA lu83+vNn6Ij6V2fnRMayrrBYF/jEsl8Mud4j7FXfo8H+bIiP4dleFDlX4rCevMED )>
+// <( DATA AM4CDbsPpHw4nDUYdgjL8dLusUpXwg5ghat28KOcCs0g )>
+// <( END bob )>
+// <( END alice )>
+alice secret 2_2
+// <( BEGIN alice )>
+alice secret 4
+// <( END alice )>
+// <( END alice )>
+plaintext 2
+// <( BEGIN alice )>
+alice secret 5
+// <( END alice )>
+// <( ENCRYPTED bob pbkdf:$pbkdf2-sha256$i=1$AQIDBAUGBwg= )>
+// <( DATA +yGTX8QbK9O6ICLGJMtKHHRn9ObstH+y4Kuj6y0= )>
+// <( END bob )>
+plaintext 3
+

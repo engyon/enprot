@@ -1,0 +1,19 @@
+* alice
+  * alice
+    * bob
+      * alice
+    * bob
+      * dave
+  * alice
+* alice
+* bob
+
+plaintext 1
+// <( STORED alice 948ef39236b786d6753e5043c1996c946af1efed4f61787f6fb541937f1eb569 )>
+plaintext 2
+// <( STORED alice 2eaf98393bc9d6b750921ba1168396409c27ecc5f3ba07302de4fd4663b8736c )>
+// <( BEGIN bob )>
+bob secret 4
+// <( END bob )>
+plaintext 3
+
