@@ -1,0 +1,43 @@
+* alice
+  * alice
+    * bob
+      * alice
+    * bob
+      * dave
+  * alice
+* alice
+* bob
+
+plaintext 1
+// <( BEGIN alice )>
+alice secret 1
+// <( BEGIN alice )>
+alice secret 2
+// <( BEGIN bob )>
+bob secret 1
+// <( BEGIN alice )>
+alice secret 3
+// <( END alice )>
+// <( END bob )>
+bob secret 2
+// <( BEGIN bob )>
+bob secret 3
+// <( BEGIN dave )>
+dave secret 1
+// <( END dave )>
+// <( END bob )>
+// <( END alice )>
+alice secret 2_2
+// <( BEGIN alice )>
+alice secret 4
+// <( END alice )>
+// <( END alice )>
+plaintext 2
+// <( BEGIN alice )>
+alice secret 5
+// <( END alice )>
+// <( BEGIN bob )>
+bob secret 4
+// <( END bob )>
+plaintext 3
+
