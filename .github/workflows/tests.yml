@@ -61,7 +61,7 @@ jobs:
     env:
       CODECOV_TOKEN: 79f7256d-b5a9-4843-923f-43dceef2fdc1
       CARGO_INCREMENTAL: 0
-      RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Zno-landing-pads
+      RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests
     steps:
       - uses: actions/checkout@v1
       - name: Install rust nightly
