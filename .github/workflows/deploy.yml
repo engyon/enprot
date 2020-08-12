@@ -190,4 +190,25 @@ jobs:
         run: |
           cargo publish --no-verify
 
+  publish-snap:
+    name: snap
+    needs: [checks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Install snapcraft
+        uses: samuelmeuli/action-snapcraft@v1
+        with:
+          snapcraft_token: ${{ secrets.snapcraft_token }}
+          use_lxd: true
+      - name: Install review-tools
+        run: sudo snap install review-tools
+      - name: Build
+        run: |
+          RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          sed -i "s/RELEASE_TAG/${RELEASE_TAG}/g" snap/snapcraft.yaml
+          sg lxd -c 'snapcraft --use-lxd'
+      - name: Publish
+        run: |
+          snapcraft upload *.snap --release stable
 

@@ -1,0 +1,27 @@
+name: enprot
+base: core20
+version: 'RELEASE_TAG'
+summary: Enprot is a confidentiality processor for text and source code files.
+license: 'BSD-2-Clause'
+description: |
+  Engyon Protected Text (EPT) is a human-editable annotation method that
+  allows a text format document to contain finely grained cryptographic
+  confidentiality and integrity features.
+
+grade: stable
+confinement: strict
+
+parts:
+  enprot:
+    plugin: rust
+    source: .
+    build-packages:
+      - build-essential
+      - libbotan-2-dev
+    stage-packages:
+      - botan
+
+apps:
+  enprot:
+    command: bin/enprot
+
