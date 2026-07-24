@@ -64,7 +64,7 @@ jobs:
           GIT_REDIRECT_STDERR: '2>&1'
         shell: pwsh
         run: |
-          $Env:PREFIX = "$PWD/botan-install"
+          $Env:PREFIX = (Join-Path $PWD 'botan-install').Replace('\', '/')
           $Env:Path += ";$Env:PREFIX/lib"
           $Env:TARGET = "x86_64-pc-windows-msvc"
           ./ci/install.ps1
