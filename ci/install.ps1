@@ -12,7 +12,7 @@ Push-Location -LiteralPath botan
 & python .\configure.py --prefix="$Env:PREFIX" --without-documentation `
   --build-targets=static --minimized-build `
   --enable-modules="$BOTAN_MODULES" --msvc-runtime=MT `
-  --cc=msvc --os=windows --library-suffix=-3
+  --cc=msvc --os=windows
 &{
   $ErrorActionPreference = 'Continue'
   nmake install
