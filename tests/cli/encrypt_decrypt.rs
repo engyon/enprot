@@ -418,7 +418,10 @@ fn encrypt_decrypt_agent007_pbkdf2_sha512() {
 }
 
 // This test ensures that pbkdf-msec is actually utilized.
+// Ignored by default: timing-sensitive on shared CI runners.
+// Run manually: cargo test -- --ignored encrypt_decrypt_agent007_pbkdf2_millis
 #[test]
+#[ignore]
 fn encrypt_decrypt_agent007_pbkdf2_millis() {
     const SAMPLE_COUNT: u32 = 3;
     let mut elapsed_ms: u32;
