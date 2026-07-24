@@ -2,6 +2,7 @@ use crate::Fixture;
 use assert_cmd::prelude::*;
 use std::fs;
 use std::process::Command;
+use tempfile::tempdir;
 
 const PBKDF_OPTS: &[&str] = &[
     "--pbkdf",
@@ -128,9 +129,12 @@ fn nested_encrypt_alice_bob() {
 
 #[test]
 fn nested_store_alice() {
+    let casdir = tempdir().unwrap();
     let ept = Fixture::copy("test-data/issue-15.ept");
     Command::cargo_bin("enprot")
         .unwrap()
+        .arg("-c")
+        .arg(casdir.path())
         .arg("store")
         .arg("-w")
         .arg("alice")
@@ -144,6 +148,8 @@ fn nested_store_alice() {
     // fetch
     Command::cargo_bin("enprot")
         .unwrap()
+        .arg("-c")
+        .arg(casdir.path())
         .arg("fetch")
         .arg("-w")
         .arg("alice")
