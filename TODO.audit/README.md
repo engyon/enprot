@@ -7,40 +7,22 @@ later, or never.
 
 ## Status (July 2026)
 
-Three findings landed in the audit PR (#67):
-- **A8** — `app_main` returns `Result<()>`; `main.rs` translates errors to
-  `eprintln!` + `exit(1)`. The internal `die()` helper is gone.
-- **A9** — `ParseOps::new` returns `Result<Self>` so a Botan RNG
-  initialization failure propagates instead of panicking inside the
-  library.
-- **A13** — one-line comment on the CAS hash comparison noting that
-  non-constant-time is fine because the hash is content-derived, not
-  secret-derived.
+Findings landed across the audit PRs:
 
-The remaining findings (A1, A2, A3, A4, A5, A6, A7, A10, A11, A12) are
-real architecture improvements but each is substantial enough to
-warrant its own PR with focused review. They are **not abandoned** —
-this document is the backlog. Future work should pick one finding per
-PR.
+- **A3 (etree module split)** — `src/etree.rs` → `src/etree/{mod,parse,transform,write,blob}.rs`. PR #72.
+- **A4 (password module extraction)** — `src/password.rs` from `src/prot.rs`. PR #68.
+- **A5 (policy AlgKind enum)** — replaced the stringly-typed `kind: &str` with `AlgKind { Cipher, Hash, Pbkdf }`. PR #69.
+- **A7 (parse_encrypted_extfields context)** — threads `paops/lineno/line` so duplicate-extfield errors carry location. PR #70.
+- **A2 (ExtField type)** — cipher extfield `format_cipher_extfield`/`parse_cipher_extfield`/`DEFAULT_CIPHER_ALG` move to `cipher.rs`; `prot.rs` uses the typed helpers. PR #71.
+- **A8, A9, A13** — `app_main` returns `Result<()>`; `ParseOps::new` returns `Result<Self>`; CAS hash comparison documented as fine-without-constant-time. PR #67.
 
-Suggested ordering for follow-up audit PRs:
+The remaining findings are deferred:
 
-1. **A4 (password module)** — smallest of the structural refactors,
-   good warm-up. Extract `src/password.rs` from `src/prot.rs`.
-2. **A5 (policy AlgKind enum)** — replace the stringly-typed `kind`
-   parameter to `nist::check_alg` with an enum.
-3. **A7 (parse_encrypted_extfields context)** — thread `&ParseOps`
-   into the helper so errors carry file/lineno.
-4. **A2 (ExtField type)** — typed `pbkdf:`/`cipher:` parsing/serializing
-   in one place. Worth doing alongside A1 because both touch the
-   `ParseOps` shape.
-5. **A1 (ParseOps decomposition) + A3 (etree module split)** — biggest
-   refactor. Decompose `ParseOps` into `Separators`, `Transforms`,
-   `CryptoConfig`; split `etree.rs` into `etree/{parse,transform,write,
-   extfield,blob}.rs`.
-6. **A10, A11, A12** — test/spec additions (proptest round-trip, README
-   doctest, criterion benchmarks). Independent of the structural work;
-   do whenever.
+- **A1 (ParseOps decomposition)** — 78 field access sites across `etree/`, `lib.rs`, `prot.rs`. A multi-day refactor in its own right; needs careful staged PRs. `TODO.audit/` keeps this documented.
+- **A6 (cipher registry)** — only 5 ciphers in `VALID_CIPHER_ALGS`; the `match` is fine. Defer until we have ~10+ ciphers.
+- **A10 (proptest round-trip)** — would require adding `proptest` as a dev-dependency and writing property generators for valid EPT text. Defer.
+- **A11 (README doctest)** — AsciiDoc has no native doctest infrastructure; would need a custom test runner that re-runs documented commands against a tempdir. High effort for low value. Defer.
+- **A12 (benchmarks)** — no performance concerns today. Add a `criterion` harness when a perf regression surfaces.
 
 ## A1 — `ParseOps` is a god struct (model-driven, MECE, encapsulation)
 
