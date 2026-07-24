@@ -10,7 +10,7 @@ and inputs.
 
 Enprot's chain anchors + Merkle tree + Ed25519 sigs map directly
 onto SLSA provenance: each source file is an EPT document, every
-build produces a manifest EPT file that INCLUDEs (TODO 25) all
+build produces a manifest EPT file that uses `INCLUDE` (TODO 25) for all
 sources, the manifest is signed.
 
 ## Scope
