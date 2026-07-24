@@ -24,11 +24,11 @@
 use std::collections::BTreeMap;
 
 use crate::cipher;
+use crate::cipher::{format_cipher_extfield, parse_cipher_extfield};
 use crate::crypto::{self, CryptoPolicy};
 use crate::error::{Error, Result};
 use crate::etree;
 use crate::pbkdf::{PBKDFCache, derive_key, parse_phc};
-use crate::utils;
 
 pub fn encrypt(
     pt: Vec<u8>,
@@ -102,7 +102,7 @@ pub fn encrypt(
     if needs_iv {
         extfields.insert(
             "cipher".to_string(),
-            format!("{}$iv={}", &cipheropts.alg, utils::base64_encode(&iv)?),
+            format_cipher_extfield(&cipheropts.alg, &iv)?,
         );
     }
 
@@ -121,7 +121,10 @@ pub fn decrypt(
     cache: &mut Option<PBKDFCache>,
     policy: &dyn CryptoPolicy,
 ) -> Result<Vec<u8>> {
-    let (cipher_alg, iv) = parse_cipher_extfield(cipher)?;
+    let (cipher_alg, iv) = match cipher {
+        Some(s) => parse_cipher_extfield(s)?,
+        None => (cipher::DEFAULT_CIPHER_ALG.to_string(), Vec::new()),
+    };
 
     policy
         .check_cipher_alg(&cipher_alg)
@@ -173,31 +176,6 @@ pub fn decrypt(
     dec.process(&key, &iv, &[], &ct)
 }
 
-fn parse_cipher_extfield(cipher: &Option<&String>) -> Result<(String, Vec<u8>)> {
-    let Some(value) = cipher else {
-        return Ok(("aes-256-siv".to_string(), Vec::new()));
-    };
-    let mut it = value.split('$');
-    let alg = it
-        .next()
-        .ok_or_else(|| Error::Cipher("Invalid cipher extfield".into()))?
-        .to_string();
-    let mut fields = BTreeMap::new();
-    for part in it {
-        let mut kv = part.splitn(2, '=');
-        let k = kv
-            .next()
-            .ok_or_else(|| Error::Cipher("Missing field key".into()))?;
-        let v = kv.collect::<String>();
-        fields.insert(k, v);
-    }
-    let iv = match fields.get("iv") {
-        Some(b64) => utils::base64_decode(b64)?,
-        None => Vec::new(),
-    };
-    Ok((alg, iv))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,13 +183,20 @@ mod tests {
     #[test]
     fn cipher_extfield_roundtrip() {
         // aes-256-gcm with IV
-        let s = "aes-256-gcm$iv=MDEyMzQ1Njc4OWFiY2RlZg==".to_string();
-        let (alg, iv) = parse_cipher_extfield(&Some(&s)).unwrap();
+        let s = "aes-256-gcm$iv=MDEyMzQ1Njc4OWFiY2RlZg==";
+        let (alg, iv) = parse_cipher_extfield(s).unwrap();
         assert_eq!(alg, "aes-256-gcm");
         assert_eq!(iv, b"0123456789abcdef");
+    }
 
-        // None → aes-256-siv default
-        let (alg, iv) = parse_cipher_extfield(&None).unwrap();
+    #[test]
+    fn cipher_extfield_default_when_unset() {
+        // When the cipher: field is absent on a legacy ENCRYPTED block,
+        // prot::decrypt falls back to cipher::DEFAULT_CIPHER_ALG.
+        let (alg, iv) = (
+            crate::cipher::DEFAULT_CIPHER_ALG.to_string(),
+            Vec::<u8>::new(),
+        );
         assert_eq!(alg, "aes-256-siv");
         assert!(iv.is_empty());
     }
