@@ -222,7 +222,12 @@ fn parse_begin(
     Ok(())
 }
 
-fn parse_encrypted_extfields(cmd: &[&str]) -> Result<BTreeMap<String, String>> {
+fn parse_encrypted_extfields(
+    cmd: &[&str],
+    paops: &ParseOps,
+    lineno: i32,
+    line: &str,
+) -> Result<BTreeMap<String, String>> {
     let mut extfields: BTreeMap<String, String> = BTreeMap::new();
     for field in cmd.iter().rev() {
         if field.find(':').is_none() {
@@ -231,11 +236,12 @@ fn parse_encrypted_extfields(cmd: &[&str]) -> Result<BTreeMap<String, String>> {
         let (key, value) = field.split_once(':').unwrap();
 
         if extfields.contains_key(key) {
-            return Err(Error::Parse {
-                file: String::new(),
-                lineno: 0,
-                msg: "Duplicate extended field".into(),
-            });
+            return Err(parse_error(
+                paops,
+                lineno,
+                line,
+                format!("Duplicate extended field '{}'", key),
+            ));
         }
         extfields.insert(key.to_string(), value.to_string());
     }
@@ -250,7 +256,7 @@ fn parse_encrypted(
     pstack: &mut Vec<TextNode>,
     text: &mut Vec<TextNode>,
 ) -> Result<()> {
-    let extfields = parse_encrypted_extfields(cmd)?;
+    let extfields = parse_encrypted_extfields(cmd, paops, lineno, line)?;
     let param_count = cmd.len() - extfields.len();
     let extfield_keys: HashSet<String> = extfields.keys().cloned().collect();
     let known_extfields: HashSet<String> = ["pbkdf".to_string(), "cipher".to_string()]
