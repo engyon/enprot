@@ -22,5 +22,8 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 fn main() {
-    enprot::app_main(std::env::args());
+    if let Err(e) = enprot::app_main(std::env::args()) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
 }

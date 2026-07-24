@@ -5,6 +5,43 @@ follow-ups). Findings ordered by impact, biggest first. Each finding is
 labelled with the principle it touches and whether it's worth doing now,
 later, or never.
 
+## Status (July 2026)
+
+Three findings landed in the audit PR (#67):
+- **A8** — `app_main` returns `Result<()>`; `main.rs` translates errors to
+  `eprintln!` + `exit(1)`. The internal `die()` helper is gone.
+- **A9** — `ParseOps::new` returns `Result<Self>` so a Botan RNG
+  initialization failure propagates instead of panicking inside the
+  library.
+- **A13** — one-line comment on the CAS hash comparison noting that
+  non-constant-time is fine because the hash is content-derived, not
+  secret-derived.
+
+The remaining findings (A1, A2, A3, A4, A5, A6, A7, A10, A11, A12) are
+real architecture improvements but each is substantial enough to
+warrant its own PR with focused review. They are **not abandoned** —
+this document is the backlog. Future work should pick one finding per
+PR.
+
+Suggested ordering for follow-up audit PRs:
+
+1. **A4 (password module)** — smallest of the structural refactors,
+   good warm-up. Extract `src/password.rs` from `src/prot.rs`.
+2. **A5 (policy AlgKind enum)** — replace the stringly-typed `kind`
+   parameter to `nist::check_alg` with an enum.
+3. **A7 (parse_encrypted_extfields context)** — thread `&ParseOps`
+   into the helper so errors carry file/lineno.
+4. **A2 (ExtField type)** — typed `pbkdf:`/`cipher:` parsing/serializing
+   in one place. Worth doing alongside A1 because both touch the
+   `ParseOps` shape.
+5. **A1 (ParseOps decomposition) + A3 (etree module split)** — biggest
+   refactor. Decompose `ParseOps` into `Separators`, `Transforms`,
+   `CryptoConfig`; split `etree.rs` into `etree/{parse,transform,write,
+   extfield,blob}.rs`.
+6. **A10, A11, A12** — test/spec additions (proptest round-trip, README
+   doctest, criterion benchmarks). Independent of the structural work;
+   do whenever.
+
 ## A1 — `ParseOps` is a god struct (model-driven, MECE, encapsulation)
 
 Today `ParseOps` carries 14+ fields spanning four concerns: parsing

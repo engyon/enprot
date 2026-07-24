@@ -290,12 +290,7 @@ fn parse_positive_usize(s: &str) -> std::result::Result<usize, String> {
     Ok(n)
 }
 
-fn die(msg: impl AsRef<str>) -> ! {
-    eprintln!("{}", msg.as_ref());
-    std::process::exit(1);
-}
-
-pub fn app_main<I, T>(args: I)
+pub fn app_main<I, T>(args: I) -> Result<()>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
@@ -340,7 +335,7 @@ enum Operation {
     EncryptStore,
 }
 
-fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operation)>) {
+fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operation)>) -> Result<()> {
     let explicit_policy = common.policy.clone();
     let mut policy_name = explicit_policy
         .clone()
@@ -356,18 +351,21 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
         if let Some(p) = explicit_policy.as_deref()
             && p != "nist"
         {
-            die(format!("Policy setting of '{}' conflicts with --fips", p));
+            return Err(Error::Msg(format!(
+                "Policy setting of '{}' conflicts with --fips",
+                p
+            )));
         }
         policy_name = "nist".to_string();
     }
 
     let policy = make_policy(&policy_name);
     let mut paops = if let Some(defaults) = common.defaults.as_deref() {
-        let mut p = ParseOps::new(make_policy(defaults));
+        let mut p = ParseOps::new(make_policy(defaults))?;
         p.policy = policy;
         p
     } else {
-        ParseOps::new(policy)
+        ParseOps::new(policy)?
     };
 
     if let Some(dir) = common.casdir.clone() {
@@ -434,17 +432,13 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
                 paops.pbkdfopts.params = Some(params);
             }
             if let Some(salt_hex) = enc_opts.pbkdf_salt.as_deref() {
-                paops.pbkdfopts.salt = Some(hex::decode(salt_hex).unwrap_or_else(|e| {
-                    die(format!("Invalid --pbkdf-salt hex: {}", e));
-                }));
+                paops.pbkdfopts.salt = Some(hex::decode(salt_hex).map_err(Error::from)?);
             }
             if let Some(c) = enc_opts.cipher.as_deref() {
                 paops.cipheropts.alg = c.to_string();
             }
             if let Some(iv_hex) = enc_opts.cipher_iv.as_deref() {
-                paops.cipheropts.iv = Some(hex::decode(iv_hex).unwrap_or_else(|e| {
-                    die(format!("Invalid --cipher-iv hex: {}", e));
-                }));
+                paops.cipheropts.iv = Some(hex::decode(iv_hex).map_err(Error::from)?);
             }
         }
     }
@@ -465,8 +459,9 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
         output.output_dir.as_deref(),
     );
     for (path_in, path_out) in files {
-        process_one_file(&path_in, &path_out, &mut paops);
+        process_one_file(&path_in, &path_out, &mut paops)?;
     }
+    Ok(())
 }
 
 /// Pair each input with its output, following the rules in
@@ -520,7 +515,7 @@ fn join_with_basename(dir: &Path, input: &str) -> String {
     dir.join(base).to_string_lossy().into_owned()
 }
 
-fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) {
+fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Result<()> {
     if paops.verbose {
         eprintln!("Reading {}", path_in);
     }
@@ -530,7 +525,12 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) {
     } else {
         match File::open(path_in) {
             Ok(f) => Box::new(BufReader::new(f)),
-            Err(e) => die(format!("Failed to open {} for reading: {}", path_in, e)),
+            Err(e) => {
+                return Err(Error::Msg(format!(
+                    "Failed to open {} for reading: {}",
+                    path_in, e
+                )));
+            }
         }
     };
 
@@ -540,18 +540,14 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) {
         path_in.to_string()
     };
 
-    let tree_in = match etree::parse(reader_in, paops) {
-        Ok(t) => t,
-        Err(e) => die(format!("{} in {}, aborting.", e, path_in)),
-    };
+    let tree_in = etree::parse(reader_in, paops)
+        .map_err(|e| Error::Msg(format!("{} in {}, aborting.", e, path_in)))?;
 
     if paops.verbose {
         eprintln!("Transforming {}", path_in);
     }
-    let tree_out = match etree::transform(&tree_in, paops) {
-        Ok(t) => t,
-        Err(e) => die(format!("{} in {}, aborting.", e, path_in)),
-    };
+    let tree_out = etree::transform(&tree_in, paops)
+        .map_err(|e| Error::Msg(format!("{} in {}, aborting.", e, path_in)))?;
 
     if paops.verbose {
         eprintln!("Writing {}", path_out);
@@ -562,11 +558,16 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) {
     } else {
         match File::create(path_out) {
             Ok(f) => Box::new(BufWriter::new(f)),
-            Err(e) => die(format!("Failed to open {} for writing: {}", path_out, e)),
+            Err(e) => {
+                return Err(Error::Msg(format!(
+                    "Failed to open {} for writing: {}",
+                    path_out, e
+                )));
+            }
         }
     };
 
-    if let Err(e) = etree::tree_write(&mut writer_out, &tree_out, paops) {
-        die(format!("Write to {} failed: {}", path_out, e));
-    }
+    etree::tree_write(&mut writer_out, &tree_out, paops)
+        .map_err(|e| Error::Msg(format!("Write to {} failed: {}", path_out, e)))?;
+    Ok(())
 }
