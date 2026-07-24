@@ -14,7 +14,8 @@ fn encrypt_gcm_random_iv() {
     for ept in epts {
         Command::cargo_bin("enprot")
             .unwrap()
-            .arg("--encrypt")
+            .arg("encrypt")
+            .arg("-w")
             .arg("Agent_007")
             .arg("--pbkdf")
             .arg("argon2")
@@ -37,7 +38,8 @@ fn encrypt_gcm_random_iv() {
         let out = Fixture::blank("out.ept");
         Command::cargo_bin("enprot")
             .unwrap()
-            .arg("-d")
+            .arg("decrypt")
+            .arg("-w")
             .arg("Agent_007")
             .arg("-k")
             .arg("Agent_007=password")
@@ -65,7 +67,8 @@ fn encrypt_gcm() {
 
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("--pbkdf")
         .arg("argon2")
@@ -94,7 +97,8 @@ fn encrypt_gcm() {
     // decrypt
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-d")
+        .arg("decrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("-k")
         .arg("Agent_007=password")
@@ -115,7 +119,8 @@ fn encrypt_siv_iv() {
 
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("--pbkdf")
         .arg("argon2")
@@ -141,7 +146,8 @@ fn encrypt_siv() {
 
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("--pbkdf")
         .arg("legacy")
@@ -158,7 +164,8 @@ fn encrypt_siv() {
     );
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-d")
+        .arg("decrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("-k")
         .arg("Agent_007=password")
@@ -177,7 +184,8 @@ fn encrypt_gcm_siv() {
 
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("--pbkdf")
         .arg("argon2")
@@ -206,7 +214,8 @@ fn encrypt_gcm_siv() {
     // decrypt
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-d")
+        .arg("decrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("-k")
         .arg("Agent_007=password")

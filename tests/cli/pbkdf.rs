@@ -34,7 +34,8 @@ Secret 4
         let now = ThreadTime::now();
         enprot::app_main(vec![
             "enprot",
-            "-e",
+            "encrypt",
+            "-w",
             "Agent_007",
             "--pbkdf",
             "pbkdf2-sha256",
@@ -65,7 +66,8 @@ Secret 4
         let now = ThreadTime::now();
         enprot::app_main(vec![
             "enprot",
-            "-d",
+            "decrypt",
+            "-w",
             "Agent_007",
             "-k",
             "Agent_007=password",
@@ -87,7 +89,8 @@ Secret 4
         let now = ThreadTime::now();
         enprot::app_main(vec![
             "enprot",
-            "-e",
+            "encrypt",
+            "-w",
             "Agent_007",
             "--pbkdf",
             "pbkdf2-sha256",
@@ -119,7 +122,8 @@ Secret 4
         let now = ThreadTime::now();
         enprot::app_main(vec![
             "enprot",
-            "-d",
+            "decrypt",
+            "-w",
             "Agent_007",
             "-k",
             "Agent_007=password",

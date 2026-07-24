@@ -25,6 +25,7 @@ fn success_on_no_operation() {
     let ept = Fixture::copy("sample/test.ept");
     Command::cargo_bin("enprot")
         .unwrap()
+        .arg("passthrough")
         .arg(&ept.path)
         .assert()
         .success();
@@ -40,6 +41,7 @@ fn verbosity() {
     let ept = Fixture::copy("sample/test.ept");
     Command::cargo_bin("enprot")
         .unwrap()
+        .arg("passthrough")
         .arg(&ept.path)
         .assert()
         .success()
@@ -47,6 +49,7 @@ fn verbosity() {
     Command::cargo_bin("enprot")
         .unwrap()
         .arg("-v")
+        .arg("passthrough")
         .arg(&ept.path)
         .assert()
         .success()
@@ -54,6 +57,7 @@ fn verbosity() {
     Command::cargo_bin("enprot")
         .unwrap()
         .arg("--verbose")
+        .arg("passthrough")
         .arg(&ept.path)
         .assert()
         .success()
@@ -71,7 +75,8 @@ fn output() {
     let output = Fixture::blank("out.ept");
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("--pbkdf")
         .arg("legacy")
@@ -102,7 +107,8 @@ fn output_multiple() {
     let out2 = Fixture::blank("out2.ept");
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("--pbkdf")
         .arg("legacy")

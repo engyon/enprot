@@ -6,7 +6,8 @@ use std::fs;
 fn pipe_test_passthrough_default() {
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("-k")
         .arg("Agent_007=password")
@@ -22,7 +23,8 @@ fn pipe_test_passthrough_default() {
 fn pipe_test_passthrough() {
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("-k")
         .arg("Agent_007=password")
@@ -40,7 +42,8 @@ fn pipe_test_1() {
     let out = Fixture::blank("out.ept");
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("-k")
         .arg("Agent_007=password")
@@ -64,7 +67,8 @@ fn pipe_test_2() {
     let ept = Fixture::copy("sample/test.ept");
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("-k")
         .arg("Agent_007=password")
@@ -87,7 +91,8 @@ fn pipe_test_3() {
     let ept = Fixture::copy("sample/simple.ept");
     Command::cargo_bin("enprot")
         .unwrap()
-        .arg("-e")
+        .arg("encrypt")
+        .arg("-w")
         .arg("Agent_007")
         .arg("-k")
         .arg("Agent_007=password")
