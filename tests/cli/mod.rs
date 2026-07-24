@@ -1,3 +1,4 @@
+mod capabilities;
 mod cipher;
 mod deterministic;
 mod encrypt_decrypt;
