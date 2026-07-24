@@ -51,8 +51,10 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use clap::Parser;
 use clap::builder::PossibleValuesParser;
+use clap::{Args, Parser, Subcommand};
+
+use crate::etree::ParseOps;
 
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
     match name {
@@ -62,6 +64,7 @@ fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
     }
 }
 
+/// Top-level CLI. Every invocation picks one subcommand.
 #[derive(Parser)]
 #[command(
     name = "enprot",
@@ -69,70 +72,109 @@ fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
     about = "Engyon Protected Text (EPT) confidentiality processor"
 )]
 pub struct Cli {
+    /// Common arguments accepted in any position (before or after the
+    /// subcommand name). Each field has `global = true` so clap recognises
+    /// it at top-level or inside any subcommand.
+    #[command(flatten)]
+    pub common: CommonArgs,
+
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+    /// Encrypt WORD segments in the input file(s).
+    Encrypt(EncryptSubcmd),
+    /// Decrypt WORD segments in the input file(s).
+    Decrypt(OperationSubcmd),
+    /// Store (unencrypted) WORD segments to CAS.
+    Store(OperationSubcmd),
+    /// Fetch (unencrypted) WORD segments from CAS.
+    Fetch(OperationSubcmd),
+    /// Encrypt and store WORD segments (shorthand for `encrypt` plus store mode).
+    EncryptStore(EncryptSubcmd),
+    /// Parse and re-write each input without applying any transform.
+    /// Useful for validating markup or measuring parse performance.
+    Passthrough(OperationSubcmd),
+}
+
+/// Encrypt subcommand: encrypt-specific options plus the shared output
+/// wiring.
+#[derive(Args)]
+pub struct EncryptSubcmd {
+    #[command(flatten)]
+    pub encrypt: EncryptOpts,
+
+    #[command(flatten)]
+    pub output: OutputArgs,
+}
+
+/// Decrypt/Store/Fetch/Passthrough subcommand: just the shared output
+/// wiring (no crypto knobs).
+#[derive(Args)]
+pub struct OperationSubcmd {
+    #[command(flatten)]
+    pub output: OutputArgs,
+}
+
+/// Crypto-policy, separators, RNG source, password store. Defined at
+/// top-level with `global = true` on every field, so clap accepts these
+/// flags before or after the subcommand name.
+#[derive(Args)]
+pub struct CommonArgs {
     /// Produce more verbose output.
-    #[arg(short = 'v', long)]
+    #[arg(short = 'v', long, global = true)]
     pub verbose: bool,
 
     /// Suppress unnecessary output.
-    #[arg(short = 'q', long)]
+    #[arg(short = 'q', long, global = true)]
     pub quiet: bool,
 
-    /// Maximum recursion depth (use 0 for infinite).
-    #[arg(long, default_value_t = consts::DEFAULT_MAX_DEPTH)]
+    /// Maximum recursion depth (0 = infinite).
+    #[arg(long, global = true, default_value_t = consts::DEFAULT_MAX_DEPTH)]
     pub max_depth: usize,
 
     /// Specify left separator in parsing.
-    #[arg(short = 'l', long, default_value = consts::DEFAULT_LEFT_SEP)]
+    #[arg(short = 'l', long, global = true, default_value = consts::DEFAULT_LEFT_SEP)]
     pub left_separator: String,
 
     /// Specify right separator in parsing.
-    #[arg(short = 'r', long, default_value = consts::DEFAULT_RIGHT_SEP)]
+    #[arg(short = 'r', long, global = true, default_value = consts::DEFAULT_RIGHT_SEP)]
     pub right_separator: String,
-
-    /// Store (unencrypted) WORD segments to CAS.
-    #[arg(short = 's', long, value_name = "WORD", value_delimiter = ',')]
-    pub store: Vec<String>,
-
-    /// Fetch (unencrypted) WORD segments from CAS.
-    #[arg(short = 'f', long, value_name = "WORD", value_delimiter = ',')]
-    pub fetch: Vec<String>,
-
-    /// Encrypt WORD segments.
-    #[arg(short = 'e', long, value_name = "WORD", value_delimiter = ',')]
-    pub encrypt: Vec<String>,
-
-    /// Encrypt and store WORD segments.
-    #[arg(
-        short = 'E',
-        long = "encrypt-store",
-        value_name = "WORD",
-        value_delimiter = ','
-    )]
-    pub encrypt_store: Vec<String>,
-
-    /// Decrypt WORD segments.
-    #[arg(short = 'd', long, value_name = "WORD", value_delimiter = ',')]
-    pub decrypt: Vec<String>,
 
     /// Specify a secret PASSWORD for WORD (format: WORD=PASSWORD).
     ///
-    /// One pair per `-k` occurrence; passwords containing commas are
-    /// accepted verbatim. Use multiple `-k` flags for multiple pairs.
-    #[arg(short = 'k', long = "key", value_name = "WORD=PASSWORD", value_parser = parse_word_password)]
+    /// One pair per occurrence; passwords containing commas are accepted
+    /// verbatim. Use multiple `-k` flags for multiple pairs.
+    #[arg(short = 'k', long = "key", global = true, value_name = "WORD=PASSWORD", value_parser = parse_word_password)]
     pub password: Vec<(String, String)>,
 
+    /// Directory for CAS files (default "cas" if it exists, else ".").
+    #[arg(short = 'c', long, global = true, value_name = "DIRECTORY", value_parser = parse_casdir)]
+    pub casdir: Option<PathBuf>,
+
     /// Set the policy to restrict cryptographic algorithms.
-    #[arg(long, value_parser = PossibleValuesParser::new(consts::VALID_POLICIES.to_vec()))]
+    #[arg(long, global = true, value_parser = PossibleValuesParser::new(consts::VALID_POLICIES.to_vec()))]
     pub policy: Option<String>,
 
     /// Load settings from POLICY, but do not enforce the policy.
-    #[arg(long, value_parser = PossibleValuesParser::new(consts::VALID_POLICIES.to_vec()))]
+    #[arg(long, global = true, value_parser = PossibleValuesParser::new(consts::VALID_POLICIES.to_vec()))]
     pub defaults: Option<String>,
 
     /// Select and enforce the use of FIPS-compliant algorithms (implies --policy=nist).
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub fips: bool,
 
+    /// Disable the PBKDF cache mechanism. Affects both encrypt (key
+    /// derivation) and decrypt (same derivation, repeated per file).
+    #[arg(long = "pbkdf-disable-cache", global = true)]
+    pub pbkdf_disable_cache: bool,
+}
+
+/// Encrypt-specific cryptographic knobs.
+#[derive(Args, Default)]
+pub struct EncryptOpts {
     /// Set the PBKDF algorithm to use when encrypting.
     #[arg(long, value_parser = PossibleValuesParser::new(consts::VALID_PBKDF_ALGS.to_vec()))]
     pub pbkdf: Option<String>,
@@ -153,10 +195,6 @@ pub struct Cli {
     #[arg(long, value_name = "HEX", hide = true)]
     pub pbkdf_salt: Option<String>,
 
-    /// Disable the PBKDF cache mechanism.
-    #[arg(long = "pbkdf-disable-cache")]
-    pub pbkdf_disable_cache: bool,
-
     /// Set the cipher algorithm to use when encrypting.
     #[arg(long, value_parser = PossibleValuesParser::new(consts::VALID_CIPHER_ALGS.to_vec()))]
     pub cipher: Option<String>,
@@ -164,28 +202,41 @@ pub struct Cli {
     /// Advanced option for testing, do not use.
     #[arg(long, value_name = "ALG", hide = true)]
     pub cipher_iv: Option<String>,
+}
 
-    /// Directory for CAS files (default "cas" if it exists, else ".").
-    #[arg(short = 'c', long, value_name = "DIRECTORY", value_parser = parse_casdir)]
-    pub casdir: Option<PathBuf>,
-
-    /// Use PREFIX for output filenames.
-    #[arg(short = 'p', long, default_value = "", allow_hyphen_values = true)]
-    pub prefix: String,
+/// Input/output wiring: which WORDs to operate on, which files to read,
+/// where to write results.
+#[derive(Args)]
+pub struct OutputArgs {
+    /// WORD segment to operate on. Repeatable; also accepts a
+    /// comma-separated list (`-w Agent_007,GEHEIM`).
+    #[arg(short = 'w', long = "word", value_name = "WORD", value_delimiter = ',')]
+    pub word: Vec<String>,
 
     /// Specify output file for previous input.
-    #[arg(short = 'o', long, value_name = "FILE")]
+    #[arg(short = 'o', long = "output", value_name = "FILE")]
     pub output: Vec<String>,
 
-    /// The input file(s).
+    /// Use PREFIX for output filenames. If PREFIX ends with `/` or is an
+    /// existing directory, outputs go inside it with their original
+    /// basename.
+    #[arg(
+        short = 'p',
+        long = "prefix",
+        default_value = "",
+        allow_hyphen_values = true
+    )]
+    pub prefix: String,
+
+    /// Input file(s). "-" means stdin; default "-" if omitted.
     #[arg(value_name = "FILE", default_value = "-")]
-    pub input: Vec<String>,
+    pub files: Vec<String>,
 }
 
 fn parse_word_password(s: &str) -> std::result::Result<(String, String), String> {
-    let mut it = s.splitn(2, '=');
-    let word = it.next().unwrap_or("");
-    let pass = it.next().unwrap_or("");
+    let (word, pass) = s
+        .split_once('=')
+        .ok_or_else(|| format!("Must be of the form WORD=PASSWORD, got '{}'", s))?;
     if word.is_empty() || pass.is_empty() {
         return Err(format!("Must be of the form WORD=PASSWORD, got '{}'", s));
     }
@@ -237,17 +288,47 @@ where
     // <( END AUTHOR )>
 
     let cli = Cli::parse_from(args);
+    let common = cli.common;
+    match cli.command {
+        Command::Encrypt(a) => run(common, a.output, Some((a.encrypt, Operation::Encrypt))),
+        Command::Decrypt(a) => run(
+            common,
+            a.output,
+            Some((EncryptOpts::default(), Operation::Decrypt)),
+        ),
+        Command::Store(a) => run(
+            common,
+            a.output,
+            Some((EncryptOpts::default(), Operation::Store)),
+        ),
+        Command::Fetch(a) => run(
+            common,
+            a.output,
+            Some((EncryptOpts::default(), Operation::Fetch)),
+        ),
+        Command::EncryptStore(a) => {
+            run(common, a.output, Some((a.encrypt, Operation::EncryptStore)))
+        }
+        Command::Passthrough(a) => run(common, a.output, None),
+    }
+}
 
-    // Resolve the policy. If --policy was not given, fall back to the default.
-    let explicit_policy = cli.policy.clone();
+#[derive(Copy, Clone)]
+enum Operation {
+    Encrypt,
+    Decrypt,
+    Store,
+    Fetch,
+    EncryptStore,
+}
+
+fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operation)>) {
+    let explicit_policy = common.policy.clone();
     let mut policy_name = explicit_policy
         .clone()
         .unwrap_or_else(|| consts::DEFAULT_POLICY.to_string());
 
-    // Resolve FIPS interaction. --fips forces NIST; on Linux, also auto-engages
-    // when /proc/sys/crypto/fips_enabled reads 1. An explicit non-NIST policy
-    // is rejected when FIPS is in effect.
-    let fips = cli.fips
+    let fips = common.fips
         || (cfg!(unix)
             && match fs::read_to_string("/proc/sys/crypto/fips_enabled") {
                 Ok(s) => s.starts_with('1'),
@@ -263,17 +344,15 @@ where
     }
 
     let policy = make_policy(&policy_name);
-
-    let mut paops = if let Some(defaults) = cli.defaults.as_deref() {
-        let mut p = etree_parse_ops_from(make_policy(defaults));
+    let mut paops = if let Some(defaults) = common.defaults.as_deref() {
+        let mut p = ParseOps::new(make_policy(defaults));
         p.policy = policy;
         p
     } else {
-        etree_parse_ops_from(policy)
+        ParseOps::new(policy)
     };
 
-    // casdir: explicit flag wins; else ./cas if it exists; else "."
-    if let Some(dir) = cli.casdir.clone() {
+    if let Some(dir) = common.casdir.clone() {
         paops.casdir = dir;
     } else if Path::new("cas").is_dir() {
         paops.casdir = Path::new("cas").to_path_buf();
@@ -281,61 +360,75 @@ where
         paops.casdir = Path::new(".").to_path_buf();
     }
 
-    paops.verbose = cli.verbose && !cli.quiet;
-    paops.max_depth = cli.max_depth;
-    paops.left_sep = cli.left_separator;
-    paops.right_sep = cli.right_separator;
-
-    // encrypt-store implies both encrypt and store
-    paops.store.extend(cli.store.iter().cloned());
-    paops.fetch.extend(cli.fetch.iter().cloned());
-    paops.encrypt.extend(cli.encrypt.iter().cloned());
-    paops.encrypt.extend(cli.encrypt_store.iter().cloned());
-    paops.store.extend(cli.encrypt_store.iter().cloned());
-    paops.decrypt.extend(cli.decrypt.iter().cloned());
-
-    paops.passwords.extend(cli.password.iter().cloned());
-
-    // PBKDF options
-    if let Some(alg) = cli.pbkdf.as_deref() {
-        paops.pbkdfopts.alg = alg.to_string();
-    }
-    if let Some(saltlen) = cli.pbkdf_salt_len {
-        paops.pbkdfopts.saltlen = saltlen;
-    }
-    if let Some(msec) = cli.pbkdf_msec {
-        paops.pbkdfopts.msec = Some(msec);
-    }
-    if let Some(raw) = cli.pbkdf_params.as_deref() {
-        paops.pbkdfopts.msec = None;
-        let params: std::collections::BTreeMap<String, usize> = raw
-            .split(',')
-            .map(|kv| {
-                let mut it = kv.splitn(2, '=');
-                let k = it.next().unwrap_or("");
-                let v: usize = it.next().unwrap_or("0").parse().unwrap_or(0);
-                (k.to_string(), v)
-            })
-            .collect();
-        paops.pbkdfopts.params = Some(params);
-    }
-    if let Some(salt_hex) = cli.pbkdf_salt.as_deref() {
-        paops.pbkdfopts.salt = Some(hex::decode(salt_hex).unwrap_or_else(|e| {
-            die(format!("Invalid --pbkdf-salt hex: {}", e));
-        }));
-    }
-    if cli.pbkdf_disable_cache {
+    paops.verbose = common.verbose && !common.quiet;
+    paops.max_depth = common.max_depth;
+    paops.left_sep = common.left_separator;
+    paops.right_sep = common.right_separator;
+    paops.passwords.extend(common.password);
+    if common.pbkdf_disable_cache {
         paops.pbkdf_cache = None;
     }
 
-    // Cipher options
-    if let Some(c) = cli.cipher.as_deref() {
-        paops.cipheropts.alg = c.to_string();
-    }
-    if let Some(iv_hex) = cli.cipher_iv.as_deref() {
-        paops.cipheropts.iv = Some(hex::decode(iv_hex).unwrap_or_else(|e| {
-            die(format!("Invalid --cipher-iv hex: {}", e));
-        }));
+    // Apply the operation: populate the transform sets on paops. `op == None`
+    // means Passthrough — leave the sets empty.
+    if let Some((enc_opts, op_kind)) = op.as_ref() {
+        for w in &output.word {
+            match op_kind {
+                Operation::Encrypt => {
+                    paops.encrypt.insert(w.clone());
+                }
+                Operation::Decrypt => {
+                    paops.decrypt.insert(w.clone());
+                }
+                Operation::Store => {
+                    paops.store.insert(w.clone());
+                }
+                Operation::Fetch => {
+                    paops.fetch.insert(w.clone());
+                }
+                Operation::EncryptStore => {
+                    paops.encrypt.insert(w.clone());
+                    paops.store.insert(w.clone());
+                }
+            }
+        }
+
+        // PBKDF + cipher options only meaningful for encrypt / encrypt-store.
+        if matches!(op_kind, Operation::Encrypt | Operation::EncryptStore) {
+            if let Some(alg) = enc_opts.pbkdf.as_deref() {
+                paops.pbkdfopts.alg = alg.to_string();
+            }
+            if let Some(saltlen) = enc_opts.pbkdf_salt_len {
+                paops.pbkdfopts.saltlen = saltlen;
+            }
+            if let Some(msec) = enc_opts.pbkdf_msec {
+                paops.pbkdfopts.msec = Some(msec);
+            }
+            if let Some(raw) = enc_opts.pbkdf_params.as_deref() {
+                paops.pbkdfopts.msec = None;
+                let params: std::collections::BTreeMap<String, usize> = raw
+                    .split(',')
+                    .map(|kv| {
+                        let (k, v) = kv.split_once('=').unwrap_or(("", "0"));
+                        (k.to_string(), v.parse().unwrap_or(0))
+                    })
+                    .collect();
+                paops.pbkdfopts.params = Some(params);
+            }
+            if let Some(salt_hex) = enc_opts.pbkdf_salt.as_deref() {
+                paops.pbkdfopts.salt = Some(hex::decode(salt_hex).unwrap_or_else(|e| {
+                    die(format!("Invalid --pbkdf-salt hex: {}", e));
+                }));
+            }
+            if let Some(c) = enc_opts.cipher.as_deref() {
+                paops.cipheropts.alg = c.to_string();
+            }
+            if let Some(iv_hex) = enc_opts.cipher_iv.as_deref() {
+                paops.cipheropts.iv = Some(hex::decode(iv_hex).unwrap_or_else(|e| {
+                    die(format!("Invalid --cipher-iv hex: {}", e));
+                }));
+            }
+        }
     }
 
     if paops.verbose {
@@ -347,75 +440,93 @@ where
         );
     }
 
-    // Pair each input with an output. -o consumes in order; remaining inputs
-    // get prefix + input name (or "-" if input is "-").
-    let mut files: Vec<(String, String)> = Vec::new();
-    let mut out_iter = cli.output.iter();
-    for input in cli.input.iter() {
-        if let Some(output) = out_iter.next() {
-            files.push((input.clone(), output.clone()));
-        } else {
-            let output = if input == "-" {
-                "-".to_string()
-            } else {
-                format!("{}{}", cli.prefix, input)
-            };
-            files.push((input.clone(), output));
-        }
-    }
-
+    let files = pair_inputs_to_outputs(&output.files, &output.output, &output.prefix);
     for (path_in, path_out) in files {
-        if paops.verbose {
-            eprintln!("Reading {}", path_in);
-        }
-
-        let reader_in: Box<dyn BufRead> = if path_in == "-" {
-            Box::new(BufReader::new(std::io::stdin()))
-        } else {
-            match File::open(&path_in) {
-                Ok(f) => Box::new(BufReader::new(f)),
-                Err(e) => die(format!("Failed to open {} for reading: {}", path_in, e)),
-            }
-        };
-
-        paops.fname = if path_in == "-" {
-            "<stdin>".to_string()
-        } else {
-            path_in.clone()
-        };
-
-        let tree_in = match etree::parse(reader_in, &mut paops) {
-            Ok(t) => t,
-            Err(e) => die(format!("{} in {}, aborting.", e, path_in)),
-        };
-
-        if paops.verbose {
-            eprintln!("Transforming {}", path_in);
-        }
-        let tree_out = match etree::transform(&tree_in, &mut paops) {
-            Ok(t) => t,
-            Err(e) => die(format!("{} in {}, aborting.", e, path_in)),
-        };
-
-        if paops.verbose {
-            eprintln!("Writing {}", path_out);
-        }
-
-        let mut writer_out: Box<dyn Write> = if path_out == "-" {
-            Box::new(BufWriter::new(std::io::stdout()))
-        } else {
-            match File::create(&path_out) {
-                Ok(f) => Box::new(BufWriter::new(f)),
-                Err(e) => die(format!("Failed to open {} for writing: {}", path_out, e)),
-            }
-        };
-
-        if let Err(e) = etree::tree_write(&mut writer_out, &tree_out, &mut paops) {
-            die(format!("Write to {} failed: {}", path_out, e));
-        }
+        process_one_file(&path_in, &path_out, &mut paops);
     }
 }
 
-fn etree_parse_ops_from(policy: Box<dyn crypto::CryptoPolicy>) -> etree::ParseOps {
-    etree::ParseOps::new(policy)
+/// Pair each input with its output, following the rules in
+/// `TODO.issues/18-output-directory-mode.md`. Public so future tests can
+/// exercise the pathing logic directly.
+fn pair_inputs_to_outputs(
+    inputs: &[String],
+    outputs: &[String],
+    prefix: &str,
+) -> Vec<(String, String)> {
+    let mut result = Vec::with_capacity(inputs.len());
+    let mut out_iter = outputs.iter();
+    let prefix_is_dir = prefix.ends_with('/') || Path::new(prefix).is_dir();
+
+    for input in inputs {
+        if let Some(output) = out_iter.next() {
+            result.push((input.clone(), output.clone()));
+            continue;
+        }
+        let output = if input == "-" {
+            "-".to_string()
+        } else if prefix_is_dir {
+            let base = Path::new(input)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| input.clone());
+            let dir = prefix.trim_end_matches('/');
+            format!("{}/{}", dir, base)
+        } else {
+            format!("{}{}", prefix, input)
+        };
+        result.push((input.clone(), output));
+    }
+    result
+}
+
+fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) {
+    if paops.verbose {
+        eprintln!("Reading {}", path_in);
+    }
+
+    let reader_in: Box<dyn BufRead> = if path_in == "-" {
+        Box::new(BufReader::new(std::io::stdin()))
+    } else {
+        match File::open(path_in) {
+            Ok(f) => Box::new(BufReader::new(f)),
+            Err(e) => die(format!("Failed to open {} for reading: {}", path_in, e)),
+        }
+    };
+
+    paops.fname = if path_in == "-" {
+        "<stdin>".to_string()
+    } else {
+        path_in.to_string()
+    };
+
+    let tree_in = match etree::parse(reader_in, paops) {
+        Ok(t) => t,
+        Err(e) => die(format!("{} in {}, aborting.", e, path_in)),
+    };
+
+    if paops.verbose {
+        eprintln!("Transforming {}", path_in);
+    }
+    let tree_out = match etree::transform(&tree_in, paops) {
+        Ok(t) => t,
+        Err(e) => die(format!("{} in {}, aborting.", e, path_in)),
+    };
+
+    if paops.verbose {
+        eprintln!("Writing {}", path_out);
+    }
+
+    let mut writer_out: Box<dyn Write> = if path_out == "-" {
+        Box::new(BufWriter::new(std::io::stdout()))
+    } else {
+        match File::create(path_out) {
+            Ok(f) => Box::new(BufWriter::new(f)),
+            Err(e) => die(format!("Failed to open {} for writing: {}", path_out, e)),
+        }
+    };
+
+    if let Err(e) = etree::tree_write(&mut writer_out, &tree_out, paops) {
+        die(format!("Write to {} failed: {}", path_out, e));
+    }
 }

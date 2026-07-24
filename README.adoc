@@ -23,38 +23,46 @@ There is a simple help built-in with `-h` flag:
 [source,sh]
 ----
 enprot$ cargo run -- -h
-    Finished dev [unoptimized + debuginfo] target(s) in 0.04s
-     Running `target/debug/enprot -h`
-enprot
+Engyon Protected Text (EPT) confidentiality processor
 
-USAGE:
-    enprot [FLAGS] [OPTIONS] <FILE>...
+Usage: enprot [OPTIONS] <COMMAND>
 
-FLAGS:
-    -v, --verbose    Produce more verbose output
-    -q, --quiet      Suppress unnecessary output
-    -h, --help       Prints help information
-    -V, --version    Prints version information
+Commands:
+  encrypt        Encrypt WORD segments in the input file(s)
+  decrypt        Decrypt WORD segments in the input file(s)
+  store          Store (unencrypted) WORD segments to CAS
+  fetch          Fetch (unencrypted) WORD segments from CAS
+  encrypt-store  Encrypt and store WORD segments
+  passthrough    Parse and re-write without applying any transform
+  help           Print this message or the help of the given subcommand(s)
 
-OPTIONS:
-    -l, --left-separator <SEP>       Specify left separator in parsing
-    -r, --right-separator <SEP>      Specify right separator in parsing
-    -s, --store <WORD>...            Store (unencrypted) WORD segments to CAS
-    -f, --fetch <WORD>...            Fetch (unencrypted) WORD segments to CAS
-    -k, --key <WORD=PASSWORD>...     Specify a secret PASSWORD for WORD
-    -e, --encrypt <WORD>...          Encrypt WORD segments
-    -E, --encrypt-store <WORD>...    Encrypt and store WORD segments
-    -d, --decrypt <WORD>...          Decrypt WORD segments
-    -c, --casdir <DIRECTORY>         Directory for CAS files (default "cas" if exists, else ".")
-    -p, --prefix <PREFIX>            Use PREFIX for output filenames
-    -o, --output <FILE>...           Specify output file for previous input
+Options:
+  -v, --verbose            Produce more verbose output
+  -q, --quiet              Suppress unnecessary output
+  -l, --left-separator <SEP>    Specify left separator [default: "// <("]
+  -r, --right-separator <SEP>   Specify right separator [default: ")>"]
+  -k, --key <WORD=PASSWORD>     Specify a secret PASSWORD for WORD (repeatable)
+  -c, --casdir <DIRECTORY>      Directory for CAS files (default "cas" if exists)
+      --policy <POLICY>         Restrict algorithms [default: default]
+      --fips                    Force FIPS-compliant algorithms (implies --policy=nist)
+  -h, --help                   Print help
+  -V, --version                Print version
 
-ARGS:
-    <FILE>...    The input file(s)
-
-enprot$
+Run `enprot <command> --help` for command-specific options (e.g. `enprot
+encrypt --help` shows the PBKDF and cipher knobs).
 ----
-All of the commands also have have long variants; see `src/main.rs`.
+
+Each subcommand takes the WORD list via `-w`/`--word` (repeatable or
+comma-separated) and the input files as positional args. For example:
+
+[source,sh]
+----
+enprot encrypt -w Agent_007 -k Agent_007=bond sample/test.ept
+enprot decrypt -w Agent_007 -k Agent_007=bond sample/test.ept
+enprot store  -w Agent_007,GEHEIM sample/test.ept
+enprot fetch  -w Agent_007,GEHEIM sample/test.ept
+enprot encrypt-store -w Agent_007 -k Agent_007=bond sample/test.ept
+----
 
 A simple example is contained in `sample/test.ept`:
 
@@ -83,7 +91,7 @@ nothing happens:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept
+enprot$ ./target/debug/enprot passthrough sample/test.ept
 enprot$
 ----
 
@@ -108,7 +116,7 @@ with `-v` reveals what the system is doing:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept -v
+enprot$ ./target/debug/enprot passthrough sample/test.ept -v
 LEFT_SEP='// <(' RIGHT_SEP=')>' casdir = 'cas'
 Reading sample/test.ept
 Transforming sample/test.ept
@@ -135,7 +143,7 @@ The operation of CAS can be demonstrated simply by using the `-s` (store) flag,
 which hides away (sanitizes) a part of the text file.
 
 ----
-enprot$ ./target/debug/enprot sample/test.ept -s GEHEIM
+enprot$ ./target/debug/enprot store -w GEHEIM sample/test.ept
 enprot$ cat sample/test.ept
 hello, this is a test file
 // <( STORED GEHEIM cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4 )>
@@ -160,7 +168,7 @@ part can be recovered simply with a `-f` (fetch) instruction:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept -f GEHEIM
+enprot$ ./target/debug/enprot fetch -w GEHEIM sample/test.ept
 ----
 Now the contents of `test.ept` are exactly as they were before, and the GEHEIM
 section is again contained in a BEGIN.. END enclosure.
@@ -170,7 +178,7 @@ With all parameters, multiple keywords can be joined with a comma:
 
 [source,sh]
 ----
-enprot sample/test.ept -s Agent_007,GEHEIM
+enprot store -w Agent_007,GEHEIM sample/test.ept
 enprot$ cat sample/test.ept
 hello, this is a test file
 // <( STORED GEHEIM cea67c3ef34ff899793b557e9178c1b97bbcfe9722df2f6d35d2d0c91d2c1fe4 )>
@@ -190,7 +198,7 @@ Now the original document can be restored with
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept -f Agent_007 -f notexistent,GEHEIM
+enprot$ ./target/debug/enprot fetch -w Agent_007,notexistent,GEHEIM sample/test.ept
 ----
 
 You see that `-f` parameter can be given multiple times. In fact it is possible
@@ -206,7 +214,7 @@ document itself. Assuming that `sample/test.ept` is at it's original state:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept -e Agent_007
+enprot$ ./target/debug/enprot encrypt -w Agent_007 sample/test.ept
 Password for Agent_007:
 Repeat password for Agent_007:
 enprot$ cat sample/test.ept
@@ -229,7 +237,7 @@ also be passed from command line with the `-k` flag:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept -e GEHEIM -k GEHEIM=james
+enprot$ ./target/debug/enprot encrypt -w GEHEIM -k GEHEIM=james
 enprot$ cat sample/test.ept
 hello, this is a test file
 // <( ENCRYPTED GEHEIM )>
@@ -248,7 +256,7 @@ Decryption can be performed exactly the same way using the `-d` command:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept -d Agent_007,GEHEIM -k GEHEIM=james -k Agent_007=bond
+enprot$ ./target/debug/enprot decrypt -w Agent_007,GEHEIM -k GEHEIM=james -k Agent_007=bond
 enprot$ cat sample/test.ept
 hello, this is a test file
 // <( BEGIN GEHEIM )>
@@ -276,7 +284,7 @@ in its help message:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot -d AUTHOR -k AUTHOR=markku src/lib.rs
+enprot$ ./target/debug/enprot decrypt -w AUTHOR -k AUTHOR=markku src/lib.rs
 enprot$ cargo run -- -h
    Compiling enprot v0.1.0 (file:///home/mjos/Desktop/lab/enprot)
     Finished dev [unoptimized + debuginfo] target(s) in 2.17s
@@ -315,7 +323,7 @@ both predicates at once.
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept -E GEHEIM
+enprot$ ./target/debug/enprot encrypt-store -w GEHEIM sample/test.ept
 Password for GEHEIM:
 Repeat password for GEHEIM:
 enprot$ cat sample/test.ept
@@ -333,7 +341,7 @@ local DATA clauses.
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot sample/test.ept -d GEHEIM
+enprot$ ./target/debug/enprot decrypt -w GEHEIM sample/test.ept
 Password for GEHEIM:
 enprot$
 ----
@@ -348,7 +356,7 @@ To process a file and output to a different filename, use `-o`:
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot input.ept -o output.ept
+enprot$ ./target/debug/enprot passthrough input.ept -o output.ept
 ----
 
 To direct output to an another directory, or to add a prefix flag `-p PREFIX`.
@@ -356,7 +364,7 @@ The PREFIX is literally added before each output file. Note that if input
 filenames have a relative path, that remains unchanged.
 
 ----
-enprot$ ./target/debug/enprot -p output/ file.*
+enprot$ ./target/debug/enprot passthrough -p output/ file.*
 ----
 
 Will read files `file.1`, `file.2`, etc and write them into directory `output`
@@ -364,7 +372,7 @@ Will read files `file.1`, `file.2`, etc and write them into directory `output`
 
 [source,sh]
 ----
-enprot$ ./target/debug/enprot -p output file.*
+enprot$ ./target/debug/enprot passthrough -p output file.*
 ----
 
 Will produce files `outputfile.1`, `outputfile.2`, etc.
