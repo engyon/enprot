@@ -38,6 +38,7 @@ mod consts;
 pub mod crypto;
 mod error;
 mod etree;
+mod password;
 mod pbkdf;
 mod policy;
 mod prot;
