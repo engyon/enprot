@@ -162,6 +162,47 @@ pub fn decryption(alg: &str) -> Result<Box<dyn SymmetricCipher>> {
     }
 }
 
+/// Default cipher assumed when no `cipher:` extfield is present on a
+/// `ENCRYPTED` block. Older enprot blobs encrypted under the default
+/// policy have no cipher: field; we treat them as AES-256-SIV.
+pub const DEFAULT_CIPHER_ALG: &str = "aes-256-siv";
+
+/// Serialize a cipher spec into the wire format used by the `cipher:`
+/// extended field on `ENCRYPTED` blocks: `<alg>$iv=<base64-iv>` (or just
+/// `<alg>` when the cipher takes no IV, e.g. AES-SIV).
+pub fn format_cipher_extfield(alg: &str, iv: &[u8]) -> Result<String> {
+    if iv.is_empty() {
+        Ok(alg.to_string())
+    } else {
+        Ok(format!("{}$iv={}", alg, crate::utils::base64_encode(iv)?))
+    }
+}
+
+/// Parse the wire format produced by `format_cipher_extfield`. Returns
+/// the cipher algorithm name and the IV bytes (empty if the cipher
+/// takes no IV).
+pub fn parse_cipher_extfield(value: &str) -> Result<(String, Vec<u8>)> {
+    let mut it = value.split('$');
+    let alg = it
+        .next()
+        .ok_or_else(|| Error::Cipher("Invalid cipher extfield".into()))?
+        .to_string();
+    let mut fields = std::collections::BTreeMap::new();
+    for part in it {
+        let mut kv = part.splitn(2, '=');
+        let k = kv
+            .next()
+            .ok_or_else(|| Error::Cipher("Missing field key".into()))?;
+        let v = kv.collect::<String>();
+        fields.insert(k, v);
+    }
+    let iv = match fields.get("iv") {
+        Some(b64) => crate::utils::base64_decode(b64)?,
+        None => Vec::new(),
+    };
+    Ok((alg, iv))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
