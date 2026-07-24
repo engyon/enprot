@@ -50,7 +50,7 @@ impl CryptoPolicy for CryptoPolicyDefault {
         Ok(())
     }
 
-    fn check_cipher_alg(&self, _alg: &str) -> Result<(), String> {
+    fn check_cipher_alg_impl(&self, _alg: &str) -> Result<(), String> {
         Ok(())
     }
 

@@ -21,7 +21,13 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub const VALID_CIPHER_ALGS: &[&str] = &["aes-256-siv", "aes-256-gcm", "aes-256-gcm-siv"];
+pub const VALID_CIPHER_ALGS: &[&str] = &[
+    "aes-256-siv",
+    "aes-256-gcm",
+    "aes-256-gcm-siv",
+    "aes-256-gcm-det",
+    "aes-256-gcm-siv-det",
+];
 
 pub const DEFAULT_MAX_DEPTH: usize = 100;
 

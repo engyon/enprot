@@ -24,7 +24,7 @@
 use std::collections::BTreeMap;
 
 use crate::cipher;
-use crate::crypto::CryptoPolicy;
+use crate::crypto::{self, CryptoPolicy};
 use crate::error::{Error, Result};
 use crate::etree;
 use crate::pbkdf::{PBKDFCache, derive_key, parse_phc};
@@ -92,16 +92,34 @@ pub fn encrypt(
 
     let enc = cipher::encryption(&cipheropts.alg)?;
     let key_len = enc.key_len_max();
-    let (key, pbkdf) = derive_key(password, key_len, rng, pbkdfopts, cache, policy)?;
+    let (master_key, pbkdf) = derive_key(password, key_len, rng, pbkdfopts, cache, policy)?;
 
     let mut extfields: BTreeMap<String, String> = BTreeMap::new();
     if let Some(p) = pbkdf {
         extfields.insert("pbkdf".to_string(), p);
     }
 
-    let mut iv: Vec<u8> = Vec::new();
-    if cipheropts.alg != "aes-256-siv" {
-        iv = if let Some(myiv) = cipheropts.iv.clone() {
+    let is_det = cipheropts.alg.ends_with("-det");
+    let needs_iv = !cipheropts.alg.starts_with("aes-256-siv");
+
+    let (key, iv): (Vec<u8>, Vec<u8>) = if is_det {
+        // Deterministic mode: domain-separate the master key into an
+        // encryption key and an IV-derivation key via HKDF, then derive
+        // the nonce from the plaintext via HMAC. Same (password, plaintext)
+        // → same (key, IV) → same ciphertext.
+        if !needs_iv {
+            return Err(Error::Cipher(format!(
+                "{} does not support deterministic mode (SIV is already deterministic)",
+                cipheropts.alg
+            )));
+        }
+        let enc_key = crypto::hkdf_sha256(&master_key, b"enprot-enc", key_len)?;
+        let iv_key = crypto::hkdf_sha256(&master_key, b"enprot-iv", 32)?;
+        let iv_full = crypto::hmac_sha256(&iv_key, &pt)?;
+        let iv = iv_full[..enc.nonce_len()].to_vec();
+        (enc_key, iv)
+    } else if needs_iv {
+        let iv = if let Some(myiv) = cipheropts.iv.clone() {
             myiv
         } else {
             let ivlen = enc.nonce_len();
@@ -110,12 +128,19 @@ pub fn encrypt(
                 .read(ivlen)
                 .map_err(Error::botan)?
         };
+        (master_key, iv)
+    } else if cipheropts.iv.is_some() {
+        return Err(Error::Cipher("IV was supplied but not expected".into()));
+    } else {
+        // SIV: no IV needed.
+        (master_key, Vec::new())
+    };
+
+    if needs_iv {
         extfields.insert(
             "cipher".to_string(),
             format!("{}$iv={}", &cipheropts.alg, utils::base64_encode(&iv)?),
         );
-    } else if cipheropts.iv.is_some() {
-        return Err(Error::Cipher("IV was supplied but not expected".into()));
     }
 
     policy
@@ -142,7 +167,7 @@ pub fn decrypt(
     let dec = cipher::decryption(&cipher_alg)?;
     let key_len = dec.key_len_max();
     let mut no_rng: Option<botan::RandomNumberGenerator> = None;
-    let key = if let Some(p) = pbkdf {
+    let master_key = if let Some(p) = pbkdf {
         let (alg, params, salt) = parse_phc(p)?;
         let pbkdfopts = etree::PBKDFOptions {
             alg,
@@ -168,6 +193,14 @@ pub fn decrypt(
             policy,
         )?
         .0
+    };
+
+    // Deterministic variants domain-separated the master key via HKDF at
+    // encrypt time. Decrypt must do the same to recover the enc_key.
+    let key = if cipher_alg.ends_with("-det") {
+        crypto::hkdf_sha256(&master_key, b"enprot-enc", key_len)?
+    } else {
+        master_key
     };
 
     policy

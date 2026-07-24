@@ -42,7 +42,17 @@ pub trait CryptoPolicy {
     /// independent of any key/IV. Called before backend cipher creation so
     /// policy rejection happens even when the backend does not implement
     /// the requested algorithm.
-    fn check_cipher_alg(&self, alg: &str) -> Result<(), String>;
+    ///
+    /// The deterministic variants (`aes-256-gcm-det`, `aes-256-gcm-siv-det`)
+    /// use the same underlying backend cipher as their non-det counterparts,
+    /// so policy checks against the base name.
+    fn check_cipher_alg(&self, alg: &str) -> Result<(), String> {
+        self.check_cipher_alg_impl(alg.trim_end_matches("-det"))
+    }
+
+    /// Implementation backing `check_cipher_alg` after any `-det` suffix
+    /// has been stripped. Concrete policies implement this.
+    fn check_cipher_alg_impl(&self, alg: &str) -> Result<(), String>;
 
     fn check_cipher(&self, alg: &str, key: &[u8], iv: &[u8], ad: &[u8]) -> Result<(), String>;
 
