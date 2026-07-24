@@ -7,5 +7,6 @@ mod misc;
 mod multi_file;
 mod pbkdf;
 mod pipe;
+mod pki;
 mod policy;
 mod store_fetch;
