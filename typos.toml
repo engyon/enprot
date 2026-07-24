@@ -1,0 +1,41 @@
+# Configuration for typos spell checker
+# See: https://github.com/crate-ci/typos
+
+[files]
+extend-exclude = ["target/", ".git/", "test-data/"]
+
+[default.extend.words]
+enprot = "enprot"
+Engyon = "Engyon"
+GEHEIM = "GEHEIM"
+Agent_007 = "Agent_007"
+botan = "botan"
+Botan = "Botan"
+argon = "argon"
+scrypt = "scrypt"
+pbkdf = "pbkdf"
+pbkdf2 = "pbkdf2"
+clippy = "clippy"
+rustfmt = "rustfmt"
+wasm = "wasm"
+ffi = "ffi"
+alloc = "alloc"
+serde = "serde"
+adoc = "adoc"
+asciidoc = "asciidoc"
+AsciiDoc = "AsciiDoc"
+extfield = "extfield"
+extfields = "extfields"
+keyw = "keyw"
+casdir = "casdir"
+paops = "paops"
+etree = "etree"
+unparser = "unparser"
+rustdoc = "rustdoc"
+Dependabot = "Dependabot"
+Homebrew = "Homebrew"
+homebrew = "homebrew"
+musl = "musl"
+libbotan = "libbotan"
+snapcraft = "snapcraft"
+Cargo = "Cargo"
