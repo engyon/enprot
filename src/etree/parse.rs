@@ -48,7 +48,7 @@ where
         let line = line_in?;
         lineno += 1;
 
-        if !line.trim_start().starts_with(&paops.left_sep) {
+        if !line.trim_start().starts_with(&paops.separators.left) {
             if let Some(TextNode::Plain(last)) = text.last_mut() {
                 last.push('\n');
                 last.push_str(&line);
@@ -58,16 +58,16 @@ where
             continue;
         }
 
-        let mut trimmed = line.trim().replacen(&paops.left_sep, "", 1);
-        if !trimmed.ends_with(&paops.right_sep) {
+        let mut trimmed = line.trim().replacen(&paops.separators.left, "", 1);
+        if !trimmed.ends_with(&paops.separators.right) {
             return Err(parse_error(
                 paops,
                 lineno,
                 &line,
-                format!("Right separator '{}' missing.", paops.right_sep),
+                format!("Right separator '{}' missing.", paops.separators.right),
             ));
         }
-        let i = trimmed.len() - paops.right_sep.len();
+        let i = trimmed.len() - paops.separators.right.len();
         trimmed.truncate(i);
         let cmd: Vec<&str> = trimmed.split_whitespace().collect();
         if cmd.is_empty() {

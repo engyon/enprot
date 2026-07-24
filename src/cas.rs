@@ -47,7 +47,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
         eprintln!("cas::load(): {} bytes from {}", bytes, path.display());
     }
 
-    let verify = crypto::hexdigest("sha3-256", &blob, &*paops.policy)?;
+    let verify = crypto::hexdigest("sha3-256", &blob, &*paops.crypto.policy)?;
     // Non-constant-time string comparison is fine here: the hash is derived
     // from the file contents (CAS semantic), not from a secret. A timing
     // leak would only reveal how many leading hex chars of a public hash
@@ -63,7 +63,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
 }
 
 pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String> {
-    let hexhash = crypto::hexdigest("sha3-256", &blob, &*paops.policy)?;
+    let hexhash = crypto::hexdigest("sha3-256", &blob, &*paops.crypto.policy)?;
     let mut path = paops.casdir.clone();
     path.push(&hexhash);
 

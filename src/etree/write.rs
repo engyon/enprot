@@ -42,41 +42,49 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                 writeln!(
                     outw,
                     "{} BEGIN {} {}",
-                    paops.left_sep, keyw, paops.right_sep
+                    paops.separators.left, keyw, paops.separators.right
                 )?;
                 paops.level += 1;
                 tree_write(outw, txt, paops)?;
                 paops.level -= 1;
-                writeln!(outw, "{} END {} {}", paops.left_sep, keyw, paops.right_sep)?;
+                writeln!(
+                    outw,
+                    "{} END {} {}",
+                    paops.separators.left, keyw, paops.separators.right
+                )?;
             }
             TextNode::Encrypted {
                 keyw,
                 txt,
                 extfields,
             } => {
-                write!(outw, "{} ENCRYPTED {}", paops.left_sep, keyw)?;
+                write!(outw, "{} ENCRYPTED {}", paops.separators.left, keyw)?;
                 if let TextNode::Stored { keyw: _, cas } = &txt[0] {
                     write!(outw, " {}", cas)?;
                     for (key, value) in extfields.iter() {
                         write!(outw, " {}:{}", key, value)?;
                     }
-                    writeln!(outw, " {}", paops.right_sep)?;
+                    writeln!(outw, " {}", paops.separators.right)?;
                 } else {
                     for (key, value) in extfields.iter() {
                         write!(outw, " {}:{}", key, value)?;
                     }
-                    writeln!(outw, " {}", paops.right_sep)?;
+                    writeln!(outw, " {}", paops.separators.right)?;
                     paops.level += 1;
                     tree_write(outw, txt, paops)?;
                     paops.level -= 1;
-                    writeln!(outw, "{} END {} {}", paops.left_sep, keyw, paops.right_sep)?;
+                    writeln!(
+                        outw,
+                        "{} END {} {}",
+                        paops.separators.left, keyw, paops.separators.right
+                    )?;
                 }
             }
             TextNode::Stored { keyw, cas } => {
                 writeln!(
                     outw,
                     "{} STORED {} {} {}",
-                    paops.left_sep, keyw, cas, paops.right_sep
+                    paops.separators.left, keyw, cas, paops.separators.right
                 )?;
             }
             TextNode::Data(data) => {
@@ -84,9 +92,9 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                     writeln!(
                         outw,
                         "{} DATA {} {}",
-                        paops.left_sep,
+                        paops.separators.left,
                         utils::base64_encode(chunk)?,
-                        paops.right_sep
+                        paops.separators.right
                     )?;
                 }
             }
