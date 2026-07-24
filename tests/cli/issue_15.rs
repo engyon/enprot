@@ -77,7 +77,9 @@ fn nested_encrypt_alice_bob() {
         "-e",
         "alice,bob",
         "-k",
-        "alice=alicepass,bob=bobpass",
+        "alice=alicepass",
+        "-k",
+        "bob=bobpass",
         ept.path.to_str().unwrap(),
     ])
     .success();
@@ -90,7 +92,9 @@ fn nested_encrypt_alice_bob() {
         "-d",
         "alice,bob",
         "-k",
-        "alice=alicepass,bob=bobpass",
+        "alice=alicepass",
+        "-k",
+        "bob=bobpass",
         ept.path.to_str().unwrap(),
     ])
     .success();

@@ -113,7 +113,9 @@ fn encrypt_store_both_agent007_geheim() {
         .arg("--pbkdf")
         .arg("legacy")
         .arg("-k")
-        .arg("Agent_007=password,GEHEIM=password")
+        .arg("Agent_007=password")
+        .arg("-k")
+        .arg("GEHEIM=password")
         .arg(&ept.path)
         .assert()
         .success();
@@ -138,7 +140,9 @@ fn encrypt_store_both_agent007_geheim() {
         .arg("-d")
         .arg("Agent_007,GEHEIM")
         .arg("-k")
-        .arg("Agent_007=password,GEHEIM=password")
+        .arg("Agent_007=password")
+        .arg("-k")
+        .arg("GEHEIM=password")
         .arg(&ept.path)
         .assert()
         .success();
@@ -210,7 +214,9 @@ fn encrypt_store_agent007_geheim() {
         .arg("-d")
         .arg("Agent_007,GEHEIM")
         .arg("-k")
-        .arg("Agent_007=password,GEHEIM=password")
+        .arg("Agent_007=password")
+        .arg("-k")
+        .arg("GEHEIM=password")
         .arg(&ept.path)
         .assert()
         .success();
@@ -222,7 +228,9 @@ fn encrypt_store_agent007_geheim() {
         .arg("-d")
         .arg("Agent_007,GEHEIM")
         .arg("-k")
-        .arg("Agent_007=password,GEHEIM=password")
+        .arg("Agent_007=password")
+        .arg("-k")
+        .arg("GEHEIM=password")
         .arg(&ept.path)
         .assert()
         .success();
