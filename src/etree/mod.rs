@@ -88,47 +88,67 @@ impl CipherOptions {
     }
 }
 
-pub struct ParseOps {
-    pub max_depth: usize,
-    pub left_sep: String,
-    pub right_sep: String,
+pub struct Separators {
+    pub left: String,
+    pub right: String,
+}
+
+pub struct Transforms {
     pub store: HashSet<String>,
     pub fetch: HashSet<String>,
     pub encrypt: HashSet<String>,
     pub decrypt: HashSet<String>,
+}
+
+pub struct CryptoConfig {
+    pub policy: Box<dyn CryptoPolicy>,
+    pub pbkdfopts: PBKDFOptions,
+    pub cipheropts: CipherOptions,
+    pub rng: Option<botan::RandomNumberGenerator>,
+    pub pbkdf_cache: Option<PBKDFCache>,
+}
+
+pub struct ParseOps {
+    pub max_depth: usize,
+    pub separators: Separators,
+    pub transforms: Transforms,
     pub passwords: HashMap<String, String>,
     pub fname: String,
     pub casdir: PathBuf,
     pub verbose: bool,
-    pub rng: Option<botan::RandomNumberGenerator>,
-    pub policy: Box<dyn CryptoPolicy>,
-    pub pbkdfopts: PBKDFOptions,
-    pub pbkdf_cache: Option<PBKDFCache>,
-    pub cipheropts: CipherOptions,
-    level: usize,
+    pub crypto: CryptoConfig,
+    pub level: usize,
 }
 
 impl ParseOps {
     pub fn new(policy: Box<dyn CryptoPolicy>) -> Result<ParseOps> {
         let rng = botan::RandomNumberGenerator::new().map_err(Error::botan)?;
+        let pbkdfopts = PBKDFOptions::new(&*policy);
+        let cipheropts = CipherOptions::new(&*policy);
         Ok(ParseOps {
             max_depth: consts::DEFAULT_MAX_DEPTH,
-            left_sep: consts::DEFAULT_LEFT_SEP.to_string(),
-            right_sep: consts::DEFAULT_RIGHT_SEP.to_string(),
-            store: HashSet::new(),
-            fetch: HashSet::new(),
-            encrypt: HashSet::new(),
-            decrypt: HashSet::new(),
+            separators: Separators {
+                left: consts::DEFAULT_LEFT_SEP.to_string(),
+                right: consts::DEFAULT_RIGHT_SEP.to_string(),
+            },
+            transforms: Transforms {
+                store: HashSet::new(),
+                fetch: HashSet::new(),
+                encrypt: HashSet::new(),
+                decrypt: HashSet::new(),
+            },
             passwords: HashMap::new(),
             fname: String::new(),
             casdir: Path::new("").to_path_buf(),
-            level: 0,
             verbose: false,
-            rng: Some(rng),
-            pbkdfopts: PBKDFOptions::new(&*policy),
-            pbkdf_cache: Some(Vec::new()),
-            cipheropts: CipherOptions::new(&*policy),
-            policy,
+            level: 0,
+            crypto: CryptoConfig {
+                policy,
+                pbkdfopts,
+                cipheropts,
+                rng: Some(rng),
+                pbkdf_cache: Some(Vec::new()),
+            },
         })
     }
 }
@@ -218,7 +238,7 @@ mod tests {
     #[test]
     fn transform_test_ept_store_unchanged() {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
-        paops.store.insert("noexist".to_string());
+        paops.transforms.store.insert("noexist".to_string());
         let outtree = transform(&intree, &mut paops).unwrap();
         assert_eq!(intree, outtree);
     }
@@ -226,7 +246,7 @@ mod tests {
     #[test]
     fn transform_test_ept_store_agent007() {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
-        paops.store.insert("Agent_007".to_string());
+        paops.transforms.store.insert("Agent_007".to_string());
         let outtree = transform(&intree, &mut paops).unwrap();
         let blob = tree_to_blob(&outtree, &mut paops).unwrap();
         parse(BufReader::new(&blob[..]), &mut paops).unwrap();
@@ -235,14 +255,14 @@ mod tests {
     #[test]
     fn transform_test_ept_fetch_agent007() {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
-        paops.fetch.insert("Agent_007".to_string());
+        paops.transforms.fetch.insert("Agent_007".to_string());
         let _outtree = transform(&intree, &mut paops).unwrap();
     }
 
     #[test]
     fn transform_test_ept_encrypt_agent007() {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
-        paops.encrypt.insert("Agent_007".to_string());
+        paops.transforms.encrypt.insert("Agent_007".to_string());
         paops
             .passwords
             .insert("Agent_007".to_string(), "bond".to_string());

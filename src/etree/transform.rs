@@ -57,7 +57,7 @@ fn transform_begin_end(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         _ => unreachable!(),
     };
 
-    if paops.encrypt.contains(&keyw) {
+    if paops.transforms.encrypt.contains(&keyw) {
         paops.level += 1;
         let block = transform(&txt, paops)?;
         paops.level -= 1;
@@ -67,14 +67,14 @@ fn transform_begin_end(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         let (ct, extfields) = prot::encrypt(
             pt,
             &pass,
-            &mut paops.rng,
-            &paops.pbkdfopts,
-            &paops.cipheropts,
-            &mut paops.pbkdf_cache,
-            &*paops.policy,
+            &mut paops.crypto.rng,
+            &paops.crypto.pbkdfopts,
+            &paops.crypto.cipheropts,
+            &mut paops.crypto.pbkdf_cache,
+            &*paops.crypto.policy,
         )?;
 
-        let inner = if paops.store.contains(&keyw) {
+        let inner = if paops.transforms.store.contains(&keyw) {
             let hexhash = cas::save(ct, paops)?;
             vec![TextNode::Stored {
                 keyw: "ct".to_string(),
@@ -90,7 +90,7 @@ fn transform_begin_end(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         });
     }
 
-    if paops.store.contains(&keyw) {
+    if paops.transforms.store.contains(&keyw) {
         paops.level += 1;
         let block = transform(&txt, paops)?;
         paops.level -= 1;
@@ -116,7 +116,7 @@ fn transform_encrypted(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         _ => unreachable!(),
     };
 
-    if paops.decrypt.contains(&keyw) {
+    if paops.transforms.decrypt.contains(&keyw) {
         let ct = match &txt[0] {
             TextNode::Data(data) => data.clone(),
             TextNode::Stored { cas: hexhash, .. } => cas::load(hexhash, paops)?,
@@ -129,8 +129,8 @@ fn transform_encrypted(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
             &pass,
             &extfields.get("pbkdf"),
             &extfields.get("cipher"),
-            &mut paops.pbkdf_cache,
-            &*paops.policy,
+            &mut paops.crypto.pbkdf_cache,
+            &*paops.crypto.policy,
         ) {
             Ok(ct) => ct.to_vec(),
             Err(e) => {
@@ -146,7 +146,7 @@ fn transform_encrypted(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         return Ok(TextNode::BeginEnd { keyw, txt: block });
     }
 
-    if paops.store.contains(&keyw) {
+    if paops.transforms.store.contains(&keyw) {
         let hexhash = match &txt[0] {
             TextNode::Data(data) => cas::save(data.clone(), paops)?,
             TextNode::Stored { cas: hexhash, .. } => hexhash.clone(),
@@ -162,7 +162,7 @@ fn transform_encrypted(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         });
     }
 
-    if paops.fetch.contains(&keyw) {
+    if paops.transforms.fetch.contains(&keyw) {
         let ct = match &txt[0] {
             TextNode::Data(data) => data.clone(),
             TextNode::Stored { cas: hexhash, .. } => cas::load(hexhash, paops)?,
@@ -184,7 +184,7 @@ fn transform_stored(node: &TextNode, paops: &mut crate::etree::ParseOps) -> Resu
         _ => unreachable!(),
     };
 
-    if paops.fetch.contains(&keyw) {
+    if paops.transforms.fetch.contains(&keyw) {
         let blob = cas::load(&cas, paops)?;
         let mut block = crate::etree::blob_to_tree(blob, cas.clone(), paops)?;
         paops.level += 1;

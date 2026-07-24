@@ -363,7 +363,7 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
     let policy = make_policy(&policy_name);
     let mut paops = if let Some(defaults) = common.defaults.as_deref() {
         let mut p = ParseOps::new(make_policy(defaults))?;
-        p.policy = policy;
+        p.crypto.policy = policy;
         p
     } else {
         ParseOps::new(policy)?
@@ -379,11 +379,11 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
 
     paops.verbose = common.verbose && !common.quiet;
     paops.max_depth = common.max_depth;
-    paops.left_sep = common.left_separator;
-    paops.right_sep = common.right_separator;
+    paops.separators.left = common.left_separator;
+    paops.separators.right = common.right_separator;
     paops.passwords.extend(common.password);
     if common.pbkdf_disable_cache {
-        paops.pbkdf_cache = None;
+        paops.crypto.pbkdf_cache = None;
     }
 
     // Apply the operation: populate the transform sets on paops. `op == None`
@@ -392,20 +392,20 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
         for w in &output.word {
             match op_kind {
                 Operation::Encrypt => {
-                    paops.encrypt.insert(w.clone());
+                    paops.transforms.encrypt.insert(w.clone());
                 }
                 Operation::Decrypt => {
-                    paops.decrypt.insert(w.clone());
+                    paops.transforms.decrypt.insert(w.clone());
                 }
                 Operation::Store => {
-                    paops.store.insert(w.clone());
+                    paops.transforms.store.insert(w.clone());
                 }
                 Operation::Fetch => {
-                    paops.fetch.insert(w.clone());
+                    paops.transforms.fetch.insert(w.clone());
                 }
                 Operation::EncryptStore => {
-                    paops.encrypt.insert(w.clone());
-                    paops.store.insert(w.clone());
+                    paops.transforms.encrypt.insert(w.clone());
+                    paops.transforms.store.insert(w.clone());
                 }
             }
         }
@@ -413,16 +413,16 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
         // PBKDF + cipher options only meaningful for encrypt / encrypt-store.
         if matches!(op_kind, Operation::Encrypt | Operation::EncryptStore) {
             if let Some(alg) = enc_opts.pbkdf.as_deref() {
-                paops.pbkdfopts.alg = alg.to_string();
+                paops.crypto.pbkdfopts.alg = alg.to_string();
             }
             if let Some(saltlen) = enc_opts.pbkdf_salt_len {
-                paops.pbkdfopts.saltlen = saltlen;
+                paops.crypto.pbkdfopts.saltlen = saltlen;
             }
             if let Some(msec) = enc_opts.pbkdf_msec {
-                paops.pbkdfopts.msec = Some(msec);
+                paops.crypto.pbkdfopts.msec = Some(msec);
             }
             if let Some(raw) = enc_opts.pbkdf_params.as_deref() {
-                paops.pbkdfopts.msec = None;
+                paops.crypto.pbkdfopts.msec = None;
                 let params: std::collections::BTreeMap<String, usize> = raw
                     .split(',')
                     .map(|kv| {
@@ -430,16 +430,16 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
                         (k.to_string(), v.parse().unwrap_or(0))
                     })
                     .collect();
-                paops.pbkdfopts.params = Some(params);
+                paops.crypto.pbkdfopts.params = Some(params);
             }
             if let Some(salt_hex) = enc_opts.pbkdf_salt.as_deref() {
-                paops.pbkdfopts.salt = Some(hex::decode(salt_hex).map_err(Error::from)?);
+                paops.crypto.pbkdfopts.salt = Some(hex::decode(salt_hex).map_err(Error::from)?);
             }
             if let Some(c) = enc_opts.cipher.as_deref() {
-                paops.cipheropts.alg = c.to_string();
+                paops.crypto.cipheropts.alg = c.to_string();
             }
             if let Some(iv_hex) = enc_opts.cipher_iv.as_deref() {
-                paops.cipheropts.iv = Some(hex::decode(iv_hex).map_err(Error::from)?);
+                paops.crypto.cipheropts.iv = Some(hex::decode(iv_hex).map_err(Error::from)?);
             }
         }
     }
@@ -447,8 +447,8 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
     if paops.verbose {
         eprintln!(
             "LEFT_SEP='{}' RIGHT_SEP='{}' casdir = '{}'",
-            paops.left_sep,
-            paops.right_sep,
+            paops.separators.left,
+            paops.separators.right,
             paops.casdir.display(),
         );
     }
