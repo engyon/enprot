@@ -83,9 +83,6 @@ jobs:
     name: Code coverage
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      CARGO_INCREMENTAL: 0
-      RUSTFLAGS: -Cinstrument-coverage -Ccodegen-units=1 -Coverflow-checks=off
     steps:
       - uses: actions/checkout@v7
       - name: Install rust toolchain
@@ -94,19 +91,18 @@ jobs:
           components: llvm-tools-preview
       - name: Install dependencies
         run: ./ci/install.sh
-      - name: Build
-        run: cargo build --verbose
-      - name: Run tests
-        run: cargo test --verbose -- --nocapture
-      - name: Install grcov
-        run: |
-          curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-x86_64-unknown-linux-gnu.tar.bz2 | tar jxf -
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
       - name: Generate coverage
-        run: |
-          zip -0 ccov.zip `find . \( -name "enprot*.gc*" \) -print`
-          ./grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info
+        run: cargo llvm-cov --lcov --output-path lcov.info
       - name: Upload to Codecov
-        run: bash <(curl -s https://codecov.io/bash) -f lcov.info
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          fail_ci_if_error: false
 
   check-format:
     name: Check code format
