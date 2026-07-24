@@ -27,7 +27,7 @@ hex            = "0.4"
 rpassword      = "7"
 clap           = { version = "4.5", features = ["derive", "wrap_help"] }
 botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
-phf            = { version = "0.11", features = ["macros"] }
+phf            = { version = "0.14", features = ["macros"] }
 thiserror      = "2"
 # Botan does not implement AES-GCM-SIV (RFC 8452). The RustCrypto crate
 # remains the backend for `aes-256-gcm-siv`; the other ciphers route through
