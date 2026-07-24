@@ -51,20 +51,12 @@ RustCrypto crate (pure Rust, no system dep).
   a source archive the formula can `url`. The tag-triggered flow already
   does this via GitHub Releases.
 
-## Action items (in this repo)
+## Status (July 2026)
 
-None. The formula lives in `riboseinc/homebrew-enprot` (to be created).
-Once the tap is published:
+Resolved as **deferred-by-doc**. The formula belongs in a tap repo
+(`riboseinc/homebrew-enprot`), not here, and depends on a `0.4.0`
+release tag that doesn't exist yet. `docs/homebrew.adoc` captures the
+recipe and the prerequisites so the tap PR is mechanical when the
+release happens.
 
-- Update `README.adoc` with `brew install` instructions.
-- Optionally add a Homebrew badge to the README.
-
-## Why this issue stays open
-
-Until the tap exists and a 0.4.0 tag is cut, there's nothing actionable
-in this repo. Tracking issue for the external tap PR.
-
-## Deferred
-
-This triage writes the README install section but does NOT create the
-formula. The formula is the tap repo's first PR.
+No code or formula in this repo.
