@@ -141,20 +141,22 @@ impl SymmetricCipher for AesGcmSivCipher {
 }
 
 pub fn encryption(alg: &str) -> Result<Box<dyn SymmetricCipher>> {
-    match alg {
+    let base = alg.trim_end_matches("-det");
+    match base {
         "aes-256-gcm-siv" => Ok(Box::new(AesGcmSivCipher::new(CipherDirection::Encrypt))),
         _ => Ok(Box::new(BotanCipher::create(
-            alg,
+            base,
             CipherDirection::Encrypt,
         )?)),
     }
 }
 
 pub fn decryption(alg: &str) -> Result<Box<dyn SymmetricCipher>> {
-    match alg {
+    let base = alg.trim_end_matches("-det");
+    match base {
         "aes-256-gcm-siv" => Ok(Box::new(AesGcmSivCipher::new(CipherDirection::Decrypt))),
         _ => Ok(Box::new(BotanCipher::create(
-            alg,
+            base,
             CipherDirection::Decrypt,
         )?)),
     }

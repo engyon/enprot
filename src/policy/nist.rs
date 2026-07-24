@@ -95,12 +95,19 @@ impl CryptoPolicy for CryptoPolicyNIST {
     }
 
     fn check_cipher_alg(&self, alg: &str) -> Result<(), String> {
+        // Strip the `-det` suffix used by the deterministic AES-GCM variants
+        // before delegating; the underlying cipher backend is the same.
+        self.check_cipher_alg_impl(alg.trim_end_matches("-det"))
+    }
+
+    fn check_cipher_alg_impl(&self, alg: &str) -> Result<(), String> {
         Self::check_alg("Cipher", alg)
     }
 
     fn check_cipher(&self, alg: &str, _key: &[u8], iv: &[u8], _ad: &[u8]) -> Result<(), String> {
-        Self::check_alg("Cipher", alg)?;
-        if alg == "aes-256-gcm" && iv.len() != 96 / 8 {
+        let base = alg.trim_end_matches("-det");
+        Self::check_alg("Cipher", base)?;
+        if base == "aes-256-gcm" && iv.len() != 96 / 8 {
             return Err(
                 "IV length does not match NIST recommendations for this cipher.".to_string(),
             );

@@ -55,6 +55,24 @@ pub fn hexdigest(alg: &str, data: &[u8], policy: &dyn CryptoPolicy) -> Result<St
     Ok(hex::encode(digest(alg, data, policy)?))
 }
 
+/// HKDF using SHA-256. Used by the deterministic AES-GCM variants
+/// (issue #39) to domain-separate the PBKDF master key into an encryption
+/// key and an IV-derivation key. The single-shot form (`HKDF(SHA-256)`)
+/// combines Extract+Expand; passing the PBKDF output as IKM is fine
+/// because it's already pseudorandom.
+pub fn hkdf_sha256(prk: &[u8], info: &[u8], output_len: usize) -> Result<Vec<u8>> {
+    botan::kdf("HKDF(SHA-256)", output_len, prk, &[], info).map_err(Error::botan)
+}
+
+/// HMAC-SHA-256. Used to derive the AES-GCM nonce deterministically from
+/// the plaintext under the IV-derivation key (issue #39).
+pub fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
+    let mut mac = botan::MsgAuthCode::new("HMAC(SHA-256)").map_err(Error::botan)?;
+    mac.set_key(key).map_err(Error::botan)?;
+    mac.update(data).map_err(Error::botan)?;
+    mac.finish().map_err(Error::botan)
+}
+
 fn to_botan_pbkdf(alg: &str) -> Result<std::borrow::Cow<'static, str>> {
     if let Some(rest) = alg.strip_prefix("pbkdf2-") {
         return Ok(format!("PBKDF2({})", to_botan_hash(rest)?).into());
