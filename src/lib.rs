@@ -98,6 +98,9 @@ pub enum Command {
     /// Parse and re-write each input without applying any transform.
     /// Useful for validating markup or measuring parse performance.
     Passthrough(OperationSubcmd),
+    /// Verify file integrity: check markup structure, CAS pointers,
+    /// and extfield format without decrypting.
+    Verify(OperationSubcmd),
     /// Print shell completion script to stdout.
     ///
     /// Install with: enprot completions bash > /etc/bash_completion.d/enprot
@@ -338,6 +341,7 @@ where
             run(common, a.output, Some((a.encrypt, Operation::EncryptStore)))
         }
         Command::Passthrough(a) => run(common, a.output, None),
+        Command::Verify(a) => verify_files(common, a.output),
         Command::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "enprot", &mut std::io::stdout());
             Ok(())
@@ -605,4 +609,158 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
     etree::tree_write(&mut writer_out, &tree_out, paops)
         .map_err(|e| Error::Msg(format!("Write to {} failed: {}", path_out, e)))?;
     Ok(())
+}
+
+/// Parse each input and check structural integrity: valid EPT markup,
+/// resolvable CAS pointers (file exists + hash matches), well-formed
+/// cipher/pbkdf extfields. Reports per-file status to stderr; returns
+/// Err on the first problem.
+fn verify_files(common: CommonArgs, output: OutputArgs) -> Result<()> {
+    let policy = resolve_policy(&common)?;
+    let mut paops = ParseOps::new(policy)?;
+    apply_common(&common, &mut paops);
+
+    let files = pair_inputs_to_outputs(
+        &output.files,
+        &output.output,
+        &output.prefix,
+        output.output_dir.as_deref(),
+    );
+
+    let mut issues = 0usize;
+    for (path_in, _) in &files {
+        if paops.verbose {
+            eprintln!("Verifying {}", path_in);
+        }
+
+        let reader: Box<dyn BufRead> = if path_in == "-" {
+            Box::new(BufReader::new(std::io::stdin()))
+        } else {
+            Box::new(BufReader::new(File::open(path_in).map_err(|e| {
+                Error::Msg(format!("Failed to open {}: {}", path_in, e))
+            })?))
+        };
+        paops.fname = path_in.clone();
+
+        let tree = match etree::parse(reader, &mut paops) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("FAIL {}: parse error: {}", path_in, e);
+                issues += 1;
+                continue;
+            }
+        };
+
+        for node in &tree {
+            let node_issues = verify_node(node, &mut paops);
+            issues += node_issues;
+        }
+
+        if issues == 0 {
+            eprintln!("OK   {}", path_in);
+        }
+    }
+
+    if issues > 0 {
+        return Err(Error::Msg(format!("{} issue(s) found", issues)));
+    }
+    Ok(())
+}
+
+fn verify_node(node: &etree::TextNode, paops: &mut ParseOps) -> usize {
+    match node {
+        etree::TextNode::Stored { keyw, cas } => match cas::load(cas, paops) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("FAIL: CAS pointer '{}' for WORD '{}': {}", cas, keyw, e);
+                1
+            }
+        },
+        etree::TextNode::Encrypted { txt, extfields, .. } => {
+            let mut n = 0;
+            // Check inner node
+            for child in txt {
+                n += verify_node(child, paops);
+            }
+            // Validate extfield format
+            if let Some(cipher_str) = extfields.get("cipher") {
+                if let Err(e) = cipher::parse_cipher_extfield(cipher_str) {
+                    eprintln!("FAIL: cipher extfield '{}': {}", cipher_str, e);
+                    n += 1;
+                }
+            }
+            if let Some(phc_str) = extfields.get("pbkdf") {
+                if let Err(e) = pbkdf::parse_phc(phc_str) {
+                    eprintln!("FAIL: pbkdf extfield '{}': {}", phc_str, e);
+                    n += 1;
+                }
+            }
+            n
+        }
+        etree::TextNode::BeginEnd { txt, .. } => {
+            let mut n = 0;
+            for child in txt {
+                n += verify_node(child, paops);
+            }
+            n
+        }
+        _ => 0,
+    }
+}
+
+/// Resolve the crypto policy from CommonArgs (shared by `run` and `verify_files`).
+fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> {
+    let explicit_policy = common.policy.clone();
+    let mut policy_name = explicit_policy
+        .clone()
+        .unwrap_or_else(|| consts::DEFAULT_POLICY.to_string());
+    let fips = common.fips
+        || (cfg!(unix)
+            && match fs::read_to_string("/proc/sys/crypto/fips_enabled") {
+                Ok(s) => s.starts_with('1'),
+                Err(_) => false,
+            });
+    if fips {
+        if let Some(p) = explicit_policy.as_deref()
+            && p != "nist"
+        {
+            return Err(Error::Msg(format!(
+                "Policy setting of '{}' conflicts with --fips",
+                p
+            )));
+        }
+        policy_name = "nist".to_string();
+    }
+    Ok(make_policy(&policy_name))
+}
+
+/// Apply common args to ParseOps (shared by `run` and `verify_files`).
+fn apply_common(common: &CommonArgs, paops: &mut ParseOps) {
+    if let Some(dir) = common.casdir.clone() {
+        paops.casdir = dir;
+    } else if Path::new("cas").is_dir() {
+        paops.casdir = Path::new("cas").to_path_buf();
+    } else {
+        paops.casdir = Path::new(".").to_path_buf();
+    }
+    paops.verbose = common.verbose && !common.quiet;
+    paops.max_depth = common.max_depth;
+    if let Some(ref lang) = common.lang {
+        if let Some((left, right)) = consts::lang_separators(lang) {
+            if common.left_separator == consts::DEFAULT_LEFT_SEP {
+                paops.separators.left = left.to_string();
+            } else {
+                paops.separators.left = common.left_separator.clone();
+            }
+            if common.right_separator == consts::DEFAULT_RIGHT_SEP {
+                paops.separators.right = right.to_string();
+            } else {
+                paops.separators.right = common.right_separator.clone();
+            }
+        }
+    } else {
+        paops.separators.left = common.left_separator.clone();
+        paops.separators.right = common.right_separator.clone();
+    }
+    paops.passwords.extend(common.password.clone());
 }
