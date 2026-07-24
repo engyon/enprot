@@ -1,0 +1,61 @@
+#!/bin/bash
+#
+# Pre-commit hook for enprot
+# Mirrors the CI checks in .github/workflows/tests.yml
+#
+# Checks: fmt, clippy, typos
+#
+# To install: cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# To skip:   SKIP_PRECOMMIT=1 git commit -m "..."
+
+set -e
+
+if [ -n "$SKIP_PRECOMMIT" ]; then
+    echo "Skipping pre-commit checks"
+    exit 0
+fi
+
+FAILED=0
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo "Running pre-commit checks..."
+
+echo -e "${YELLOW}[1/3] cargo fmt${NC}"
+if cargo fmt --all -- --check; then
+    echo -e "${GREEN}  ok${NC}"
+else
+    echo -e "${RED}  FAILED — run 'cargo fmt --all'${NC}"
+    FAILED=1
+fi
+
+echo -e "${YELLOW}[2/3] cargo clippy${NC}"
+if PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-$(brew --prefix 2>/dev/null)/lib/pkgconfig}" \
+   cargo clippy --all-targets -- -D warnings 2>&1 | grep -q "warning\|error"; then
+    echo -e "${RED}  FAILED — fix clippy warnings${NC}"
+    FAILED=1
+else
+    echo -e "${GREEN}  ok${NC}"
+fi
+
+echo -e "${YELLOW}[3/3] typos${NC}"
+if command -v typos &>/dev/null; then
+    if typos; then
+        echo -e "${GREEN}  ok${NC}"
+    else
+        echo -e "${RED}  FAILED — run 'typos -w' to fix${NC}"
+        FAILED=1
+    fi
+else
+    echo -e "${YELLOW}  skipped (typos not installed: cargo install typos-cli)${NC}"
+fi
+
+if [ $FAILED -eq 0 ]; then
+    echo -e "${GREEN}All checks passed${NC}"
+    exit 0
+else
+    echo -e "${RED}Some checks failed${NC}"
+    exit 1
+fi
