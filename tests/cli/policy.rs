@@ -1,9 +1,8 @@
+use crate::Fixture;
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
-
-use Fixture;
 
 fn test_policy_err(policy: &str, args: &[&str], err: &str) {
     let ept = Fixture::copy("sample/simple.ept");

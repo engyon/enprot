@@ -1,4 +1,4 @@
-// Copyright (c) 2019 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -21,10 +21,12 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub fn base64_encode(data: &[u8]) -> Result<String, &'static str> {
-    botan::base64_encode(data).map_err(|_| "Botan error")
+use crate::error::{Error, Result};
+
+pub fn base64_encode(data: &[u8]) -> Result<String> {
+    botan::base64_encode(data).map_err(Error::botan)
 }
 
-pub fn base64_decode(data: &str) -> Result<Vec<u8>, &'static str> {
-    botan::base64_decode(data).map_err(|_| "Botan error")
+pub fn base64_decode(data: &str) -> Result<Vec<u8>> {
+    botan::base64_decode(data).map_err(Error::botan)
 }

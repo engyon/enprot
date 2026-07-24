@@ -9,7 +9,7 @@ on:
 
 env:
   RUST_BACKTRACE: full
-  BOTAN_VERSION: 2.13.0
+  BOTAN_VERSION: 3.7.0
   PREFIX: /usr
 
 jobs:
@@ -19,17 +19,13 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     name: Test on stable toolchain
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - if: "startsWith(matrix.os, 'windows')"
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v7
       - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-            profile: minimal
-            toolchain: stable
-            default: true
+        uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
         if: "!startsWith(matrix.os, 'windows')"
         run: ./ci/install.sh
@@ -44,12 +40,11 @@ jobs:
           $Env:TARGET = "x86_64-pc-windows-msvc"
           ./ci/install.ps1
           New-Item -ItemType Directory -Force -Path '.cargo'
-          Write-Output @"
-          [target.$Env:TARGET.botan-2]
+          @"
+          [target.$Env:TARGET.botan-3]
           rustc-link-search = ["native=${Env:PREFIX}/lib"]
-          rustc-link-lib = ["static=botan-2"]
-          "@ | Out-File -Append -Encoding UTF8 -LiteralPath .cargo\config
-      - name: Build
+          rustc-link-lib = ["static=botan-3"]
+          "@ | Out-File -Append -Encoding UTF8 -LiteralPath .cargo\config      - name: Build
         run: cargo build --verbose
       - name: Run tests
         run: cargo test --verbose -- --nocapture
@@ -57,39 +52,56 @@ jobs:
   coverage:
     name: Code coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
-      CODECOV_TOKEN: 79f7256d-b5a9-4843-923f-43dceef2fdc1
       CARGO_INCREMENTAL: 0
-      RUSTFLAGS: -Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests
+      RUSTFLAGS: -Cinstrument-coverage -Ccodegen-units=1 -Cinline-threshold=0 -Coverflow-checks=off
     steps:
-      - uses: actions/checkout@v1
-      - name: Install rust nightly
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-            profile: minimal
-            toolchain: nightly
-            override: true
-      - name: Build program
-        run: |
-          ./ci/install.sh
-          cargo build --verbose
+          components: llvm-tools-preview
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Build
+        run: cargo build --verbose
       - name: Run tests
+        run: cargo test --verbose -- --nocapture
+      - name: Install grcov
         run: |
-          cargo test --verbose -- --nocapture
-          # coverage
-          curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
-          zip -0 ccov.zip `find . \( -name "enprot*.gc*" \) -print`;
-          ./grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info;
-          bash <(curl -s https://codecov.io/bash) -f lcov.info;
+          curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-x86_64-unknown-linux-gnu.tar.bz2 | tar jxf -
+      - name: Generate coverage
+        run: |
+          zip -0 ccov.zip `find . \( -name "enprot*.gc*" \) -print`
+          ./grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info
+      - name: Upload to Codecov
+        run: bash <(curl -s https://codecov.io/bash) -f lcov.info
 
   check-format:
     name: Check code format
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
       - name: Validate code format
-        run: cargo fmt -- --check $(find src -name '*.rs')
+        run: cargo fmt --all --check
 
+  check-clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings

@@ -1,5 +1,5 @@
 name: enprot
-base: core20
+base: core22
 version: 'RELEASE_TAG'
 summary: Enprot is a confidentiality processor for text and source code files.
 license: 'BSD-2-Clause'
@@ -17,11 +17,10 @@ parts:
     source: .
     build-packages:
       - build-essential
-      - libbotan-2-dev
+      - libbotan-3-dev
     stage-packages:
-      - botan
+      - libbotan-3-1
 
 apps:
   enprot:
     command: bin/enprot
-

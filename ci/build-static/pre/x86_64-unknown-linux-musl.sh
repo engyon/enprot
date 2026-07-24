@@ -42,8 +42,8 @@ chmod +x linker
 
 # override for static linking
 cat <<EOF >> .cargo/config
-[target.$TARGET.botan-2]
+[target.$TARGET.botan-3]
 rustc-link-search = ["native=$PREFIX/lib"]
-rustc-link-lib = ["static=botan-2", "static=stdc++"]
+rustc-link-lib = ["static=botan-3", "static=stdc++"]
 EOF
 

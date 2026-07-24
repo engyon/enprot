@@ -7,7 +7,7 @@ if [ $(get_os) == "linux" ]; then
   git clone --depth 1 --branch "$BOTAN_VERSION" https://github.com/randombit/botan
   cd botan
   ./configure.py --prefix="$PREFIX" --without-documentation --build-targets=shared \
-    --minimized-build --enable-modules=$BOTAN_MODULES
+    --minimized-build --enable-modules=$BOTAN_MODULES --cxxflags=-std=c++20
   make -j2
   sudo make install
 else

@@ -1,13 +1,12 @@
+use crate::Fixture;
 use cpu_time::ThreadTime;
 use std::fs;
-
-use Fixture;
 
 #[test]
 fn pbkdf_cache() {
     let ept = Fixture::blank("in.ept");
     fs::write(
-        &ept.path.to_str().unwrap(),
+        ept.path.to_str().unwrap(),
         "
 // <( BEGIN Agent_007 )>
 Secret 1
@@ -51,9 +50,11 @@ Secret 4
     }
     encms_cache = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
     // check output
-    assert!(&fs::read_to_string(&out.path)
-        .unwrap()
-        .contains("$pbkdf2-sha256$"));
+    assert!(
+        &fs::read_to_string(&out.path)
+            .unwrap()
+            .contains("$pbkdf2-sha256$")
+    );
     assert_ne!(
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string(&out.path).unwrap(),
@@ -103,9 +104,11 @@ Secret 4
     }
     encms_nocache = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
     // check output
-    assert!(&fs::read_to_string(&out.path)
-        .unwrap()
-        .contains("$pbkdf2-sha256$"));
+    assert!(
+        &fs::read_to_string(&out.path)
+            .unwrap()
+            .contains("$pbkdf2-sha256$")
+    );
     assert_ne!(
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string(&out.path).unwrap(),

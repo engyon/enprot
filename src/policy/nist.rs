@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -24,17 +24,18 @@
 use phf::phf_set;
 use std::collections::BTreeMap;
 
-use policy::default::CryptoPolicyDefault;
-use policy::CryptoPolicy;
+use crate::policy::CryptoPolicy;
+use crate::policy::default::CryptoPolicyDefault;
 
 pub struct CryptoPolicyNIST {}
 
 impl CryptoPolicyNIST {
     const DEFAULT_PBKDF_ALG: &'static str = "pbkdf2-sha512";
     const DEFAULT_PBKDF_SALT_LEN: usize = 32;
-    // no policy per se, so copy the default policy setting
     const DEFAULT_PBKDF_MSEC: u32 = CryptoPolicyDefault::DEFAULT_PBKDF_MSEC;
     const DEFAULT_CIPHER_ALG: &'static str = "aes-256-gcm";
+    const NIST_PBKDF_MIN_SALT_LEN: usize = 16;
+
     const NIST_APPROVED_PBKDFS: phf::Set<&'static str> = phf_set! {
         "pbkdf2-sha256",
         "pbkdf2-sha512",
@@ -46,27 +47,28 @@ impl CryptoPolicyNIST {
         "sha3-256",
         "sha3-512",
     };
-    const NIST_PBKDF_MIN_SALT_LEN: usize = 16;
 
-    fn check_alg(&self, kind: &str, alg: &str) -> Result<(), &'static str> {
+    fn check_alg(kind: &str, alg: &str) -> Result<(), String> {
         let lst = match kind {
             "Cipher" => &Self::NIST_APPROVED_CIPHERS,
             "Hash" => &Self::NIST_APPROVED_HASHES,
             "PBKDF" => &Self::NIST_APPROVED_PBKDFS,
-            _ => return Err("Invalid algorithm kind"),
+            _ => return Err("Invalid algorithm kind".to_string()),
         };
         if lst.contains(alg) {
             Ok(())
         } else {
-            eprintln!("{} algorithm is not permitted by policy: {}", kind, alg);
-            Err("Algorithm not permitted by policy")
+            Err(format!(
+                "{} algorithm is not permitted by policy: {}",
+                kind, alg
+            ))
         }
     }
 }
 
 impl CryptoPolicy for CryptoPolicyNIST {
-    fn check_hash(&self, alg: &str) -> Result<(), &'static str> {
-        self.check_alg("Hash", alg)
+    fn check_hash(&self, alg: &str) -> Result<(), String> {
+        Self::check_alg("Hash", alg)
     }
 
     fn check_pbkdf(
@@ -76,32 +78,32 @@ impl CryptoPolicy for CryptoPolicyNIST {
         _password: &str,
         salt: &[u8],
         params: &BTreeMap<String, usize>,
-    ) -> Result<(), &'static str> {
-        self.check_alg("PBKDF", alg)?;
+    ) -> Result<(), String> {
+        Self::check_alg("PBKDF", alg)?;
         if salt.len() < Self::NIST_PBKDF_MIN_SALT_LEN {
-            return Err("Salt length violates policy");
+            return Err("Salt length violates policy".to_string());
         }
         if key_len < 14 {
-            return Err("Key length violates policy");
+            return Err("Key length violates policy".to_string());
         }
-        if let Some(iters) = params.get("i") {
-            if *iters < 1000 {
-                return Err("Iteration count violates policy");
-            }
+        if let Some(iters) = params.get("i")
+            && *iters < 1000
+        {
+            return Err("Iteration count violates policy".to_string());
         }
         Ok(())
     }
 
-    fn check_cipher(
-        &self,
-        alg: &str,
-        _key: &[u8],
-        iv: &[u8],
-        _ad: &[u8],
-    ) -> Result<(), &'static str> {
-        self.check_alg("Cipher", alg)?;
+    fn check_cipher_alg(&self, alg: &str) -> Result<(), String> {
+        Self::check_alg("Cipher", alg)
+    }
+
+    fn check_cipher(&self, alg: &str, _key: &[u8], iv: &[u8], _ad: &[u8]) -> Result<(), String> {
+        Self::check_alg("Cipher", alg)?;
         if alg == "aes-256-gcm" && iv.len() != 96 / 8 {
-            return Err("IV length does not match NIST recommendations for this cipher.");
+            return Err(
+                "IV length does not match NIST recommendations for this cipher.".to_string(),
+            );
         }
         Ok(())
     }

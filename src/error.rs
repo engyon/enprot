@@ -21,20 +21,68 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub const VALID_CIPHER_ALGS: &[&str] = &["aes-256-siv", "aes-256-gcm", "aes-256-gcm-siv"];
+use thiserror::Error;
 
-pub const DEFAULT_MAX_DEPTH: usize = 100;
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("i/o error: {0}")]
+    Io(#[from] std::io::Error),
 
-pub const DEFAULT_LEFT_SEP: &str = "// <(";
-pub const DEFAULT_RIGHT_SEP: &str = ")>";
+    #[error("botan: {0}")]
+    Botan(String),
 
-pub const VALID_PBKDF_ALGS: &[&str] = &[
-    "argon2",
-    "scrypt",
-    "pbkdf2-sha256",
-    "pbkdf2-sha512",
-    "legacy",
-];
+    #[error("hex: {0}")]
+    Hex(String),
 
-pub const VALID_POLICIES: &[&str] = &["default", "nist"];
-pub const DEFAULT_POLICY: &str = "default";
+    #[error("base64: {0}")]
+    Base64(String),
+
+    #[error("cipher: {0}")]
+    Cipher(String),
+
+    #[error("pbkdf: {0}")]
+    Pbkdf(String),
+
+    #[error("policy violation: {0}")]
+    Policy(String),
+
+    #[error("parse error in {file}:{lineno}: {msg}")]
+    Parse {
+        file: String,
+        lineno: i32,
+        msg: String,
+    },
+
+    #[error("CAS: {0}")]
+    Cas(String),
+
+    #[error("PHC: {0}")]
+    Phc(String),
+
+    #[error("{0}")]
+    Msg(String),
+}
+
+impl Error {
+    pub fn botan(e: impl std::fmt::Display) -> Self {
+        Error::Botan(e.to_string())
+    }
+
+    pub fn msg(s: impl Into<String>) -> Self {
+        Error::Msg(s.into())
+    }
+}
+
+impl From<botan::Error> for Error {
+    fn from(e: botan::Error) -> Self {
+        Error::Botan(e.to_string())
+    }
+}
+
+impl From<hex::FromHexError> for Error {
+    fn from(e: hex::FromHexError) -> Self {
+        Error::Hex(e.to_string())
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;

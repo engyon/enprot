@@ -1,8 +1,6 @@
-use assert_cmd::prelude::*;
+use crate::Fixture;
+use assert_cmd::Command;
 use std::fs;
-use std::process::Command;
-
-use Fixture;
 
 #[test]
 fn pipe_test_passthrough_default() {
@@ -14,8 +12,7 @@ fn pipe_test_passthrough_default() {
         .arg("Agent_007=password")
         .arg("--pbkdf")
         .arg("legacy")
-        .with_stdin()
-        .buffer(fs::read_to_string("sample/test.ept").unwrap())
+        .write_stdin(fs::read_to_string("sample/test.ept").unwrap())
         .assert()
         .success()
         .stdout(fs::read_to_string("test-data/test-encrypt-agent007.ept").unwrap());
@@ -32,8 +29,7 @@ fn pipe_test_passthrough() {
         .arg("--pbkdf")
         .arg("legacy")
         .arg("-")
-        .with_stdin()
-        .buffer(fs::read_to_string("sample/test.ept").unwrap())
+        .write_stdin(fs::read_to_string("sample/test.ept").unwrap())
         .assert()
         .success()
         .stdout(fs::read_to_string("test-data/test-encrypt-agent007.ept").unwrap());
@@ -53,8 +49,7 @@ fn pipe_test_1() {
         .arg("-")
         .arg("-o")
         .arg(&out.path)
-        .with_stdin()
-        .buffer(fs::read_to_string("sample/test.ept").unwrap())
+        .write_stdin(fs::read_to_string("sample/test.ept").unwrap())
         .assert()
         .success()
         .stdout("");
@@ -100,8 +95,7 @@ fn pipe_test_3() {
         .arg("legacy")
         .arg("-")
         .arg(&ept.path)
-        .with_stdin()
-        .buffer(fs::read_to_string("sample/test.ept").unwrap())
+        .write_stdin(fs::read_to_string("sample/test.ept").unwrap())
         .assert()
         .success()
         .stdout(fs::read_to_string("test-data/test-encrypt-agent007.ept").unwrap());

@@ -10,7 +10,7 @@ Push-Location -LiteralPath botan
 & python .\configure.py --prefix="$Env:PREFIX" --without-documentation `
   --without-openssl --build-targets=static --minimized-build `
   --enable-modules="$BOTAN_MODULES" --msvc-runtime=MT `
-  --cc=msvc --os=windows --library-suffix=-2
+  --cc=msvc --os=windows --library-suffix=-3
 &{
   $ErrorActionPreference = 'Continue'
   nmake install
@@ -20,8 +20,8 @@ Pop-Location
 # override for static linking
 New-Item -ItemType Directory -Force -Path '.cargo'
 Write-Output @"
-[target.$Env:TARGET.botan-2]
+[target.$Env:TARGET.botan-3]
 rustc-link-search = ["native=${Env:PREFIX}/lib"]
-rustc-link-lib = ["static=botan-2"]
+rustc-link-lib = ["static=botan-3"]
 "@ | Out-File -Append -Encoding UTF8 -LiteralPath .cargo\config
 

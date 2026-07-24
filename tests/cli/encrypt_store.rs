@@ -1,10 +1,9 @@
+use crate::Fixture;
+use crate::hexdigest;
 use assert_cmd::prelude::*;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
-
-use hexdigest;
-use Fixture;
 
 #[test]
 fn encrypt_store_agent007() {
@@ -28,7 +27,7 @@ fn encrypt_store_agent007() {
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-store-agent007.ept").unwrap()
     );
-    for hashval in vec![
+    for hashval in [
         "1749eaec9b40e6757ddd29b58002b01cf210e46119a8345421de80c6a3dd672a",
         "7a8da017c0fe671ba16f4bc55b884444e708849290d8366f19c552c90950b8c2",
     ] {
@@ -76,7 +75,8 @@ fn encrypt_store_geheim() {
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-store-geheim.ept").unwrap()
     );
-    for hashval in vec!["ab664af9ef8ed0a7a542c4bcc0d2d2bf06973038d83ddbfcdd031eb80a308d5a"] {
+    {
+        let hashval = "ab664af9ef8ed0a7a542c4bcc0d2d2bf06973038d83ddbfcdd031eb80a308d5a";
         assert_eq!(
             hexdigest("sha3-256", &fs::read(casdir.path().join(hashval)).unwrap(),).unwrap(),
             hashval
@@ -121,7 +121,7 @@ fn encrypt_store_both_agent007_geheim() {
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-store-both.ept").unwrap()
     );
-    for hashval in vec![
+    for hashval in [
         "7a8da017c0fe671ba16f4bc55b884444e708849290d8366f19c552c90950b8c2",
         "1749eaec9b40e6757ddd29b58002b01cf210e46119a8345421de80c6a3dd672a",
         "86117980a54565a74cc5195865827aab44cfafc138e723e3a409631384d74ee2",
@@ -170,7 +170,7 @@ fn encrypt_store_agent007_geheim() {
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-store-agent007.ept").unwrap()
     );
-    for hashval in vec![
+    for hashval in [
         "1749eaec9b40e6757ddd29b58002b01cf210e46119a8345421de80c6a3dd672a",
         "7a8da017c0fe671ba16f4bc55b884444e708849290d8366f19c552c90950b8c2",
     ] {
@@ -196,7 +196,8 @@ fn encrypt_store_agent007_geheim() {
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-store-agent007-geheim.ept").unwrap()
     );
-    for hashval in vec!["86117980a54565a74cc5195865827aab44cfafc138e723e3a409631384d74ee2"] {
+    {
+        let hashval = "86117980a54565a74cc5195865827aab44cfafc138e723e3a409631384d74ee2";
         assert_eq!(
             hexdigest("sha3-256", &fs::read(casdir.path().join(hashval)).unwrap()).unwrap(),
             hashval
@@ -253,7 +254,8 @@ fn encrypt_store_geheim_agent007() {
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-store-geheim.ept").unwrap()
     );
-    for hashval in vec!["ab664af9ef8ed0a7a542c4bcc0d2d2bf06973038d83ddbfcdd031eb80a308d5a"] {
+    {
+        let hashval = "ab664af9ef8ed0a7a542c4bcc0d2d2bf06973038d83ddbfcdd031eb80a308d5a";
         assert_eq!(
             hexdigest("sha3-256", &fs::read(casdir.path().join(hashval)).unwrap()).unwrap(),
             hashval
@@ -276,7 +278,8 @@ fn encrypt_store_geheim_agent007() {
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-store-geheim-agent007.ept").unwrap()
     );
-    for hashval in vec!["7a8da017c0fe671ba16f4bc55b884444e708849290d8366f19c552c90950b8c2"] {
+    {
+        let hashval = "7a8da017c0fe671ba16f4bc55b884444e708849290d8366f19c552c90950b8c2";
         assert_eq!(
             hexdigest("sha3-256", &fs::read(casdir.path().join(hashval)).unwrap()).unwrap(),
             hashval
@@ -336,7 +339,7 @@ fn encrypt_store_agent007_argon2() {
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/test-encrypt-store-agent007-argon2.ept").unwrap()
     );
-    for hashval in vec![
+    for hashval in [
         "03596e1743f8d7e969979d5e4f9f8bf41bca02c723f84a2f12193b2196077805",
         "b30ccd443bae74afc464822857fad6974f0cbb12197368494cc311441c74ea20",
     ] {
