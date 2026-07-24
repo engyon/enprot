@@ -40,45 +40,22 @@ If anything, add a `--strict-fips` mode that *additionally* refuses to
 start if the running Botan reports non-FIPS algorithms available. But
 Botan doesn't expose that query in the Rust crate. Probably skip.
 
-### Realistic scope
+### Status (July 2026)
 
-This issue is open since 2020 with no movement because it's genuinely
-hard:
+Resolved as **wontfix-by-doc**: the work needed to produce a genuinely
+FIPS-validated binary depends on certification paperwork outside this
+repo's scope. `docs/fips.adoc` captures what a real FIPS build would
+require (OpenSSL 3.x FIPS provider + Botan 3 built with `--with-openssl`
++ `--enable-modules=fips` + static linking) and explains why enprot
+stops at the `--fips` policy flag rather than claiming compliance.
 
-- OpenSSL FIPS module builds are non-trivial across platforms.
-- Botan's FIPS mode docs are sparse; need to verify the Botan side
-  actually works.
-- FIPS certification is per-binary, so even a "FIPS build" only counts
-  if the *resulting binary* is certified. We can produce a build that
-  *looks* like FIPS, but claiming compliance requires the certification
-  paperwork.
+The issue body's original ask ("build botan as an OpenSSL FIPS wrapper
+and statically link that") is technically achievable but has been open
+since 2020 with no movement because the value of a non-certified
+"FIPS-shaped" binary is questionable. Documentation closes the loop
+without pretending otherwise.
 
-What this PR can deliver: a CI job that builds enprot against a
-Botan-built-with-OpenSSL-FIPS, runs the existing tests under `--fips`,
-and uploads the binary. Labelling it "FIPS-mode build" not "FIPS-certified".
-
-## Files
-
-- `.github/workflows/fips.yml` (new)
-- `ci/build-fips.sh` (new) — script that does the OpenSSL FIPS + Botan
-  build, parameterised by target.
-- `docs/fips.md` (new) — explains what the build does and doesn't prove.
-
-## Verification
-
-CI job runs green. Locally, reproduce by:
-
-```
-ci/build-fips.sh x86_64-unknown-linux-musl
-```
-
-And confirm the resulting binary still passes `cargo test` under `--fips`.
-
-## Defer if
-
-If OpenSSL FIPS module setup proves fragile across the matrix targets,
-scope down to just linux-musl-x86_64 and document that.
-
-## Rollback
-
-Delete the workflow and the build script.
+The `nist` policy (`src/policy/nist.rs`) and the deterministic AES-GCM
+variants (`aes-256-gcm-det`, `aes-256-gcm-siv-det`) already enforce the
+algorithm-level constraints that a FIPS module would require, so any
+future certification work has the policy layer ready.
