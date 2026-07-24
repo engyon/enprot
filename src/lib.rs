@@ -218,8 +218,9 @@ pub struct OutputArgs {
     pub output: Vec<String>,
 
     /// Use PREFIX for output filenames. If PREFIX ends with `/` or is an
-    /// existing directory, outputs go inside it with their original
-    /// basename.
+    /// existing directory, each output is placed inside it with its
+    /// original basename (issue #18). Otherwise PREFIX is prepended to
+    /// each input path verbatim (the legacy behavior).
     #[arg(
         short = 'p',
         long = "prefix",
@@ -227,6 +228,11 @@ pub struct OutputArgs {
         allow_hyphen_values = true
     )]
     pub prefix: String,
+
+    /// Directory to write outputs into. Shorthand for `--prefix DIR/`.
+    /// Conflicts with `--prefix`.
+    #[arg(long, value_name = "DIR", value_parser = parse_output_dir, conflicts_with = "prefix")]
+    pub output_dir: Option<PathBuf>,
 
     /// Input file(s). "-" means stdin; default "-" if omitted.
     #[arg(value_name = "FILE", default_value = "-")]
@@ -249,6 +255,18 @@ fn parse_casdir(s: &str) -> std::result::Result<PathBuf, String> {
         Ok(p)
     } else {
         Err(format!("'{}' is not a directory", s))
+    }
+}
+
+/// Value parser for `--output-dir`. The directory must already exist —
+/// enprot doesn't create output trees for the user (yet). Use `-p` for
+/// the prepend-string behavior if you want a non-existent prefix.
+fn parse_output_dir(s: &str) -> std::result::Result<PathBuf, String> {
+    let p = PathBuf::from(s);
+    if p.is_dir() {
+        Ok(p)
+    } else {
+        Err(format!("--output-dir '{}' is not a directory", s))
     }
 }
 
@@ -440,23 +458,37 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
         );
     }
 
-    let files = pair_inputs_to_outputs(&output.files, &output.output, &output.prefix);
+    let files = pair_inputs_to_outputs(
+        &output.files,
+        &output.output,
+        &output.prefix,
+        output.output_dir.as_deref(),
+    );
     for (path_in, path_out) in files {
         process_one_file(&path_in, &path_out, &mut paops);
     }
 }
 
 /// Pair each input with its output, following the rules in
-/// `TODO.issues/18-output-directory-mode.md`. Public so future tests can
-/// exercise the pathing logic directly.
+/// `TODO.issues/18-output-directory-mode.md`:
+///
+/// 1. `--output <FILE>` paired with this input → use it as-is.
+/// 2. `--output-dir <DIR>` given → `DIR + "/" + basename(input)`.
+/// 3. `--prefix <PREFIX>` where PREFIX ends in `/` or is an existing
+///    directory → same as `--output-dir` behaviour.
+/// 4. `--prefix <PREFIX>` (other) → PREFIX prepended to input verbatim
+///    (the legacy flat-CLI behavior).
+/// 5. Input is `-` (stdin) → output is `-` (stdout passthrough).
+/// 6. Otherwise → output = input (in-place).
 fn pair_inputs_to_outputs(
     inputs: &[String],
     outputs: &[String],
     prefix: &str,
+    output_dir: Option<&Path>,
 ) -> Vec<(String, String)> {
     let mut result = Vec::with_capacity(inputs.len());
     let mut out_iter = outputs.iter();
-    let prefix_is_dir = prefix.ends_with('/') || Path::new(prefix).is_dir();
+    let prefix_is_dir = !prefix.is_empty() && (prefix.ends_with('/') || Path::new(prefix).is_dir());
 
     for input in inputs {
         if let Some(output) = out_iter.next() {
@@ -465,19 +497,27 @@ fn pair_inputs_to_outputs(
         }
         let output = if input == "-" {
             "-".to_string()
+        } else if let Some(dir) = output_dir {
+            join_with_basename(dir, input)
         } else if prefix_is_dir {
-            let base = Path::new(input)
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| input.clone());
-            let dir = prefix.trim_end_matches('/');
-            format!("{}/{}", dir, base)
+            let dir_str = prefix.trim_end_matches('/');
+            join_with_basename(Path::new(dir_str), input)
+        } else if prefix.is_empty() {
+            input.clone()
         } else {
             format!("{}{}", prefix, input)
         };
         result.push((input.clone(), output));
     }
     result
+}
+
+fn join_with_basename(dir: &Path, input: &str) -> String {
+    let base = Path::new(input)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| input.to_string());
+    dir.join(base).to_string_lossy().into_owned()
 }
 
 fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) {
