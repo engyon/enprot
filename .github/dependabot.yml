@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # Rust crates. Grouped so we get one PR per family rather than one
+  # per crate. The groups below target updates that have similar
+  # review implications:
+  #   - botan: ABI-sensitive; needs a CI run on the matrix.
+  #   - rustcrypto: changes to the cipher stack; needs KAT tests.
+  #   - clap: CLI surface; needs help-output diff.
+  #   - dev-deps: test-only; usually safe.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+    groups:
+      botan:
+        patterns: ["botan", "botan-sys"]
+      rustcrypto:
+        patterns: ["aes", "aes-gcm", "aes-gcm-siv", "aead", "cipher", "crypto-common"]
+      clap:
+        patterns: ["clap", "clap_builder", "clap_lex"]
+      tracing-logging:
+        patterns: ["thiserror", "tracing", "log"]
+      dev-deps:
+        dependency-type: "development"
+
+  # GitHub Actions. The workflows pin @v7 etc.; Dependabot bumps the
+  # major version when one is released.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "ci"
