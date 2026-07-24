@@ -18,6 +18,26 @@ Use `cargo build --release` to build the release binary `target/release/enprot`
 or `cargo run --` to build and run the debug version. Some dependencies may
 require the latest compiler.
 
+=== Development Setup
+
+For contributors, a pre-commit hook mirrors the CI checks (format, clippy,
+spell check). Install it once after cloning:
+
+[source,sh]
+----
+cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+----
+
+To skip the hook temporarily:
+
+[source,sh]
+----
+SKIP_PRECOMMIT=1 git commit -m "..."
+----
+
+CI also runs `cargo-deny` (license + security advisories via `deny.toml`)
+and `cargo-audit` (RustSec vulnerability database) on every push.
+
 There is a simple help built-in with `-h` flag:
 
 [source,sh]

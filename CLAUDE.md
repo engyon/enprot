@@ -23,7 +23,17 @@ cargo clippy --all-targets -- -D warnings                           # CI lint ga
 
 Integration tests in `tests/cli/*` invoke the built binary via `assert_cmd` (`Command::cargo_bin("enprot")`), so the binary must compile before tests run. Most tests copy a fixture out of `sample/` or `test-data/` into a tempdir before running.
 
-CI runs both `cargo fmt --all --check` and `cargo clippy --all-targets -- -D warnings` as required gates.
+CI runs both `cargo fmt --all --check` and `cargo clippy --all-targets -- -D warnings` as required gates. Additional CI jobs: typos spell check (`typos.toml`), security audit (`cargo-audit` + `cargo-deny` via `deny.toml`), and concurrency cancellation to save CI minutes.
+
+### Pre-commit hook
+
+A local pre-commit hook mirrors the CI checks (fmt, clippy, typos). Install it once:
+
+```sh
+cp .githooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+```
+
+Skip temporarily with `SKIP_PRECOMMIT=1 git commit ...`.
 
 ## CLI
 
