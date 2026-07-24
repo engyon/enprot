@@ -43,7 +43,10 @@ fn encrypt_decrypt_agent007() {
     );
 }
 
-#[cfg(unix)]
+// Was `#[cfg(unix)]` because the old rpassword 2 API didn't behave on
+// Windows when stdin was piped. PR #57 replaced the reader with a
+// TTY-aware path (`prompt_password_with_config` from rpassword 7), which
+// is cross-platform; see TODO.issues/50-windows-stdin-test.md.
 #[test]
 fn encrypt_decrypt_agent007_stdin_pass() {
     let casdir = tempdir().unwrap();
