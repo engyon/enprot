@@ -4,8 +4,12 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - main
     tags:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   RUST_BACKTRACE: full
@@ -13,6 +17,31 @@ env:
   PREFIX: /usr
 
 jobs:
+  typos:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: crate-ci/typos@v1
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
+      - name: Run cargo-audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Check licenses and advisories
+        run: cargo deny check licenses advisories
+
   test-unix-stable:
     strategy:
       matrix:
@@ -44,7 +73,8 @@ jobs:
           [target.$Env:TARGET.botan-3]
           rustc-link-search = ["native=${Env:PREFIX}/lib"]
           rustc-link-lib = ["static=botan-3"]
-          "@ | Out-File -Append -Encoding UTF8 -LiteralPath .cargo\config      - name: Build
+          "@ | Out-File -Append -Encoding UTF8 -LiteralPath .cargo\config
+      - name: Build
         run: cargo build --verbose
       - name: Run tests
         run: cargo test --verbose -- --nocapture
