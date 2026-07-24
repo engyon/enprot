@@ -77,7 +77,7 @@ impl fmt::Display for WordId {
 /// SHA3-256 fingerprint of a pubkey PEM (the canonical form for
 /// identifying keys in chain anchors and policy files). 32 bytes,
 /// hex-displayed.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct KeyFp([u8; 32]);
 
 impl KeyFp {
@@ -99,6 +99,12 @@ impl KeyFp {
 
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
+    }
+
+    /// Construct directly from raw bytes. Useful in tests and for
+    /// deserializing wire formats (e.g., chain anchor `signer:` fields).
+    pub fn from_bytes(arr: [u8; 32]) -> Self {
+        KeyFp(arr)
     }
 
     /// Lowercase hex display, suitable for `signer:` fields in chain
