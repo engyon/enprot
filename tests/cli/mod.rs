@@ -3,6 +3,7 @@ mod encrypt_decrypt;
 mod encrypt_store;
 mod issue_15;
 mod misc;
+mod multi_file;
 mod pbkdf;
 mod pipe;
 mod policy;
