@@ -101,6 +101,8 @@ pub enum Command {
     /// Verify file integrity: check markup structure, CAS pointers,
     /// and extfield format without decrypting.
     Verify(OperationSubcmd),
+    /// List all WORD segments in the input file(s).
+    List(OperationSubcmd),
     /// Print shell completion script to stdout.
     ///
     /// Install with: enprot completions bash > /etc/bash_completion.d/enprot
@@ -342,6 +344,7 @@ where
         }
         Command::Passthrough(a) => run(common, a.output, None),
         Command::Verify(a) => verify_files(common, a.output),
+        Command::List(a) => list_files(common, a.output),
         Command::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "enprot", &mut std::io::stdout());
             Ok(())
@@ -608,6 +611,82 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
 
     etree::tree_write(&mut writer_out, &tree_out, paops)
         .map_err(|e| Error::Msg(format!("Write to {} failed: {}", path_out, e)))?;
+    Ok(())
+}
+
+/// Parse each input and list all WORD segments to stdout. One line per
+/// directive node, with keyword, type, and crypto metadata.
+fn list_files(common: CommonArgs, output: OutputArgs) -> Result<()> {
+    let policy = resolve_policy(&common)?;
+    let mut paops = ParseOps::new(policy)?;
+    apply_common(&common, &mut paops);
+
+    let files = pair_inputs_to_outputs(
+        &output.files,
+        &output.output,
+        &output.prefix,
+        output.output_dir.as_deref(),
+    );
+
+    let stdout = std::io::stdout();
+    for (path_in, _) in &files {
+        let reader: Box<dyn BufRead> = if path_in == "-" {
+            Box::new(BufReader::new(std::io::stdin()))
+        } else {
+            Box::new(BufReader::new(File::open(path_in).map_err(|e| {
+                Error::Msg(format!("Failed to open {}: {}", path_in, e))
+            })?))
+        };
+        paops.fname = path_in.clone();
+
+        let tree = etree::parse(reader, &mut paops)?;
+
+        let mut out = stdout.lock();
+        if files.len() > 1 {
+            writeln!(out, "== {} ==", path_in)?;
+        }
+        list_tree(&tree, 0, &mut out)?;
+    }
+    Ok(())
+}
+
+fn list_tree<W: Write>(tree: &etree::TextTree, depth: usize, out: &mut W) -> Result<()> {
+    let indent = "  ".repeat(depth);
+    for node in tree {
+        match node {
+            etree::TextNode::BeginEnd { keyw, txt } => {
+                writeln!(out, "{}BEGIN/END  {}", indent, keyw)?;
+                list_tree(txt, depth + 1, out)?;
+            }
+            etree::TextNode::Encrypted {
+                keyw, extfields, ..
+            } => {
+                let cipher = extfields
+                    .get("cipher")
+                    .map(|s| s.as_str())
+                    .unwrap_or("aes-256-siv");
+                let pbkdf = extfields
+                    .get("pbkdf")
+                    .map(|s| s.split('$').nth(1).unwrap_or("?"))
+                    .unwrap_or("legacy");
+                writeln!(
+                    out,
+                    "{}ENCRYPTED {}  cipher={}  pbkdf={}",
+                    indent, keyw, cipher, pbkdf
+                )?;
+            }
+            etree::TextNode::Stored { keyw, cas } => {
+                writeln!(
+                    out,
+                    "{}STORED    {}  cas={}…",
+                    indent,
+                    keyw,
+                    &cas[..cas.len().min(16)]
+                )?;
+            }
+            etree::TextNode::Plain(_) | etree::TextNode::Data(_) => {}
+        }
+    }
     Ok(())
 }
 
