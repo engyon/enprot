@@ -32,6 +32,7 @@
 //! Most callers want [`app_main`], which is the CLI entry point. The
 //! `crypto` and `utils` modules are re-exported for integration tests.
 
+pub mod capability;
 mod cas;
 mod cipher;
 mod consts;
@@ -122,6 +123,11 @@ pub enum Command {
     /// against FILE using `--key`. Named `verify-sig` to avoid clashing
     /// with the existing `verify` subcommand, which checks EPT markup.
     VerifySig(VerifySigSubcmd),
+    /// Print the capability set implied by the current flags (passwords,
+    /// CAS dir, key files) and exit. No file transformation occurs.
+    /// Useful for verifying "what would I be able to do?" before running
+    /// a real command. Output is one capability per line.
+    Capabilities,
 }
 
 /// Encrypt subcommand: encrypt-specific options plus the shared output
@@ -429,6 +435,18 @@ where
         Command::Keygen(a) => pki_keygen(common, a),
         Command::Sign(a) => pki_sign(common, a),
         Command::VerifySig(a) => pki_verify_sig(common, a),
+        Command::Capabilities => {
+            let policy = resolve_policy(&common)?;
+            let mut paops = ParseOps::new(policy)?;
+            apply_common(&common, &mut paops);
+            let caps = capability::CapabilitySet::from_paops(&paops);
+            let stdout = std::io::stdout();
+            let mut out = stdout.lock();
+            for c in caps.iter_sorted() {
+                writeln!(out, "{}", c)?;
+            }
+            Ok(())
+        }
     }
 }
 
