@@ -46,13 +46,13 @@ Any of the four interpretations is a non-trivial addition:
   support, ASN.1, X.509 parsing, etc. Botan has these primitives but
   the wire format and UX design work is significant.
 
-## Proposal
+## Status (July 2026)
 
-Defer. Capture the four interpretations in a follow-up design doc, get
-the original issue's reporter (or product owner) to pick one, then plan
-the implementation.
+Resolved as **deferred-by-doc**. `docs/code-signing.adoc` captures the
+four plausible interpretations of the issue (sign the binary, sign
+output files, cert-as-key, encrypt-to-cert), the open questions for
+each, and the suggested extension points in the codebase.
 
-## Action items in this triage
-
-None. Leave the issue open with a comment pointing at this file and
-asking for scope clarification.
+The issue stays under-specified; picking one path requires scope
+discussion with the original reporter. Anyone driving the initiative
+has a starting point.

@@ -1,0 +1,94 @@
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions
+// are met:
+// 1. Redistributions of source code must retain the above copyright
+//    notice, this list of conditions and the following disclaimer.
+// 2. Redistributions in binary form must reproduce the above copyright
+//    notice, this list of conditions and the following disclaimer in the
+//    documentation and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+= Homebrew packaging
+
+`brew install enprot` should work. The formula lives in a separate
+Homebrew tap repository, not in this repo. Until that tap exists and a
+`0.4.0` source archive is published on GitHub Releases, there is nothing
+actionable in this repo. This document captures the recipe so the tap
+PR is mechanical.
+
+== The formula
+
+Lives in `riboseinc/homebrew-enprot` as `Formula/enprot.rb`:
+
+[source,ruby]
+----
+class Enprot < Formula
+  desc "Engyon Protected Text (EPT) confidentiality processor"
+  homepage "https://github.com/engyon/enprot"
+  url "https://github.com/engyon/enprot/archive/refs/tags/0.4.0.tar.gz"
+  sha256 "<replace-with-sha256-of-the-archive>"
+  license "BSD-2-Clause"
+  head "https://github.com/engyon/enprot.git", branch: "main"
+
+  depends_on "rust" => :build
+  depends_on "botan"
+
+  def install
+    system "cargo", "install", *std_cargo_args
+  end
+
+  test do
+    assert_match "Engyon Protected Text", shell_output("#{bin}/enprot --help")
+  end
+end
+----
+
+The formula uses Homebrew's Botan (3.x), which has the modules enprot
+needs. AES-GCM-SIV comes from the RustCrypto crate (pure Rust, no
+system dep), so the formula doesn't need to do anything special for it.
+
+== User installation
+
+[source,sh]
+----
+brew tap riboseinc/enprot
+brew install enprot
+----
+
+or:
+
+[source,sh]
+----
+brew install riboseinc/enprot/enprot
+----
+
+== Submission to homebrew-core
+
+Possible but the notability bar (`brew tap-new` and acceptance review)
+is higher than maintaining a tap. The tap path is reliable; defer
+homebrew-core submission until usage grows.
+
+== Prerequisites in this repo
+
+- Tag `0.4.0` on `main` (the deploy workflow produces a source archive
+  automatically once the tag is pushed).
+- Update `README.adoc` with the `brew install` instructions (this can
+  land in the same release commit).
+
+== Why this isn't a PR against engyon/enprot
+
+There's nothing to merge here. The formula is the tap repo's first PR.
+This document is the design note that closes issue #34.
