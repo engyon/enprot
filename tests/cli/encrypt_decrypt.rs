@@ -440,7 +440,8 @@ fn encrypt_decrypt_agent007_pbkdf2_millis() {
             "-k",
             "Agent_007=password",
             &ept.path.to_str().unwrap(),
-        ]);
+        ])
+        .unwrap();
         elapsed_ms += now.elapsed().as_millis() as u32;
     }
     let avg10 = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
@@ -462,7 +463,8 @@ fn encrypt_decrypt_agent007_pbkdf2_millis() {
             "-k",
             "Agent_007=password",
             &ept.path.to_str().unwrap(),
-        ]);
+        ])
+        .unwrap();
         elapsed_ms += now.elapsed().as_millis() as u32;
     }
     let avg50 = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;

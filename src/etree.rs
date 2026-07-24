@@ -91,9 +91,9 @@ pub struct ParseOps {
 }
 
 impl ParseOps {
-    pub fn new(policy: Box<dyn CryptoPolicy>) -> ParseOps {
-        let rng = botan::RandomNumberGenerator::new().expect("Failed to initialize RNG");
-        ParseOps {
+    pub fn new(policy: Box<dyn CryptoPolicy>) -> Result<ParseOps> {
+        let rng = botan::RandomNumberGenerator::new().map_err(Error::botan)?;
+        Ok(ParseOps {
             max_depth: consts::DEFAULT_MAX_DEPTH,
             left_sep: consts::DEFAULT_LEFT_SEP.to_string(),
             right_sep: consts::DEFAULT_RIGHT_SEP.to_string(),
@@ -111,7 +111,7 @@ impl ParseOps {
             pbkdf_cache: Some(Vec::new()),
             cipheropts: CipherOptions::new(&*policy),
             policy,
-        }
+        })
     }
 }
 
@@ -748,7 +748,7 @@ mod tests {
         let mut paops = ParseOps {
             fname: ept_file.to_string(),
             casdir: casdir.path().to_path_buf(),
-            ..ParseOps::new(Box::new(CryptoPolicyDefault {}))
+            ..ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap()
         };
         let tree = parse(BufReader::new(File::open(ept_file).unwrap()), &mut paops).unwrap();
         (tree, paops, casdir)
@@ -812,7 +812,7 @@ mod tests {
     fn empty_command_line_is_skipped() {
         // A line consisting of just separators parses to no command and
         // is silently skipped, matching the original behavior.
-        let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {}));
+        let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap();
         paops.fname = "<test>".into();
         let input = "// <( )>\n";
         let tree = parse(BufReader::new(input.as_bytes()), &mut paops).unwrap();

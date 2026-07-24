@@ -48,6 +48,10 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
     }
 
     let verify = crypto::hexdigest("sha3-256", &blob, &*paops.policy)?;
+    // Non-constant-time string comparison is fine here: the hash is derived
+    // from the file contents (CAS semantic), not from a secret. A timing
+    // leak would only reveal how many leading hex chars of a public hash
+    // match — no secret material is exposed.
     if hexhash != verify {
         return Err(Error::Cas(format!(
             "CONTENT HASH MISMATCH!\ninput = {}\ncheck = {}",

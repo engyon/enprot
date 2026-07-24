@@ -46,7 +46,8 @@ Secret 4
             &ept.path.to_str().unwrap(),
             "-o",
             &out.path.to_str().unwrap(),
-        ]);
+        ])
+        .unwrap();
         elapsed_ms += now.elapsed().as_millis() as u32;
     }
     encms_cache = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
@@ -74,7 +75,8 @@ Secret 4
             &out.path.to_str().unwrap(),
             "-o",
             &dec.path.to_str().unwrap(),
-        ]);
+        ])
+        .unwrap();
         elapsed_ms += now.elapsed().as_millis() as u32;
         assert_eq!(
             &fs::read_to_string(&ept.path).unwrap(),
@@ -102,7 +104,8 @@ Secret 4
             &ept.path.to_str().unwrap(),
             "-o",
             &out.path.to_str().unwrap(),
-        ]);
+        ])
+        .unwrap();
         elapsed_ms += now.elapsed().as_millis() as u32;
     }
     encms_nocache = (elapsed_ms as f32 / SAMPLE_COUNT as f32) as u32;
@@ -131,7 +134,8 @@ Secret 4
             &out.path.to_str().unwrap(),
             "-o",
             &dec.path.to_str().unwrap(),
-        ]);
+        ])
+        .unwrap();
         elapsed_ms += now.elapsed().as_millis() as u32;
         assert_eq!(
             &fs::read_to_string(&ept.path).unwrap(),
