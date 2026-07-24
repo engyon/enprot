@@ -44,3 +44,19 @@ pub const VALID_PBKDF_ALGS: &[&str] = &[
 
 pub const VALID_POLICIES: &[&str] = &["default", "nist"];
 pub const DEFAULT_POLICY: &str = "default";
+
+/// Separator presets for common host languages. Selected via `--lang`.
+pub static LANG_SEPARATORS: &[(&str, &str, &str)] = &[
+    ("raw", "<(", ")>"),
+    ("c", "// <(", ")>"),
+    ("python", "# <(", ")>"),
+    ("html", "<!-- <(", ")> -->"),
+    ("latex", "% <(", ")>"),
+];
+
+pub fn lang_separators(lang: &str) -> Option<(&'static str, &'static str)> {
+    LANG_SEPARATORS
+        .iter()
+        .find(|(name, _, _)| *name == lang)
+        .map(|(_, l, r)| (*l, *r))
+}

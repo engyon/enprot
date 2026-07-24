@@ -175,6 +175,12 @@ pub struct CommonArgs {
     #[arg(long, global = true)]
     pub fips: bool,
 
+    /// Preset left/right separators for the host language.
+    /// Overrides the default (`// <(` … `)>`). Explicit `-l`/`-r` flags
+    /// take precedence over `--lang`.
+    #[arg(long, global = true, value_parser = PossibleValuesParser::new(consts::LANG_SEPARATORS.iter().map(|(n, _, _)| *n).collect::<Vec<_>>()))]
+    pub lang: Option<String>,
+
     /// Disable the PBKDF cache mechanism. Affects both encrypt (key
     /// derivation) and decrypt (same derivation, repeated per file).
     #[arg(long = "pbkdf-disable-cache", global = true)]
@@ -391,8 +397,24 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
 
     paops.verbose = common.verbose && !common.quiet;
     paops.max_depth = common.max_depth;
-    paops.separators.left = common.left_separator;
-    paops.separators.right = common.right_separator;
+    // Resolve separators: --lang provides a preset, explicit -l/-r override it.
+    if let Some(ref lang) = common.lang {
+        if let Some((left, right)) = consts::lang_separators(lang) {
+            if common.left_separator == consts::DEFAULT_LEFT_SEP {
+                paops.separators.left = left.to_string();
+            } else {
+                paops.separators.left = common.left_separator;
+            }
+            if common.right_separator == consts::DEFAULT_RIGHT_SEP {
+                paops.separators.right = right.to_string();
+            } else {
+                paops.separators.right = common.right_separator;
+            }
+        }
+    } else {
+        paops.separators.left = common.left_separator;
+        paops.separators.right = common.right_separator;
+    }
     paops.passwords.extend(common.password);
     if common.pbkdf_disable_cache {
         paops.crypto.pbkdf_cache = None;
