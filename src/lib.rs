@@ -21,6 +21,17 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Engyon Protected Text (EPT) confidentiality processor.
+//!
+//! Enprot parses text/source files whose host-language comments contain
+//! `BEGIN`/`END`/`STORED`/`ENCRYPTED`/`DATA` directives and applies four
+//! idempotent transformations on the named segments: store, fetch, encrypt,
+//! decrypt. The pipeline is `parse` → `transform` → `tree_write`, run once
+//! per input file.
+//!
+//! Most callers want [`app_main`], which is the CLI entry point. The
+//! `crypto` and `utils` modules are re-exported for integration tests.
+
 mod cas;
 mod cipher;
 mod consts;
@@ -397,7 +408,9 @@ where
             }
         };
 
-        etree::tree_write(&mut writer_out, &tree_out, &mut paops);
+        if let Err(e) = etree::tree_write(&mut writer_out, &tree_out, &mut paops) {
+            die(format!("Write to {} failed: {}", path_out, e));
+        }
     }
 }
 

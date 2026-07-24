@@ -76,6 +76,13 @@ pub fn encrypt(
     cache: &mut Option<PBKDFCache>,
     policy: &dyn CryptoPolicy,
 ) -> Result<(Vec<u8>, BTreeMap<String, String>)> {
+    if pbkdfopts.alg == "legacy" {
+        eprintln!(
+            "Warning: --pbkdf legacy uses an unsalted SHA3-512 truncation and is \
+             retained only for compatibility with old blobs; use argon2, scrypt, \
+             or pbkdf2-sha{{256,512}} for new encryption."
+        );
+    }
     // Validate cipher algorithm against the policy BEFORE creating the
     // backend cipher. This way policy rejection fires even when the cipher
     // backend is built without the requested algorithm.

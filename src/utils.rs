@@ -23,10 +23,12 @@
 
 use crate::error::{Error, Result};
 
+/// Standard base64 encode via Botan. Includes `=` padding.
 pub fn base64_encode(data: &[u8]) -> Result<String> {
     botan::base64_encode(data).map_err(Error::botan)
 }
 
+/// Standard base64 decode via Botan. Tolerates missing padding.
 pub fn base64_decode(data: &str) -> Result<Vec<u8>> {
     botan::base64_decode(data).map_err(Error::botan)
 }

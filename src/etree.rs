@@ -492,45 +492,42 @@ where
     Ok(text)
 }
 
-pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps) {
+pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps) -> Result<()> {
     for elem in text {
         match elem {
-            TextNode::Plain(line) => {
-                writeln!(outw, "{}", line).unwrap();
-            }
+            TextNode::Plain(line) => writeln!(outw, "{}", line)?,
             TextNode::BeginEnd { keyw, txt } => {
                 writeln!(
                     outw,
                     "{} BEGIN {} {}",
                     paops.left_sep, keyw, paops.right_sep
-                )
-                .unwrap();
+                )?;
                 paops.level += 1;
-                tree_write(outw, txt, paops);
+                tree_write(outw, txt, paops)?;
                 paops.level -= 1;
-                writeln!(outw, "{} END {} {}", paops.left_sep, keyw, paops.right_sep).unwrap();
+                writeln!(outw, "{} END {} {}", paops.left_sep, keyw, paops.right_sep)?;
             }
             TextNode::Encrypted {
                 keyw,
                 txt,
                 extfields,
             } => {
-                write!(outw, "{} ENCRYPTED {}", paops.left_sep, keyw).unwrap();
+                write!(outw, "{} ENCRYPTED {}", paops.left_sep, keyw)?;
                 if let TextNode::Stored { keyw: _, cas } = &txt[0] {
-                    write!(outw, " {}", cas).unwrap();
+                    write!(outw, " {}", cas)?;
                     for (key, value) in extfields.iter() {
-                        write!(outw, " {}:{}", key, value).unwrap();
+                        write!(outw, " {}:{}", key, value)?;
                     }
-                    writeln!(outw, " {}", paops.right_sep).unwrap();
+                    writeln!(outw, " {}", paops.right_sep)?;
                 } else {
                     for (key, value) in extfields.iter() {
-                        write!(outw, " {}:{}", key, value).unwrap();
+                        write!(outw, " {}:{}", key, value)?;
                     }
-                    writeln!(outw, " {}", paops.right_sep).unwrap();
+                    writeln!(outw, " {}", paops.right_sep)?;
                     paops.level += 1;
-                    tree_write(outw, txt, paops);
+                    tree_write(outw, txt, paops)?;
                     paops.level -= 1;
-                    writeln!(outw, "{} END {} {}", paops.left_sep, keyw, paops.right_sep).unwrap();
+                    writeln!(outw, "{} END {} {}", paops.left_sep, keyw, paops.right_sep)?;
                 }
             }
             TextNode::Stored { keyw, cas } => {
@@ -538,8 +535,7 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                     outw,
                     "{} STORED {} {} {}",
                     paops.left_sep, keyw, cas, paops.right_sep
-                )
-                .unwrap();
+                )?;
             }
             TextNode::Data(data) => {
                 for chunk in data.chunks(DATA_BYTES_PER_LINE) {
@@ -547,14 +543,14 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                         outw,
                         "{} DATA {} {}",
                         paops.left_sep,
-                        utils::base64_encode(chunk).unwrap(),
+                        utils::base64_encode(chunk)?,
                         paops.right_sep
-                    )
-                    .unwrap();
+                    )?;
                 }
             }
         }
     }
+    Ok(())
 }
 
 pub fn transform(text_in: &TextTree, paops: &mut ParseOps) -> Result<TextTree> {
@@ -585,7 +581,7 @@ fn transform_begin_end(node: &TextNode, paops: &mut ParseOps) -> Result<TextNode
         let block = transform(&txt, paops)?;
         paops.level -= 1;
 
-        let pt = tree_to_blob(&block, paops);
+        let pt = tree_to_blob(&block, paops)?;
         let pass = ensure_password(&keyw, paops, true);
         let (ct, extfields) = prot::encrypt(
             pt,
@@ -618,7 +614,7 @@ fn transform_begin_end(node: &TextNode, paops: &mut ParseOps) -> Result<TextNode
         let block = transform(&txt, paops)?;
         paops.level -= 1;
 
-        let blob = tree_to_blob(&block, paops);
+        let blob = tree_to_blob(&block, paops)?;
         let hexhash = cas::save(blob, paops)?;
         return Ok(TextNode::Stored { keyw, cas: hexhash });
     }
@@ -733,10 +729,10 @@ fn blob_to_tree(data: Vec<u8>, path: String, paops: &mut ParseOps) -> Result<Tex
     parse(Cursor::new(data), paops)
 }
 
-fn tree_to_blob(text: &TextTree, paops: &mut ParseOps) -> Vec<u8> {
+fn tree_to_blob(text: &TextTree, paops: &mut ParseOps) -> Result<Vec<u8>> {
     let mut blob = Vec::new();
-    tree_write(&mut blob, text, paops);
-    blob
+    tree_write(&mut blob, text, paops)?;
+    Ok(blob)
 }
 
 #[cfg(test)]
@@ -778,11 +774,8 @@ mod tests {
         let (intree, mut paops, _casdir) = parse_ept("sample/test.ept");
         paops.store.insert("Agent_007".to_string());
         let outtree = transform(&intree, &mut paops).unwrap();
-        parse(
-            BufReader::new(&tree_to_blob(&outtree, &mut paops)[..]),
-            &mut paops,
-        )
-        .unwrap();
+        let blob = tree_to_blob(&outtree, &mut paops).unwrap();
+        parse(BufReader::new(&blob[..]), &mut paops).unwrap();
     }
 
     #[test]
@@ -801,11 +794,8 @@ mod tests {
             .insert("Agent_007".to_string(), "bond".to_string());
         let outtree = transform(&intree, &mut paops).unwrap();
         // re-parse the serialized output to ensure validity
-        parse(
-            BufReader::new(&tree_to_blob(&outtree, &mut paops)[..]),
-            &mut paops,
-        )
-        .unwrap();
+        let blob = tree_to_blob(&outtree, &mut paops).unwrap();
+        parse(BufReader::new(&blob[..]), &mut paops).unwrap();
     }
 
     #[test]
