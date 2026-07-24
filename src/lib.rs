@@ -53,7 +53,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use clap::builder::PossibleValuesParser;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::etree::ParseOps;
 
@@ -98,6 +98,14 @@ pub enum Command {
     /// Parse and re-write each input without applying any transform.
     /// Useful for validating markup or measuring parse performance.
     Passthrough(OperationSubcmd),
+    /// Print shell completion script to stdout.
+    ///
+    /// Install with: enprot completions bash > /etc/bash_completion.d/enprot
+    Completions {
+        /// Target shell.
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 /// Encrypt subcommand: encrypt-specific options plus the shared output
@@ -324,6 +332,10 @@ where
             run(common, a.output, Some((a.encrypt, Operation::EncryptStore)))
         }
         Command::Passthrough(a) => run(common, a.output, None),
+        Command::Completions { shell } => {
+            clap_complete::generate(shell, &mut Cli::command(), "enprot", &mut std::io::stdout());
+            Ok(())
+        }
     }
 }
 

@@ -26,6 +26,7 @@ path = "tests/tests.rs"
 hex            = "0.4"
 rpassword      = "7"
 clap           = { version = "4.5", features = ["derive", "wrap_help"] }
+clap_complete  = "4"
 botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
 phf            = { version = "0.14", features = ["macros"] }
 thiserror      = "2"
