@@ -129,7 +129,7 @@ jobs:
           . .\ci\archive.ps1
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: archives
           path: archives
