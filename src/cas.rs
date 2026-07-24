@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -23,96 +23,65 @@
 
 //	content addressed storage
 
-use etree::ParseOps;
 use std::fs::File;
 use std::io::prelude::*;
 
-use crypto;
+use crate::crypto;
+use crate::error::{Error, Result};
+use crate::etree::ParseOps;
 
-pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>, &'static str> {
-    // check that it is valid
-    if let Err(_) = hex::decode(hexhash) {
-        eprintln!("Not a valid hex token for CAS: {}", hexhash);
-        return Err("CAS hex token invalid");
-    };
+pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
+    hex::decode(hexhash).map_err(|_| Error::Cas(format!("Not a valid hex token: {}", hexhash)))?;
 
     let mut path = paops.casdir.clone();
-    path.push(&hexhash);
+    path.push(hexhash);
 
-    // open input file
-    let mut file_in = match File::open(&path) {
-        Ok(file_in) => file_in,
-        Err(e) => {
-            eprintln!("Failed to open {} for reading: {}", path.display(), e);
-            return Err("CAS file error");
-        }
-    };
+    let mut file_in = File::open(&path)
+        .map_err(|e| Error::Cas(format!("Failed to open {}: {}", path.display(), e)))?;
 
     let mut blob = Vec::new();
-    match file_in.read_to_end(&mut blob) {
-        Ok(bytes) => {
-            if paops.verbose {
-                eprintln!("cas::load(): {} bytes from {}", bytes, path.display());
-            }
-        }
-        Err(e) => {
-            eprintln!("Error reading {}: {}", path.display(), e);
-            return Err("CAS read error");
-        }
+    let bytes = file_in
+        .read_to_end(&mut blob)
+        .map_err(|e| Error::Cas(format!("Error reading {}: {}", path.display(), e)))?;
+    if paops.verbose {
+        eprintln!("cas::load(): {} bytes from {}", bytes, path.display());
     }
 
-    // verify hash just because
-    let verify = crypto::hexdigest("sha3-256", &blob, &paops.policy)?;
-
+    let verify = crypto::hexdigest("sha3-256", &blob, &*paops.policy)?;
     if hexhash != verify {
-        eprintln!(
+        return Err(Error::Cas(format!(
             "CONTENT HASH MISMATCH!\ninput = {}\ncheck = {}",
             hexhash, verify
-        );
-        return Err("CAS verification error");
+        )));
     }
 
     Ok(blob)
 }
 
-pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String, &'static str> {
-    let hexhash = crypto::hexdigest("sha3-256", &blob, &paops.policy)?;
+pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String> {
+    let hexhash = crypto::hexdigest("sha3-256", &blob, &*paops.policy)?;
     let mut path = paops.casdir.clone();
     path.push(&hexhash);
 
-    // check if it exists
     if path.is_file() {
         if paops.verbose {
-            eprintln!("cas:save(): {} already exists. Exiting.", path.display());
+            eprintln!("cas::save(): {} already exists. Exiting.", path.display());
         }
         return Ok(hexhash);
     }
 
-    // open output file
-    let mut file_out = match File::create(&path) {
-        Ok(file) => file,
-        Err(e) => {
-            eprintln!("Failed to open {} for writing: {}", path.display(), e);
-            return Err("CAS create error");
-        }
-    };
-
-    // write it
-    match file_out.write(&blob) {
-        Ok(bytes) => {
-            if paops.verbose {
-                eprintln!("cas:save(): {} bytes to {}", bytes, path.display());
-            }
-        }
-        Err(e) => {
-            eprintln!(
-                "Error writing {} bytes to {}: {}",
-                blob.len(),
-                path.display(),
-                e
-            );
-            return Err("CAS write error");
-        }
+    let mut file_out = File::create(&path)
+        .map_err(|e| Error::Cas(format!("Failed to open {}: {}", path.display(), e)))?;
+    let bytes = file_out.write(&blob).map_err(|e| {
+        Error::Cas(format!(
+            "Error writing {} bytes to {}: {}",
+            blob.len(),
+            path.display(),
+            e
+        ))
+    })?;
+    if paops.verbose {
+        eprintln!("cas::save(): {} bytes to {}", bytes, path.display());
     }
 
     Ok(hexhash)

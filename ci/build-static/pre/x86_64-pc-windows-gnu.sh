@@ -23,8 +23,8 @@ EOF
 # override for static linking
 libstdcxx_path="$(docker run --rm $img bash -c "dirname \$($TARGET_CXX --print-file-name libstdc++.a)")"
 cat <<EOF >> .cargo/config
-[target.$TARGET.botan-2]
+[target.$TARGET.botan-3]
 rustc-link-search = ["native=$PREFIX/lib", "native=$libstdcxx_path"]
-rustc-link-lib = ["static=botan-2", "static=stdc++", "static=ssp"]
+rustc-link-lib = ["static=botan-3", "static=stdc++", "static=ssp"]
 EOF
 

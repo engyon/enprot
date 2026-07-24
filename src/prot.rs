@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2020 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -23,71 +23,100 @@
 
 use std::collections::BTreeMap;
 
-use cipher;
-use crypto::CryptoPolicy;
-use etree;
-use pbkdf::derive_key;
-use pbkdf::PBKDFCache;
-use utils;
-
-// Get a password
+use crate::cipher;
+use crate::crypto::CryptoPolicy;
+use crate::error::{Error, Result};
+use crate::etree;
+use crate::pbkdf::{PBKDFCache, derive_key, parse_phc};
+use crate::utils;
 
 pub fn get_password(name: &str, rep: bool) -> String {
-    let prompt = "Password for ".to_string() + name + ": ";
-    let mut pass = rpassword::prompt_password_stdout(&prompt).unwrap();
-    if rep {
-        let prompt = "Repeat password for ".to_string() + name + ": ";
-        let pass2 = rpassword::prompt_password_stdout(&prompt).unwrap();
-        if pass != pass2 {
+    use std::io::IsTerminal;
+    let prompt = format!("Password for {}: ", name);
+    let pass = read_password(&prompt).expect("password read failure");
+    // Only require repetition when reading from a TTY — a human might have
+    // mistyped. Piped input is already trusted by the caller.
+    if rep && std::io::stdin().is_terminal() {
+        let again_prompt = format!("Repeat password for {}: ", name);
+        let again = read_password(&again_prompt).expect("password read failure");
+        if pass != again {
             eprintln!("Password mismatch. Try again.");
-            pass = get_password(name, rep);
+            return get_password(name, rep);
         }
     }
     pass
 }
 
-// Encrypt
+/// If stdin is a TTY, use rpassword's TTY-backed prompt (echo suppression,
+/// reads from `/dev/tty`). Otherwise read from stdin so callers can pipe
+/// passwords in scripts and tests.
+fn read_password(prompt: &str) -> std::io::Result<String> {
+    use rpassword::ConfigBuilder;
+    use std::io::{IsTerminal, stdin, stdout};
+    let pass = if stdin().is_terminal() {
+        rpassword::prompt_password(prompt)?
+    } else {
+        let config = ConfigBuilder::new()
+            .input_reader(stdin())
+            .output_writer(stdout())
+            .build();
+        rpassword::prompt_password_with_config(prompt, config)?
+    };
+    // Strip a trailing CR so CRLF-terminated piped input (e.g. from Windows
+    // or some terminals) is treated identically to LF-terminated input.
+    Ok(pass.trim_end_matches('\r').to_string())
+}
 
 pub fn encrypt(
     pt: Vec<u8>,
     password: &str,
-    rng: &Option<botan::RandomNumberGenerator>,
+    rng: &mut Option<botan::RandomNumberGenerator>,
     pbkdfopts: &etree::PBKDFOptions,
     cipheropts: &etree::CipherOptions,
     cache: &mut Option<PBKDFCache>,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<(Vec<u8>, BTreeMap<String, String>), &'static str> {
+    policy: &dyn CryptoPolicy,
+) -> Result<(Vec<u8>, BTreeMap<String, String>)> {
+    // Validate cipher algorithm against the policy BEFORE creating the
+    // backend cipher. This way policy rejection fires even when the cipher
+    // backend is built without the requested algorithm.
+    policy
+        .check_cipher_alg(&cipheropts.alg)
+        .map_err(Error::Policy)?;
+
     let enc = cipher::encryption(&cipheropts.alg)?;
     let key_len = enc.key_len_max();
     let (key, pbkdf) = derive_key(password, key_len, rng, pbkdfopts, cache, policy)?;
+
     let mut extfields: BTreeMap<String, String> = BTreeMap::new();
-    if pbkdf != None {
-        extfields.insert("pbkdf".to_string(), pbkdf.unwrap());
+    if let Some(p) = pbkdf {
+        extfields.insert("pbkdf".to_string(), p);
     }
+
     let mut iv: Vec<u8> = Vec::new();
     if cipheropts.alg != "aes-256-siv" {
-        // IV required
         iv = if let Some(myiv) = cipheropts.iv.clone() {
             myiv
         } else {
             let ivlen = enc.nonce_len();
-            rng.as_ref()
-                .ok_or("Missing RNG")?
+            rng.as_mut()
+                .ok_or(Error::Msg("Missing RNG".into()))?
                 .read(ivlen)
-                .map_err(|_| "RNG error")?
+                .map_err(Error::botan)?
         };
         extfields.insert(
             "cipher".to_string(),
-            format!("{}$iv={}", &cipheropts.alg, utils::base64_encode(&iv)?).to_string(),
+            format!("{}$iv={}", &cipheropts.alg, utils::base64_encode(&iv)?),
         );
-    } else if cipheropts.iv != None {
-        // IV not required
-        return Err("IV was supplied but not expected");
+    } else if cipheropts.iv.is_some() {
+        return Err(Error::Cipher("IV was supplied but not expected".into()));
     }
-    Ok((enc.process(&key, &iv, &[], &pt, policy)?, extfields))
-}
 
-// Decrypt
+    policy
+        .check_cipher(&cipheropts.alg, &key, &iv, &[])
+        .map_err(Error::Policy)?;
+    let mut enc = enc;
+    Ok((enc.process(&key, &iv, &[], &pt)?, extfields))
+}
 
 pub fn decrypt(
     ct: Vec<u8>,
@@ -95,56 +124,32 @@ pub fn decrypt(
     pbkdf: &Option<&String>,
     cipher: &Option<&String>,
     cache: &mut Option<PBKDFCache>,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<Vec<u8>, &'static str> {
-    let cipher_alg;
-    let mut iv = Vec::new();
-    if let Some(cipher) = cipher {
-        let mut it = cipher.split("$");
-        cipher_alg = it.next().ok_or("Invalid cipher extfield")?;
-        let mut fields = BTreeMap::new();
-        for val in it {
-            let mut it = val.splitn(2, '=');
-            let key = it.next().ok_or("Missing field key")?;
-            let value = it.collect::<String>();
-            fields.insert(key, value);
-        }
-        if let Some(myiv) = fields.get("iv") {
-            iv = utils::base64_decode(myiv)?;
-        }
-    } else {
-        cipher_alg = "aes-256-siv";
-    }
+    policy: &dyn CryptoPolicy,
+) -> Result<Vec<u8>> {
+    let (cipher_alg, iv) = parse_cipher_extfield(cipher)?;
+
+    policy
+        .check_cipher_alg(&cipher_alg)
+        .map_err(Error::Policy)?;
+
     let dec = cipher::decryption(&cipher_alg)?;
     let key_len = dec.key_len_max();
-    let key: Vec<u8>;
-    if let Some(pbkdf) = pbkdf {
-        let phc: phc::raw::RawPHC = pbkdf.parse().map_err(|_| "Failed to parse PHC")?;
-        let alg = phc.id();
-        let mut params_map: BTreeMap<String, usize> = BTreeMap::new();
-        params_map.extend(
-            phc.params()
-                .iter()
-                .map(|v| (v.0.to_string(), v.1.parse::<usize>().unwrap())),
-        );
-        let salt = match phc.salt().ok_or("Missing salt")? {
-            phc::Salt::Ascii(s) => utils::base64_decode(s)?,
-            phc::Salt::Binary(b) => utils::base64_decode(std::str::from_utf8(b).unwrap())?,
-        };
+    let mut no_rng: Option<botan::RandomNumberGenerator> = None;
+    let key = if let Some(p) = pbkdf {
+        let (alg, params, salt) = parse_phc(p)?;
         let pbkdfopts = etree::PBKDFOptions {
-            alg: alg.to_string(),
+            alg,
             saltlen: 0,
             salt: Some(salt),
             msec: None,
-            params: Some(params_map),
+            params: Some(params),
         };
-        let (thekey, _) = derive_key(password, key_len, &None, &pbkdfopts, cache, policy)?;
-        key = thekey;
+        derive_key(password, key_len, &mut no_rng, &pbkdfopts, cache, policy)?.0
     } else {
-        let (thekey, _) = derive_key(
+        derive_key(
             password,
             key_len,
-            &None,
+            &mut no_rng,
             &etree::PBKDFOptions {
                 alg: "legacy".to_string(),
                 saltlen: 0,
@@ -154,8 +159,68 @@ pub fn decrypt(
             },
             cache,
             policy,
-        )?;
-        key = thekey;
+        )?
+        .0
+    };
+
+    policy
+        .check_cipher(&cipher_alg, &key, &iv, &[])
+        .map_err(Error::Policy)?;
+    let mut dec = dec;
+    dec.process(&key, &iv, &[], &ct)
+}
+
+fn parse_cipher_extfield(cipher: &Option<&String>) -> Result<(String, Vec<u8>)> {
+    let Some(value) = cipher else {
+        return Ok(("aes-256-siv".to_string(), Vec::new()));
+    };
+    let mut it = value.split('$');
+    let alg = it
+        .next()
+        .ok_or_else(|| Error::Cipher("Invalid cipher extfield".into()))?
+        .to_string();
+    let mut fields = BTreeMap::new();
+    for part in it {
+        let mut kv = part.splitn(2, '=');
+        let k = kv
+            .next()
+            .ok_or_else(|| Error::Cipher("Missing field key".into()))?;
+        let v = kv.collect::<String>();
+        fields.insert(k, v);
     }
-    Ok(dec.process(&key, &iv, &[], &ct, policy)?)
+    let iv = match fields.get("iv") {
+        Some(b64) => utils::base64_decode(b64)?,
+        None => Vec::new(),
+    };
+    Ok((alg, iv))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cipher_extfield_roundtrip() {
+        // aes-256-gcm with IV
+        let s = "aes-256-gcm$iv=MDEyMzQ1Njc4OWFiY2RlZg==".to_string();
+        let (alg, iv) = parse_cipher_extfield(&Some(&s)).unwrap();
+        assert_eq!(alg, "aes-256-gcm");
+        assert_eq!(iv, b"0123456789abcdef");
+
+        // None → aes-256-siv default
+        let (alg, iv) = parse_cipher_extfield(&None).unwrap();
+        assert_eq!(alg, "aes-256-siv");
+        assert!(iv.is_empty());
+    }
+
+    #[test]
+    fn phc_extfield_roundtrip() {
+        let s = "$argon2$m=65536,p=4,t=3$MDEyMzQ1Njc4OWFiY2RlZg==";
+        let (alg, params, salt) = parse_phc(s).unwrap();
+        assert_eq!(alg, "argon2");
+        assert_eq!(params.get("m"), Some(&65536));
+        assert_eq!(params.get("t"), Some(&3));
+        assert_eq!(params.get("p"), Some(&4));
+        assert_eq!(salt, b"0123456789abcdef");
+    }
 }

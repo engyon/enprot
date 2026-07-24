@@ -1,9 +1,8 @@
+use crate::Fixture;
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
-
-use Fixture;
 
 #[test]
 fn help_produces_usage() {
@@ -12,13 +11,13 @@ fn help_produces_usage() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("USAGE:"));
+        .stdout(predicate::str::contains("Usage:"));
     Command::cargo_bin("enprot")
         .unwrap()
         .arg("-h")
         .assert()
         .success()
-        .stdout(predicate::str::contains("USAGE:"));
+        .stdout(predicate::str::contains("Usage:"));
 }
 
 #[test]

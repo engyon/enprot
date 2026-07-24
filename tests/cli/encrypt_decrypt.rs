@@ -1,10 +1,8 @@
-use assert_cmd::prelude::*;
+use crate::Fixture;
+use assert_cmd::Command;
 use cpu_time::ThreadTime;
 use std::fs;
-use std::process::Command;
 use tempfile::tempdir;
-
-use Fixture;
 
 #[test]
 fn encrypt_decrypt_agent007() {
@@ -60,8 +58,7 @@ fn encrypt_decrypt_agent007_stdin_pass() {
         .arg("--pbkdf")
         .arg("legacy")
         .arg(&ept.path)
-        .with_stdin()
-        .buffer("password\r\npassword\r\n")
+        .write_stdin("password\r\npassword\r\n")
         .assert()
         .success();
     assert_eq!(
@@ -289,9 +286,11 @@ fn encrypt_decrypt_agent007_default_pbkdf() {
         .assert()
         .success();
     // just make sure it selected argon2
-    assert!(&fs::read_to_string(&ept.path)
-        .unwrap()
-        .contains("pbkdf:$argon2$"));
+    assert!(
+        &fs::read_to_string(&ept.path)
+            .unwrap()
+            .contains("pbkdf:$argon2$")
+    );
     Command::cargo_bin("enprot")
         .unwrap()
         .arg("-c")

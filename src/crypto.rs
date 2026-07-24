@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -24,9 +24,11 @@
 use phf::phf_map;
 use std::collections::BTreeMap;
 
-pub use policy::default::CryptoPolicyDefault;
-pub use policy::nist::CryptoPolicyNIST;
-pub use policy::CryptoPolicy;
+pub use crate::policy::CryptoPolicy;
+pub use crate::policy::default::CryptoPolicyDefault;
+pub use crate::policy::nist::CryptoPolicyNIST;
+
+use crate::error::{Error, Result};
 
 pub static BOTAN_HASH_ALG_MAP: phf::Map<&'static str, &'static str> = phf_map! {
     "sha256" => "SHA-256",
@@ -35,44 +37,32 @@ pub static BOTAN_HASH_ALG_MAP: phf::Map<&'static str, &'static str> = phf_map! {
     "sha3-512" => "SHA-3(512)",
 };
 
-pub fn to_botan_hash(alg: &str) -> Result<&'static str, &'static str> {
-    Ok(BOTAN_HASH_ALG_MAP
-        .get::<str>(alg)
-        .ok_or("Unrecognized hash algorithm")?)
+fn to_botan_hash(alg: &str) -> Result<&'static str> {
+    BOTAN_HASH_ALG_MAP
+        .get(alg)
+        .copied()
+        .ok_or_else(|| Error::Msg(format!("Unrecognized hash algorithm: {}", alg)))
 }
 
-pub fn digest(
-    alg: &str,
-    data: &[u8],
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<Vec<u8>, &'static str> {
-    policy.check_hash(alg)?;
-    let hash =
-        botan::HashFunction::new(to_botan_hash(alg)?).map_err(|_| "Botan error creating hash")?;
-    hash.update(data).map_err(|_| "Botan error updating hash")?;
-    hash.finish().map_err(|_| "Botan error finishing hash")
+pub fn digest(alg: &str, data: &[u8], policy: &dyn CryptoPolicy) -> Result<Vec<u8>> {
+    policy.check_hash(alg).map_err(Error::Policy)?;
+    let mut hash = botan::HashFunction::new(to_botan_hash(alg)?).map_err(Error::botan)?;
+    hash.update(data).map_err(Error::botan)?;
+    hash.finish().map_err(Error::botan)
 }
 
-pub fn hexdigest(
-    alg: &str,
-    data: &[u8],
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<String, &'static str> {
+pub fn hexdigest(alg: &str, data: &[u8], policy: &dyn CryptoPolicy) -> Result<String> {
     Ok(hex::encode(digest(alg, data, policy)?))
 }
 
-fn to_botan_pbkdf(alg: &str) -> Result<String, &'static str> {
-    if alg.starts_with("pbkdf2-") {
-        let hash = alg.splitn(2, "-").skip(1).collect::<String>();
-        return Ok(format!("PBKDF2({})", to_botan_hash(&hash)?));
+fn to_botan_pbkdf(alg: &str) -> Result<std::borrow::Cow<'static, str>> {
+    if let Some(rest) = alg.strip_prefix("pbkdf2-") {
+        return Ok(format!("PBKDF2({})", to_botan_hash(rest)?).into());
     }
     match alg {
-        "argon2" => Ok("Argon2id".to_string()),
-        "scrypt" => Ok("Scrypt".to_string()),
-        _ => {
-            eprintln!("Invalid KDF: '{}'", alg);
-            Err("Invalid KDF")
-        }
+        "argon2" => Ok("Argon2id".into()),
+        "scrypt" => Ok("Scrypt".into()),
+        _ => Err(Error::Pbkdf(format!("Invalid KDF: '{}'", alg))),
     }
 }
 
@@ -83,18 +73,22 @@ pub fn derive_key_from_password(
     password: &str,
     salt: &[u8],
     mut params_map: BTreeMap<String, usize>,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<Vec<u8>, &'static str> {
-    policy.check_pbkdf(alg, key_len, password, salt, &params_map)?;
+    policy: &dyn CryptoPolicy,
+) -> Result<Vec<u8>> {
+    policy
+        .check_pbkdf(alg, key_len, password, salt, &params_map)
+        .map_err(Error::Policy)?;
     let mut params: [usize; 3] = [0, 0, 0];
     for (i, param) in param_order[1].iter().enumerate() {
         if param.is_empty() {
             continue;
         }
-        params[i] = params_map.remove(*param).ok_or("Missing PBKDF parameter")?;
+        params[i] = params_map
+            .remove(*param)
+            .ok_or_else(|| Error::Pbkdf("Missing PBKDF parameter".into()))?;
     }
     if !params_map.is_empty() {
-        return Err("Extraneous PBKDF parameters");
+        return Err(Error::Pbkdf("Extraneous PBKDF parameters".into()));
     }
     let key = botan::derive_key_from_password(
         &to_botan_pbkdf(alg)?,
@@ -105,7 +99,7 @@ pub fn derive_key_from_password(
         params[1],
         params[2],
     )
-    .map_err(|_| "Botan error deriving key")?;
+    .map_err(Error::botan)?;
     Ok(key)
 }
 
@@ -116,21 +110,18 @@ pub fn derive_key_from_password_timed(
     password: &str,
     salt: &[u8],
     msec: u32,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<(Vec<u8>, BTreeMap<String, usize>), &'static str> {
-    let (key, param1, param2, param3) = botan::derive_key_from_password_timed(
-        &to_botan_pbkdf(alg)?,
-        key_len,
-        password,
-        &salt,
-        msec,
-    )
-    .map_err(|_| "Botan error deriving key (timed)")?;
-    let params = [param1, param2, param3];
+    policy: &dyn CryptoPolicy,
+) -> Result<(Vec<u8>, BTreeMap<String, usize>)> {
+    let (key, p1, p2, p3) =
+        botan::derive_key_from_password_timed(&to_botan_pbkdf(alg)?, key_len, password, salt, msec)
+            .map_err(Error::botan)?;
+    let params = [p1, p2, p3];
     let mut params_map = BTreeMap::new();
     for (i, param) in param_order[0].iter().filter(|v| !v.is_empty()).enumerate() {
-        params_map.insert(param.to_string(), params[i]);
+        params_map.insert((*param).to_string(), params[i]);
     }
-    policy.check_pbkdf(alg, key_len, password, salt, &params_map)?;
+    policy
+        .check_pbkdf(alg, key_len, password, salt, &params_map)
+        .map_err(Error::Policy)?;
     Ok((key, params_map))
 }

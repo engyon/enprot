@@ -22,5 +22,5 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 fn main() {
-    enprot::app_main(&mut std::env::args());
+    enprot::app_main(std::env::args());
 }

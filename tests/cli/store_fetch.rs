@@ -1,9 +1,8 @@
+use crate::Fixture;
 use assert_cmd::prelude::*;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
-
-use Fixture;
 
 #[test]
 fn store_fetch_single() {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -27,7 +27,7 @@ pub mod default;
 pub mod nist;
 
 pub trait CryptoPolicy {
-    fn check_hash(&self, alg: &str) -> Result<(), &'static str>;
+    fn check_hash(&self, alg: &str) -> Result<(), String>;
 
     fn check_pbkdf(
         &self,
@@ -36,10 +36,15 @@ pub trait CryptoPolicy {
         password: &str,
         salt: &[u8],
         params: &BTreeMap<String, usize>,
-    ) -> Result<(), &'static str>;
+    ) -> Result<(), String>;
 
-    fn check_cipher(&self, alg: &str, key: &[u8], iv: &[u8], ad: &[u8])
-        -> Result<(), &'static str>;
+    /// Validate that the cipher algorithm is permitted by this policy,
+    /// independent of any key/IV. Called before backend cipher creation so
+    /// policy rejection happens even when the backend does not implement
+    /// the requested algorithm.
+    fn check_cipher_alg(&self, alg: &str) -> Result<(), String>;
+
+    fn check_cipher(&self, alg: &str, key: &[u8], iv: &[u8], ad: &[u8]) -> Result<(), String>;
 
     fn default_pbkdf_alg(&self) -> String;
     fn default_pbkdf_salt_length(&self) -> usize;

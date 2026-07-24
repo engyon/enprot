@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -23,20 +23,19 @@
 
 use std::collections::BTreeMap;
 
-use policy::CryptoPolicy;
+use crate::policy::CryptoPolicy;
 
 pub struct CryptoPolicyDefault {}
 
 impl CryptoPolicyDefault {
+    pub const DEFAULT_PBKDF_MSEC: u32 = 100;
     const DEFAULT_PBKDF_ALG: &'static str = "argon2";
     const DEFAULT_PBKDF_SALT_LEN: usize = 16;
-    pub const DEFAULT_PBKDF_MSEC: u32 = 100;
     const DEFAULT_CIPHER_ALG: &'static str = "aes-256-siv";
 }
 
-// allow everything
 impl CryptoPolicy for CryptoPolicyDefault {
-    fn check_hash(&self, _alg: &str) -> Result<(), &'static str> {
+    fn check_hash(&self, _alg: &str) -> Result<(), String> {
         Ok(())
     }
 
@@ -47,17 +46,15 @@ impl CryptoPolicy for CryptoPolicyDefault {
         _password: &str,
         _salt: &[u8],
         _params: &BTreeMap<String, usize>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         Ok(())
     }
 
-    fn check_cipher(
-        &self,
-        _alg: &str,
-        _key: &[u8],
-        _iv: &[u8],
-        _ad: &[u8],
-    ) -> Result<(), &'static str> {
+    fn check_cipher_alg(&self, _alg: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn check_cipher(&self, _alg: &str, _key: &[u8], _iv: &[u8], _ad: &[u8]) -> Result<(), String> {
         Ok(())
     }
 

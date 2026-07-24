@@ -5,8 +5,8 @@ on:
     tags: '[0-9]+.[0-9]+.[0-9]+'
 
 env:
-  CROSS_VERSION: 0.1.16
-  BOTAN_VERSION: 2.13.0
+  CROSS_VERSION: 0.2.5
+  BOTAN_VERSION: 3.7.0
   PROJECT_NAME: enprot
   EXE_NAME: enprot
 
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v7
       - name: Check version
         run: |
           set -euxo pipefail
@@ -28,7 +28,7 @@ jobs:
   release-archive:
     needs: [checks]
     name: archive
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       matrix:
         target:
@@ -67,42 +67,37 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v7
 
-      # set environment
       - name: Set environment (unix)
         if: "!startsWith(matrix.os, 'windows')"
         env: ${{ matrix.env }}
         run: |
           set -euxo pipefail
-          echo "::set-env name=RELEASE_TAG::${GITHUB_REF#refs/tags/}"
-          echo "::set-env name=PREFIX::${PREFIX-$GITHUB_WORKSPACE/installs}"
-          echo "::set-env name=EXE_PATH::target/$TARGET/release/$EXE_NAME"
+          echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "PREFIX=${PREFIX-$GITHUB_WORKSPACE/installs}" >> $GITHUB_ENV
+          echo "EXE_PATH=target/$TARGET/release/$EXE_NAME" >> $GITHUB_ENV
       - name: Set environment (windows)
         if: startsWith(matrix.os, 'windows')
         env: ${{ matrix.env }}
         run: |
           Set-StrictMode -Version 3.0
           Set-PSDebug -Trace 2
-          echo "::set-env name=RELEASE_TAG::$($Env:GITHUB_REF.Replace('refs/tags/', ''))"
-          echo "::set-env name=PREFIX::$($($PWD -join 'installs').Replace('\', '/'))"
-          echo "::set-env name=EXE_PATH::target/$Env:TARGET/release/$Env:EXE_NAME"
+          "RELEASE_TAG=$($Env:GITHUB_REF.Replace('refs/tags/', ''))" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
+          "PREFIX=$($($PWD -join 'installs').Replace('\', '/'))" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
+          "EXE_PATH=target/$Env:TARGET/release/$Env:EXE_NAME" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
 
-      # install rust
       - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-            profile: minimal
-            toolchain: stable
-            target: ${{ matrix.env.TARGET }}
-            default: true
+          target: ${{ matrix.env.TARGET }}
+
       - name: Install python (windows)
         if: startsWith(matrix.os, 'windows')
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
-      # build
       - name: Build (unix)
         if: "!startsWith(matrix.os, 'windows')"
         env: ${{ matrix.env }}
@@ -118,7 +113,6 @@ jobs:
           Set-PSDebug -Trace 2
           . .\ci\build-static.ps1
 
-      # archive
       - name: Archive (unix)
         if: "!startsWith(matrix.os, 'windows')"
         env: ${{ matrix.env }}
@@ -134,9 +128,8 @@ jobs:
           Set-PSDebug -Trace 2
           . .\ci\archive.ps1
 
-      # upload archives for use by release jobs
       - name: Upload artifacts
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v5
         with:
           name: archives
           path: archives
@@ -146,13 +139,10 @@ jobs:
     needs: [release-archive]
     runs-on: ubuntu-latest
     steps:
-      # download our archive artifacts
       - name: Download artifacts
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v5
         with:
           name: archives
-      # create a github release
-      # this is ultimately easier than @actions/create-release et al
       - name: Create release
         env:
           GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -176,14 +166,9 @@ jobs:
     needs: [checks]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      # install rust
+      - uses: actions/checkout@v7
       - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-            profile: minimal
-            toolchain: stable
-            default: true
+        uses: dtolnay/rust-toolchain@stable
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -195,12 +180,11 @@ jobs:
     needs: [checks]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v7
       - name: Install snapcraft
-        uses: samuelmeuli/action-snapcraft@v1
+        uses: snapcore/action-build@v1
         with:
           snapcraft_token: ${{ secrets.SNAPCRAFT_RELEASE_LOGIN }}
-          use_lxd: true
       - name: Install review-tools
         run: sudo snap install review-tools
       - name: Build
@@ -209,6 +193,8 @@ jobs:
           sed -i "s/RELEASE_TAG/${RELEASE_TAG}/g" snap/snapcraft.yaml
           sg lxd -c 'snapcraft --use-lxd'
       - name: Publish
-        run: |
-          snapcraft upload *.snap --release stable
-
+        uses: snapcore/action-publish@v1
+        with:
+          store_token: ${{ secrets.SNAPCRAFT_RELEASE_LOGIN }}
+          snap: ${{ steps.build.outputs.snap }}
+          release: stable

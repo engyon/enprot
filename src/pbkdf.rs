@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 [Ribose Inc](https://www.ribose.com).
+// Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com).
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -24,17 +24,23 @@
 use phf::phf_map;
 use std::collections::BTreeMap;
 
-use crypto;
-use crypto::CryptoPolicy;
-use etree;
-use utils;
+use crate::crypto;
+use crate::crypto::CryptoPolicy;
+use crate::error::{Error, Result};
+use crate::etree;
+use crate::utils;
 
+/// For each supported PBKDF algorithm, two orderings of the three numeric
+/// parameters Botan accepts: the first is what `derive_key_from_password_timed`
+/// returns (in the order Botan produces them), the second is what
+/// `derive_key_from_password` consumes when reading them back from a PHC
+/// string.
 pub static BOTAN_PBKDF_PARAM_MAP: phf::Map<&'static str, &[&[&str; 3]; 2]> = phf_map! {
-    // alg      derive_key_from_password_timed()    derive_key_from_password()
-    "argon2" => &[&["t", "p", "m"],                 &["m", "t", "p"]],
-    "scrypt" => &[&["r", "p", "ln"],                &["ln", "r", "p"]],
-    "pbkdf2-sha256" => &[&["i", "", ""],                   &["i", "", ""]],
-    "pbkdf2-sha512" => &[&["i", "", ""],                   &["i", "", ""]],
+    // alg              timed()                        manual()
+    "argon2"        => &[&["t", "p", "m"],            &["m", "t", "p"]],
+    "scrypt"        => &[&["r", "p", "ln"],           &["ln", "r", "p"]],
+    "pbkdf2-sha256" => &[&["i", "", ""],              &["i", "", ""]],
+    "pbkdf2-sha512" => &[&["i", "", ""],              &["i", "", ""]],
 };
 
 pub struct PBKDFCacheEntry {
@@ -47,12 +53,10 @@ pub struct PBKDFCacheEntry {
 }
 pub type PBKDFCache = Vec<PBKDFCacheEntry>;
 
-fn pbkdf_legacy(
-    password: &str,
-    key_len: usize,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<Vec<u8>, &'static str> {
-    policy.check_pbkdf("sha3-512", key_len, password, &[], &BTreeMap::new())?;
+fn pbkdf_legacy(password: &str, key_len: usize, policy: &dyn CryptoPolicy) -> Result<Vec<u8>> {
+    policy
+        .check_pbkdf("sha3-512", key_len, password, &[], &BTreeMap::new())
+        .map_err(Error::Policy)?;
     let mut result = crypto::digest("sha3-512", password.as_bytes(), policy)?;
     result.truncate(key_len);
     Ok(result)
@@ -62,11 +66,11 @@ fn pbkdf_timed(
     alg: &str,
     botan_param_order: &[&[&str; 3]; 2],
     password: &str,
-    salt: &Vec<u8>,
+    salt: &[u8],
     msec: u32,
     key_len: usize,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<(Vec<u8>, BTreeMap<String, usize>), &'static str> {
+    policy: &dyn CryptoPolicy,
+) -> Result<(Vec<u8>, BTreeMap<String, usize>)> {
     crypto::derive_key_from_password_timed(
         alg,
         botan_param_order,
@@ -82,11 +86,11 @@ fn pbkdf_manual(
     alg: &str,
     botan_param_order: &[&[&str; 3]; 2],
     password: &str,
-    salt: &Vec<u8>,
+    salt: &[u8],
     params_map: BTreeMap<String, usize>,
     key_len: usize,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<Vec<u8>, &'static str> {
+    policy: &dyn CryptoPolicy,
+) -> Result<Vec<u8>> {
     crypto::derive_key_from_password(
         alg,
         botan_param_order,
@@ -98,108 +102,184 @@ fn pbkdf_manual(
     )
 }
 
-fn format_phc(alg: &str, params: &BTreeMap<String, usize>, salt: &Vec<u8>) -> String {
-    format!(
-        "${}${}${}",
-        alg,
-        params
-            .iter()
-            .map(|v| format!("{}={}", v.0, v.1))
-            .collect::<Vec<String>>()
-            .join(","),
-        utils::base64_encode(salt).unwrap()
-    )
+/// Serialize a PHC-format string. Layout: `$<id>$<k=v,k=v>$<b64-salt>`.
+/// `params` must be sorted by the BTreeMap iteration order (alphabetical).
+pub fn format_phc(alg: &str, params: &BTreeMap<String, usize>, salt: &[u8]) -> Result<String> {
+    let body = params
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<String>>()
+        .join(",");
+    Ok(format!("${}${}${}", alg, body, utils::base64_encode(salt)?))
+}
+
+/// Parse a PHC-format string into its algorithm id, named parameters, and
+/// raw salt bytes. The salt may use any character legal in standard base64
+/// (including `=` padding); we round-trip through Botan's base64 codec.
+///
+/// Layout: `$<id>$<k=v,k=v,...>$<b64-salt>`
+pub fn parse_phc(s: &str) -> Result<(String, BTreeMap<String, usize>, Vec<u8>)> {
+    let body = s
+        .strip_prefix('$')
+        .ok_or_else(|| Error::Phc("PHC string must start with '$'".into()))?;
+    let mut parts = body.splitn(3, '$');
+    let id = parts.next().unwrap_or("");
+    if id.is_empty() {
+        return Err(Error::Phc("PHC string is missing the algorithm id".into()));
+    }
+    let raw_params = parts.next().unwrap_or("");
+    let raw_salt = parts
+        .next()
+        .ok_or_else(|| Error::Phc("PHC string is missing the salt segment".into()))?;
+
+    let mut params = BTreeMap::new();
+    for kv in raw_params.split(',').filter(|s| !s.is_empty()) {
+        let (k, v) = kv
+            .split_once('=')
+            .ok_or_else(|| Error::Phc(format!("PHC param '{}' is not key=value", kv)))?;
+        let n: usize = v
+            .parse()
+            .map_err(|_| Error::Phc(format!("PHC param '{}' has non-numeric value", kv)))?;
+        params.insert(k.to_string(), n);
+    }
+
+    let salt = utils::base64_decode(raw_salt)?;
+    Ok((id.to_string(), params, salt))
 }
 
 pub fn derive_key(
     password: &str,
     key_len: usize,
-    rng: &Option<botan::RandomNumberGenerator>,
+    rng: &mut Option<botan::RandomNumberGenerator>,
     opts: &etree::PBKDFOptions,
     cache: &mut Option<PBKDFCache>,
-    policy: &Box<dyn CryptoPolicy>,
-) -> Result<(Vec<u8>, Option<String>), &'static str> {
+    policy: &dyn CryptoPolicy,
+) -> Result<(Vec<u8>, Option<String>)> {
     if opts.alg == "legacy" {
         return Ok((pbkdf_legacy(password, key_len, policy)?, None));
     }
+
     let mut salt = opts.salt.clone().unwrap_or_else(|| {
-        rng.as_ref()
+        rng.as_mut()
             .unwrap()
             .read(opts.saltlen)
-            .map_err(|_| "Failed to read from RNG")
-            .unwrap()
+            .expect("RNG failure")
     });
+
     let botan_param_order = BOTAN_PBKDF_PARAM_MAP
-        .get::<str>(&opts.alg)
-        .ok_or("Missing PBKDF param mapping")?;
+        .get(opts.alg.as_str())
+        .ok_or_else(|| Error::Pbkdf(format!("Missing PBKDF param mapping for '{}'", opts.alg)))?;
+
     if let Some(params) = opts.params.as_ref() {
-        let key;
-        if let Some(entry) = cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
+        let key = if let Some(entry) = cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
             e.password == password
                 && e.alg == opts.alg
                 && e.key.len() == key_len
                 && e.msec == 0
                 && e.params == *params
         }) {
-            key = entry.key.clone();
+            entry.key.clone()
         } else {
-            key = pbkdf_manual(
+            let k = pbkdf_manual(
                 &opts.alg,
-                &botan_param_order,
+                botan_param_order,
                 password,
                 &salt,
                 opts.params.clone().unwrap(),
                 key_len,
                 policy,
             )?;
-            if cache.is_some() {
-                cache.as_mut().unwrap().push(PBKDFCacheEntry {
+            if let Some(c) = cache.as_mut() {
+                c.push(PBKDFCacheEntry {
                     password: password.to_string(),
                     alg: opts.alg.clone(),
                     msec: 0,
                     salt: salt.clone(),
-                    key: key.clone(),
+                    key: k.clone(),
                     params: params.clone(),
                 });
             }
-        }
+            k
+        };
         return Ok((
             key,
-            Some(format_phc(&opts.alg, opts.params.as_ref().unwrap(), &salt)),
+            Some(format_phc(&opts.alg, opts.params.as_ref().unwrap(), &salt)?),
         ));
     }
-    let (key, params);
-    if let Some(entry) = cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
-        e.password == password
-            && e.alg == opts.alg
-            && e.key.len() == key_len
-            && e.msec == opts.msec.unwrap()
-    }) {
+
+    let msec = opts
+        .msec
+        .ok_or_else(|| Error::Pbkdf("Missing PBKDF msec".into()))?;
+    let (key, params) = if let Some(entry) =
+        cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
+            e.password == password && e.alg == opts.alg && e.key.len() == key_len && e.msec == msec
+        }) {
         salt = entry.salt.clone();
-        key = entry.key.clone();
-        params = entry.params.clone();
+        (entry.key.clone(), entry.params.clone())
     } else {
-        let results = pbkdf_timed(
+        let (k, p) = pbkdf_timed(
             &opts.alg,
-            &botan_param_order,
+            botan_param_order,
             password,
             &salt,
-            opts.msec.ok_or("Missing PBKDF msec")?,
+            msec,
             key_len,
             policy,
         )?;
-        key = results.0;
-        params = results.1;
-        if cache.is_some() {
-            cache.as_mut().unwrap().push(PBKDFCacheEntry {
+        if let Some(c) = cache.as_mut() {
+            c.push(PBKDFCacheEntry {
                 password: password.to_string(),
                 alg: opts.alg.clone(),
-                msec: opts.msec.unwrap(),
+                msec,
                 salt: salt.clone(),
-                key: key.clone(),
-                params: params.clone(),
+                key: k.clone(),
+                params: p.clone(),
             });
         }
+        (k, p)
+    };
+    Ok((key, Some(format_phc(&opts.alg, &params, &salt)?)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn phc_roundtrip_argon2() {
+        let mut params = BTreeMap::new();
+        params.insert("m".to_string(), 65536);
+        params.insert("t".to_string(), 3);
+        params.insert("p".to_string(), 4);
+        let s = format_phc("argon2", &params, b"0123456789abcdef").unwrap();
+        assert!(s.starts_with("$argon2$m=65536,p=4,t=3$"));
     }
-    Ok((key, Some(format_phc(&opts.alg, &params, &salt))))
+
+    #[test]
+    fn phc_roundtrip_pbkdf2() {
+        let mut params = BTreeMap::new();
+        params.insert("i".to_string(), 100_000);
+        let s = format_phc("pbkdf2-sha512", &params, b"0123456789abcdef").unwrap();
+        assert_eq!(s, "$pbkdf2-sha512$i=100000$MDEyMzQ1Njc4OWFiY2RlZg==");
+    }
+
+    #[test]
+    fn phc_parse_accepts_padded_salt() {
+        // Existing enprot blobs use base64 with `=` padding; the parser must
+        // accept it.
+        let (alg, params, salt) = parse_phc("$pbkdf2-sha256$i=1$AQIDBAUGBwg=").unwrap();
+        assert_eq!(alg, "pbkdf2-sha256");
+        assert_eq!(params.get("i").copied(), Some(1));
+        assert_eq!(salt, b"\x01\x02\x03\x04\x05\x06\x07\x08");
+    }
+
+    #[test]
+    fn phc_parse_rejects_missing_prefix() {
+        assert!(parse_phc("pbkdf2-sha256$i=1$AQIDBAUGBwg=").is_err());
+    }
+
+    #[test]
+    fn phc_parse_rejects_non_numeric_value() {
+        assert!(parse_phc("$pbkdf2-sha256$i=abc$AQIDBAUGBwg=").is_err());
+    }
 }

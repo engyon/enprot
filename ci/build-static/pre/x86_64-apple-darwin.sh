@@ -6,8 +6,8 @@ sudo make -j2 install
 cd ..
 
 cat <<EOF >> .cargo/config
-[target.$TARGET.botan-2]
+[target.$TARGET.botan-3]
 rustc-link-search = ["native=$PREFIX/lib"]
-rustc-link-lib = ["static=botan-2", "c++"]
+rustc-link-lib = ["static=botan-3", "c++"]
 EOF
 

@@ -7,6 +7,7 @@ description = "enprot command line tool for Engyon"
 repository  = "https://github.com/riboseinc/enprot"
 categories  = ["command-line-utilities", "cryptography"]
 keywords    = ["encryption", "engyon"]
+edition     = "2024"
 autotests   = false
 
 [[bin]]
@@ -18,20 +19,19 @@ name = "integration"
 path = "tests/tests.rs"
 
 [dependencies]
-hex                = "0.3"
-rpassword          = "2"
-clap               = "2.33.0"
-phc                = "0.2.0"
-botan              = "0.6.0"
-num                = "0.2.0"
-phf                = { version = "0.8.0", features = ["macros"] }
-aes                = "0.3.2"
-aes-gcm-siv        = "0.3.0"
-block-cipher-trait = "0.6.2"
+hex            = "0.4"
+rpassword      = "7"
+clap           = { version = "4.5", features = ["derive", "wrap_help"] }
+botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
+phf            = { version = "0.11", features = ["macros"] }
+thiserror      = "2"
+# Botan does not implement AES-GCM-SIV (RFC 8452). The RustCrypto crate
+# remains the backend for `aes-256-gcm-siv`; the other ciphers route through
+# Botan.
+aes-gcm-siv    = "0.11"
 
 [dev-dependencies]
-tempfile    = "3.1.0"
-assert_cmd  = "0.11"
-predicates  = "1.0"
-cpu-time    = "1.0.0"
-
+tempfile    = "3"
+assert_cmd  = "2"
+predicates  = "3"
+cpu-time    = "1.0"

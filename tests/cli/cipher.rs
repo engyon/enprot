@@ -1,9 +1,8 @@
+use crate::Fixture;
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
-
-use Fixture;
 
 #[test]
 fn encrypt_gcm_random_iv() {
@@ -30,9 +29,11 @@ fn encrypt_gcm_random_iv() {
             .arg(&ept.path)
             .assert()
             .success();
-        assert!(&fs::read_to_string(&ept.path)
-            .unwrap()
-            .contains("aes-256-gcm"));
+        assert!(
+            &fs::read_to_string(&ept.path)
+                .unwrap()
+                .contains("aes-256-gcm")
+        );
         let out = Fixture::blank("out.ept");
         Command::cargo_bin("enprot")
             .unwrap()
@@ -81,9 +82,11 @@ fn encrypt_gcm() {
         .arg(&ept.path)
         .assert()
         .success();
-    assert!(&fs::read_to_string(&ept.path)
-        .unwrap()
-        .contains("aes-256-gcm"));
+    assert!(
+        &fs::read_to_string(&ept.path)
+            .unwrap()
+            .contains("aes-256-gcm")
+    );
     assert_eq!(
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/simple-encrypt-agent007-gcm.ept").unwrap()
@@ -191,9 +194,11 @@ fn encrypt_gcm_siv() {
         .arg(&ept.path)
         .assert()
         .success();
-    assert!(&fs::read_to_string(&ept.path)
-        .unwrap()
-        .contains("aes-256-gcm-siv"));
+    assert!(
+        &fs::read_to_string(&ept.path)
+            .unwrap()
+            .contains("aes-256-gcm-siv")
+    );
     assert_eq!(
         &fs::read_to_string(&ept.path).unwrap(),
         &fs::read_to_string("test-data/simple-encrypt-agent007-gcm-siv.ept").unwrap()
