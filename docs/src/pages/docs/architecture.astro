@@ -1,0 +1,139 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const toc = [
+  { id: "data-flow", label: "Data flow" },
+  { id: "texttree", label: "TextTree intermediate representation" },
+  { id: "crypto-stack", label: "Crypto stack" },
+  { id: "policy-layer", label: "Policy layer" },
+  { id: "capability-ladder", label: "Capability ladder" },
+  { id: "future-foundations", label: "Foundations for Stages 1-5" },
+];
+---
+
+<Base title="Architecture · enprot">
+  <h1 class="text-3xl font-bold mb-2">Architecture</h1>
+  <p class="text-enprot-muted mb-6">The deep model behind enprot — for maintainers and integration authors.</p>
+
+  <nav class="border-l-2 border-enprot-ink/10 pl-4 mb-8 text-sm">
+    <ul class="space-y-1">
+      {toc.map((t) => (
+        <li><a href={`#${t.id}`} class="text-enprot-accent hover:underline">{t.label}</a></li>
+      ))}
+    </ul>
+  </nav>
+
+  <section id="data-flow" class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Data flow</h2>
+    <p class="mb-3">
+      The pipeline is strictly <em>parse → transform → write</em>, repeated once per input file.
+      The pipeline lives in <code class="bg-enprot-ink/5 px-1">src/etree/</code> (split across
+      <code class="bg-enprot-ink/5 px-1">mod.rs</code>,
+      <code class="bg-enprot-ink/5 px-1">parse.rs</code>,
+      <code class="bg-enprot-ink/5 px-1">transform.rs</code>,
+      <code class="bg-enprot-ink/5 px-1">write.rs</code>,
+      <code class="bg-enprot-ink/5 px-1">blob.rs</code>) and operates on the
+      <code class="bg-enprot-ink/5 px-1">TextTree</code> (<code class="bg-enprot-ink/5 px-1">Vec&lt;TextNode&gt;</code>).
+      <code class="bg-enprot-ink/5 px-1">app_main</code> in <code class="bg-enprot-ink/5 px-1">src/lib.rs</code> is the orchestrator.
+    </p>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>input file
+   │
+   ▼
+parse(reader) ──&gt; TextTree&lt;TextNode&gt;
+   │
+   ▼
+transform(tree, paops) ──&gt; TextTree&lt;TextNode&gt;   (mutated in place)
+   │
+   ▼
+tree_write(tree, writer) ──&gt; output file</code></pre>
+  </section>
+
+  <section id="texttree" class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">TextTree intermediate representation</h2>
+    <p class="mb-3">Five node kinds cover every directive type:</p>
+    pub enum TextNode &#123;
+    Plain(String),                     // host-language text, preserved verbatim
+    Data(Vec&lt;u8&gt;),                     // raw ciphertext bytes (base64 on the wire)
+    Stored &#123; keyw, cas &#125;,              // CAS pointer; keyw is "ct" when blob is ciphertext
+    BeginEnd &#123; keyw, txt &#125;,            // BEGIN/END segment; transformations key off keyw
+    Encrypted &#123; keyw, txt, extfields &#125;,// must contain exactly one Data or Stored child
+&#125;
+    <p class="mt-3">
+      <code class="bg-enprot-ink/5 px-1">extfields</code> carries PHC-encoded <code class="bg-enprot-ink/5 px-1">pbkdf:</code> and
+      <code class="bg-enprot-ink/5 px-1">cipher:</code> metadata so encrypted blobs are self-describing.
+      <code class="bg-enprot-ink/5 px-1">parse()</code> is line-oriented; <code class="bg-enprot-ink/5 px-1">tree_write()</code> is the inverse unparser.
+      <code class="bg-enprot-ink/5 px-1">transform()</code> dispatches per node kind to
+      <code class="bg-enprot-ink/5 px-1">transform_begin_end</code> /
+      <code class="bg-enprot-ink/5 px-1">transform_encrypted</code> /
+      <code class="bg-enprot-ink/5 px-1">transform_stored</code> and recurses.
+    </p>
+  </section>
+
+  <section id="crypto-stack" class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Crypto stack</h2>
+    <ul class="space-y-2 list-disc pl-6">
+      <li><code class="bg-enprot-ink/5 px-1">src/crypto.rs</code> — hash/PBKDF wrappers over Botan. All functions take <code class="bg-enprot-ink/5 px-1">&amp;dyn CryptoPolicy</code> (not <code class="bg-enprot-ink/5 px-1">&amp;Box&lt;dyn …&gt;</code>).</li>
+      <li><code class="bg-enprot-ink/5 px-1">src/cipher.rs</code> — <code class="bg-enprot-ink/5 px-1">SymmetricCipher</code> trait with two backends:
+        <ul class="list-[circle] pl-6 mt-1">
+          <li><code class="bg-enprot-ink/5 px-1">BotanCipher</code> for <code class="bg-enprot-ink/5 px-1">aes-256-siv</code> and <code class="bg-enprot-ink/5 px-1">aes-256-gcm</code> (Botan 3).</li>
+          <li><code class="bg-enprot-ink/5 px-1">AesGcmSivCipher</code> for <code class="bg-enprot-ink/5 px-1">aes-256-gcm-siv</code> via RustCrypto. <strong>Botan does not implement RFC 8452.</strong></li>
+        </ul>
+      </li>
+      <li><code class="bg-enprot-ink/5 px-1">src/pbkdf.rs</code> — <code class="bg-enprot-ink/5 px-1">derive_key()</code> with three modes: legacy, timed (msec → params), manual.</li>
+      <li><code class="bg-enprot-ink/5 px-1">src/cas.rs</code> — content-addressed storage. Filename = SHA3-256 hex; <code class="bg-enprot-ink/5 px-1">save()</code> is idempotent.</li>
+      <li><code class="bg-enprot-ink/5 px-1">src/prot.rs</code> — high-level <code class="bg-enprot-ink/5 px-1">encrypt()</code>/<code class="bg-enprot-ink/5 px-1">decrypt()</code>. Validates cipher alg against policy BEFORE backend creation.</li>
+      <li><code class="bg-enprot-ink/5 px-1">src/pki.rs</code> — Ed25519 keygen/sign/verify via Botan (PQC Phase 1).</li>
+      <li><code class="bg-enprot-ink/5 px-1">src/capability.rs</code> — formal capability tiers and <code class="bg-enprot-ink/5 px-1">CapabilitySet</code> with set-union semantics.</li>
+    </ul>
+  </section>
+
+  <section id="policy-layer" class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Policy layer</h2>
+    <p>
+      <code class="bg-enprot-ink/5 px-1">CryptoPolicy</code> trait gates every crypto call via
+      <code class="bg-enprot-ink/5 px-1">check_hash</code> / <code class="bg-enprot-ink/5 px-1">check_pbkdf</code> /
+      <code class="bg-enprot-ink/5 px-1">check_cipher_alg</code> / <code class="bg-enprot-ink/5 px-1">check_cipher</code>
+      and supplies defaults. The NIST policy uses an <code class="bg-enprot-ink/5 px-1">AlgKind</code> enum (not stringly-typed).
+      <code class="bg-enprot-ink/5 px-1">--fips</code> forces NIST; on Linux also auto-engages from
+      <code class="bg-enprot-ink/5 px-1">/proc/sys/crypto/fips_enabled</code>.
+    </p>
+  </section>
+
+  <section id="capability-ladder" class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Capability ladder</h2>
+    <p class="mb-3">
+      Every actor interacting with an EPT file holds some subset of <code class="bg-enprot-ink/5 px-1">Capability</code>. The tiers are MECE
+      (mutually exclusive, collectively exhaustive): each operation requires exactly one tier.
+    </p>
+    <table class="w-full border border-enprot-ink/10 text-sm">
+      <thead class="bg-enprot-ink/5">
+        <tr><th class="p-2 text-left">Tier</th><th class="p-2 text-left">Holds</th><th class="p-2 text-left">Can do</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="p-2 font-mono">Viewer</td><td class="p-2">nothing</td><td class="p-2">parse, list, verify structure, walk chain DAG</td></tr>
+        <tr><td class="p-2 font-mono">Reader</td><td class="p-2">CAS path</td><td class="p-2">fetch <code>STORED</code> plaintext</td></tr>
+        <tr><td class="p-2 font-mono">Decryptor(WORD)</td><td class="p-2">WORD password</td><td class="p-2">decrypt that WORD's segments</td></tr>
+        <tr><td class="p-2 font-mono">Signer(fp)</td><td class="p-2">privkey</td><td class="p-2">produce chain anchors, detached signatures</td></tr>
+        <tr><td class="p-2 font-mono">Verifier(fp)</td><td class="p-2">pubkey</td><td class="p-2">verify signatures (no decryption)</td></tr>
+      </tbody>
+    </table>
+    <p class="mt-3">
+      Sets union cleanly — the property that lets two parties merge their work without capability collisions
+      (see <a href="/docs/merge-semantics" class="text-enprot-accent hover:underline">distributed merge semantics</a>).
+    </p>
+  </section>
+
+  <section id="future-foundations" class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Foundations for Stages 1-5</h2>
+    <p class="mb-3">
+      The architecture above is what's shipped in 0.4.0. The roadmap pages describe how each piece extends:
+    </p>
+    <ul class="list-disc pl-6 space-y-1">
+      <li><a href="/docs/chain-dag" class="text-enprot-accent hover:underline">Chain DAG (Stage 1)</a> — adds a sixth <code class="bg-enprot-ink/5 px-1">TextNode</code> variant for chain anchors, a new <code class="bg-enprot-ink/5 px-1">src/ledger/</code> module, and <code class="bg-enprot-ink/5 px-1">verify-chain</code> subcommand.</li>
+      <li><a href="/docs/merge-semantics" class="text-enprot-accent hover:underline">Distributed merge</a> — adds <code class="bg-enprot-ink/5 px-1">src/merge/</code> module with region-level diff and conflict-marker format.</li>
+      <li><a href="/docs/stages/2" class="text-enprot-accent hover:underline">PQC (Stage 2)</a> — extends <code class="bg-enprot-ink/5 px-1">SigAlgKind</code> and adds <code class="bg-enprot-ink/5 px-1">KemAlgKind</code>.</li>
+      <li><a href="/docs/stages/3" class="text-enprot-accent hover:underline">Merkle (Stage 3)</a> — new <code class="bg-enprot-ink/5 px-1">src/merkle.rs</code> + <code class="bg-enprot-ink/5 px-1">INCLUDE</code> directive.</li>
+      <li><a href="/docs/stages/4a" class="text-enprot-accent hover:underline">Capability policy (Stage 4a)</a> — TOML policy file enforced via <code class="bg-enprot-ink/5 px-1">CryptoPolicy</code>-like gating.</li>
+    </ul>
+  </section>
+</Base>

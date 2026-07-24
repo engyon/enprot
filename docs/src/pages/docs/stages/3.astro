@@ -1,0 +1,61 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Stage 3 — Merkle tree + cross-file DAG · enprot">
+  <h1 class="text-3xl font-bold mb-3">Stage 3 — Merkle tree + INCLUDE</h1>
+  <p class="text-enprot-muted mb-6">Per-file Merkle structure, cross-file DAG, Merkle proofs.</p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Why</h2>
+    <p class="mb-3">
+      Stage 1's <code>payload-hash</code> is a flat hash of segment hashes in order. That's
+      enough for chain anchor integrity, but it doesn't support:
+    </p>
+    <ul class="list-disc pl-6 space-y-1 mb-3">
+      <li><strong>Cross-file proofs</strong> — prove block X is in file Y without revealing other blocks</li>
+      <li><strong>Efficient incremental hashing</strong> — re-hash after one change is O(N); a tree makes it O(log N)</li>
+      <li><strong>Selective disclosure</strong> — prove a subtree without exposing siblings</li>
+    </ul>
+    <p>
+      A proper Merkle tree over the WORD-region structure gives all three. The INCLUDE directive
+      extends it cross-file: a top-level manifest can reference many source files by hash, and
+      verification spans the whole project.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Tree structure</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>file_root
+├── plain-segment-1 (leaf)
+├── WORD-Region-A (internal)
+│   ├── child-segment-1 (leaf)
+│   └── WORD-Region-A1 (internal)
+│       └── child-segment-2 (leaf)
+├── plain-segment-2 (leaf)
+└── WORD-Region-B (internal)
+    └── child-segment-3 (leaf)</code></pre>
+    <p class="mt-3 text-sm">
+      Hash function: SHA3-256. Domain separation: prefix each hash input with a byte tag
+      (<code>0x00</code> leaf, <code>0x01</code> internal) to prevent second-preimage attacks.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">INCLUDE — cross-file DAG</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>// &lt;( INCLUDE 575d69f5b0034279bc3ef164e94287e6366e9df76729895a302a66a8817cf306 )&gt;</code></pre>
+    <p class="mt-3 text-sm">
+      The hash is a CAS blob ID; the blob is itself a serialized EPT file. <code>verify-chain</code>
+      walks INCLUDE references recursively (with cycle detection). Search path: <code>--include-path</code>
+      (repeatable); CAS is always searched first.
+    </p>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <ul class="list-disc pl-6 space-y-1">
+      <li><a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/24-merkle-tree.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/24</code></a> — per-file Merkle</li>
+      <li><a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/25-include-directive.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/25</code></a> — cross-file INCLUDE</li>
+    </ul>
+  </section>
+</Base>

@@ -1,0 +1,96 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Source provenance (SLSA) · enprot">
+  <h1 class="text-3xl font-bold mb-3">Source provenance (SLSA)</h1>
+  <p class="text-enprot-muted mb-6">
+    Cryptographic provenance for software builds. Each source file is an EPT document;
+    every build produces a signed manifest that INCLUDEs all sources.
+  </p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Scenario</h2>
+    <p>
+      Software supply-chain attacks (SolarWinds, codecov, etc.) exploited the gap between
+      "what was built" and "what was attested". SLSA / S2C2N / NIST SSDF all call for
+      cryptographic provenance: every build artifact should be traceable to a specific
+      source commit, builder, and inputs.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Builder setup</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># The builder identity (per-build-server)
+enprot keygen ed25519 --out-priv builder.pem --out-pub builder.pub
+BUILDER_FP=$(enprot fingerprint builder.pub)
+
+# Customers pin this fingerprint
+echo "Customers: trust builds signed by $BUILDER_FP"</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Build pipeline emits provenance</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Walk the project tree, emit INCLUDE for each source
+enprot provenance manifest . --output build-$GIT_SHA.ept
+
+# Sign the manifest as the builder
+enprot provenance attest --signer builder.pem build-$GIT_SHA.ept
+
+# Publish the manifest alongside the .crate / .tar.gz
+curl -X POST https://artifacts.corp/ -T build-$GIT_SHA.ept</code></pre>
+    <p class="mt-3 text-sm">
+      The manifest contains an INCLUDE directive per source file, plus a chain anchor
+      signed by the builder key. Each INCLUDE references the file's SHA3-256 hash in the CAS.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Customer-side verification</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>curl -O https://artifacts.corp/build-abc123.ept
+
+cat > customer-policy.toml &lt;&lt;EOF
+[chain]
+trust_roots = ["ed25519:$BUILDER_FP"]
+
+[provenance]
+required_inputs = ["src/", "Cargo.lock", "Cargo.toml"]
+forbidden_inputs = ["secrets.env"]
+EOF
+
+enprot provenance verify --policy-file customer-policy.toml build-abc123.ept</code></pre>
+    <p class="mt-3 text-sm">
+      Verification checks: (1) anchor signed by the trusted builder, (2) every required input
+      present, (3) no forbidden inputs. Optional: cross-check INCLUDE'd hashes against
+      in-revision source files.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">SLSA / CycloneDX output</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>enprot provenance verify --format slsa       build-abc123.ept > provenance.json
+enprot provenance verify --format cyclonedx  build-abc123.ept > sbom.json</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Capability framing</h2>
+    <table class="w-full border border-enprot-ink/10 text-sm">
+      <thead class="bg-enprot-ink/5">
+        <tr><th class="p-2 text-left">Participant</th><th class="p-2 text-left">Capability</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="p-2">Build server</td><td class="p-2 font-mono">Signer(builder_fp)</td></tr>
+        <tr><td class="p-2">Customer</td><td class="p-2 font-mono">Verifier(builder_fp)</td></tr>
+        <tr><td class="p-2">Public (with manifest)</td><td class="p-2 font-mono">Viewer + Reader (CAS accessible)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <p>
+      Specified in <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/29-source-provenance.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/29</code></a>.
+      Depends on Stage 1 (chain anchors) + Stage 3 (INCLUDE / cross-file DAG) + Stage 4a (policy).
+    </p>
+  </section>
+</Base>

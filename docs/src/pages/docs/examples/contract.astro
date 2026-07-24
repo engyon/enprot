@@ -1,0 +1,89 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Two-party contract (multi-sig) · enprot">
+  <h1 class="text-3xl font-bold mb-3">Two-party contract (multi-sig)</h1>
+  <p class="text-enprot-muted mb-6">
+    Both parties must sign to advance. Pure multi-sig, no key distribution
+    (each party already has their key).
+  </p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Scenario</h2>
+    <p>
+      A law firm and a client are negotiating an SLA. The contract evolves through
+      multiple versions; both sides must agree to each change. The contract file itself
+      must reflect every party's sign-off, and any party must be able to verify the
+      other's signature on any past version.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Setup</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Each party generates their keypair independently
+enprot keygen ed25519 --out-priv law.pem    --out-pub law.pub
+enprot keygen ed25519 --out-priv client.pem --out-pub client.pub
+
+# They exchange pubkeys (out of band — that's key distribution)
+LAW_FP=$(enprot fingerprint law.pub)
+CLIENT_FP=$(enprot fingerprint client.pub)</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Negotiation round</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Law firm drafts and signs their half of a new anchor
+enprot encrypt --anchor --signer law.pem \
+    -w Terms -k Terms=v3-draft contract.ept
+
+# Client reviews, amends text, adds their signature to the SAME anchor
+# (amend-only-the-signature operation; payload-hash unchanged)
+enprot co-sign --signer client.pem contract.ept</code></pre>
+    <p class="mt-3 text-sm">
+      The anchor now has two signers. The <code>signer:</code> field lists both fingerprints;
+      the <code>signature:</code> field carries two semicolon-separated signatures.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Verification under policy</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>cat > .enprot/policy.toml &lt;&lt;EOF
+[chain]
+trust_roots = ["ed25519:$LAW_FP", "ed25519:$CLIENT_FP"]
+required_signers = 2
+EOF
+
+enprot verify-chain --policy-file .enprot/policy.toml contract.ept</code></pre>
+    <p class="mt-3 text-sm">
+      <code>required_signers = 2</code> enforces that every anchor carries both parties'
+      signatures. Single-signed anchors (one party tried to push a change unilaterally)
+      fail verification.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Capability framing</h2>
+    <table class="w-full border border-enprot-ink/10 text-sm">
+      <thead class="bg-enprot-ink/5">
+        <tr><th class="p-2 text-left">Participant</th><th class="p-2 text-left">Holds</th><th class="p-2 text-left">Capability</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="p-2">Law firm</td><td class="p-2">law.pem</td><td class="p-2 font-mono">Signer(law_fp)</td></tr>
+        <tr><td class="p-2">Client</td><td class="p-2">client.pem</td><td class="p-2 font-mono">Signer(client_fp)</td></tr>
+        <tr><td class="p-2">Either</td><td class="p-2">other's .pub</td><td class="p-2 font-mono">Verifier(other_fp)</td></tr>
+      </tbody>
+    </table>
+    <p class="mt-3 text-sm">
+      Neither party can advance the contract alone. The policy file pins both fingerprints;
+      enforcement is local to each party's verification.
+    </p>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <p>
+      Specified in <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/28-contract-mode.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/28</code></a>.
+      Depends on Stage 1 + Stage 4a.
+    </p>
+  </section>
+</Base>

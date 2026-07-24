@@ -1,0 +1,60 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Stage 4a — Capability policy · enprot">
+  <h1 class="text-3xl font-bold mb-3">Stage 4a — Capability requirement policy</h1>
+  <p class="text-enprot-muted mb-6">
+    Specify which capabilities a file requires. <em>Capability requirement specification</em>,
+    not key distribution.
+  </p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">The boundary</h2>
+    <p class="mb-3">
+      Today, capability tiers exist (Stage 0 / TODO 14) but nothing <em>requires</em> them. A
+      user can sign a chain anchor with any key, decrypt any WORD with any matching password, no
+      enforcement. For high-assurance use cases (audit logs, contracts) we need a way to say
+      "this file's chain anchors must be signed by one of these keys; these WORDs require
+      Decryptor with one of these key fingerprints; etc."
+    </p>
+    <p>
+      This is policy <em>enforcement</em>. Key distribution — how those keys got to the callers
+      — is solved externally (KMS, HSM, manual exchange, Signal).
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Policy file format</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># .enprot/policy.toml
+[chain]
+trust_roots = ["ed25519:9f3a7b…"]   # any anchor must be signed by one of these
+require_monotonic_timestamps = true
+
+[[word]]
+name = "Agent_007"
+required_capability = "Decryptor"
+# Optionally: accepted key fingerprints if encryption used KEM
+accepted_recipients = ["ml-kem:1c8d2e…"]
+
+[[word]]
+name = "PUBLIC"
+required_capability = "Viewer"   # no decryption needed</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Enforcement points</h2>
+    <ul class="list-disc pl-6 space-y-1">
+      <li><code>verify-chain --policy-file …</code> — applies policy to verification; rejects anchors signed by unlisted keys.</li>
+      <li><code>encrypt --policy-file …</code> — refuses to write a block that would violate policy.</li>
+      <li>New error variant <code>Error::PolicyViolation &#123; rule, context &#125;</code>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <p>
+      Specified in <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/26-capability-policy.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/26</code></a>.
+    </p>
+  </section>
+</Base>

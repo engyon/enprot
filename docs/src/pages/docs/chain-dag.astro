@@ -1,0 +1,119 @@
+---
+import Base from "../../layouts/Base.astro";
+---
+
+<Base title="Chain DAG · enprot">
+  <h1 class="text-3xl font-bold mb-3">Chain anchor DAG (Stage 1)</h1>
+  <p class="text-enprot-muted mb-6">
+    The blockchain-in-a-file core: every transformation attested in a
+    tamper-evident, merge-friendly, capability-scoped structure.
+  </p>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Why a DAG, not a linear chain</h2>
+    <p class="mb-3">
+      A linear chain ("block N+1 references block N") doesn't merge. Two parties appending
+      simultaneously produce a fork with no canonical resolution. A <strong>DAG</strong> of anchors
+      — each anchor declares zero or more parents by hash — merges by union, exactly like git commits.
+    </p>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>       ┌─────────────┐
+       │  genesis    │   parents: []
+       │  anchor     │   signer: ed25519:9f3a7b…
+       └──────┬──────┘
+              │
+       ┌──────┴──────┐
+       │             │
+┌──────▼──────┐ ┌────▼─────────┐
+│   Alice's   │ │    Bob's     │
+│   anchor    │ │    anchor    │
+│  (off gen)  │ │  (off gen)   │
+└──────┬──────┘ └────┬─────────┘
+       │             │
+       └──────┬──────┘
+              │
+       ┌──────▼──────┐
+       │ merge       │   parents: [Alice, Bob]
+       │ anchor      │   signer: ed25519:9f3a7b…
+       └─────────────┘</code></pre>
+  </section>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Wire format</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>// &lt;( CHAIN )&gt;
+// parents: 575d69f5b0034279bc3ef164e94287e6366e9df76729895a302a66a8817cf306 \
+//           31560c26deba9a3678581853f828e3c1fafabf8ed48c10242162b872be8fdc0d
+// signer:  ed25519:9f3a7b…
+// timestamp: 2026-07-25T14:30:00Z
+// mutations: encrypt WORD=Agent_007
+// payload-hash: 7a4e9b…
+// signature: 3045022100…
+// &lt;( END CHAIN )&gt;</code></pre>
+    <ul class="list-disc pl-6 mt-3 space-y-1 text-sm">
+      <li><strong>parents</strong>: zero or more SHA3-256 hashes of preceding anchors. Genesis has zero. Merge has 2+.</li>
+      <li><strong>signer</strong>: <code>&lt;alg&gt;:&lt;key-fp&gt;</code> (Ed25519 today; ML-DSA, composites in Stage 2).</li>
+      <li><strong>timestamp</strong>: RFC 3339, optional.</li>
+      <li><strong>mutations</strong>: human-readable description of what this anchor attests. Informational; not part of signed payload.</li>
+      <li><strong>payload-hash</strong>: SHA3-256 of the canonical file-tree state at this anchor. This is what the signature commits to.</li>
+      <li><strong>signature</strong>: detached signature over <code>parents || signer || timestamp || payload-hash</code>.</li>
+    </ul>
+  </section>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Verification</h2>
+    <p class="mb-3"><code>enprot verify-chain FILE</code> walks the DAG:</p>
+    <ol class="list-decimal pl-6 space-y-1">
+      <li>Parse every <code>CHAIN</code> block in the file.</li>
+      <li>Build the DAG.</li>
+      <li>For each anchor:
+        <ul class="list-[circle] pl-6">
+          <li>Recompute <code>payload-hash</code> from the file state at that anchor.</li>
+          <li>Verify <code>signature</code> against <code>signer</code> pubkey.</li>
+          <li>Check every parent hash resolves to an earlier anchor (no forward references).</li>
+        </ul>
+      </li>
+      <li>Report: total anchors, signer set, fork points, verification result.</li>
+    </ol>
+    <p class="mt-3">Exit non-zero on any failure — CI-friendly.</p>
+  </section>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Capability framing</h2>
+    <p class="mb-3">
+      Chain anchors are capability-gated. Producing an anchor requires the
+      <code>Signer(fp)</code> capability. Verifying requires <code>Verifier(fp)</code>.
+      The capability requirement sits on the anchor itself — verifiers don't need to know the
+      signer's identity, only hold the matching pubkey.
+    </p>
+    <p>
+      Policy enforcement (Stage 4a) lets a project specify <code>trust_roots</code> — the
+      acceptable signer fingerprints. <code>verify-chain --policy-file …</code> rejects anchors
+      signed by anyone else.
+    </p>
+  </section>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Merge behavior</h2>
+    <p class="mb-3">Two anchors with the same parent don't conflict — they fork. A later merge anchor:</p>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Alice and Bob each commit a chain anchor off the same parent
+git pull --rebase  # merge-driver keeps both anchors
+# Merger adds a merge anchor with both as parents
+enprot encrypt --anchor --signer merger.pem \
+    --mutations "merge Alice + Bob" file.ept</code></pre>
+    <p class="mt-3">
+      <code>verify-chain</code> walks both branches; forks aren't errors, they're history.
+    </p>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Implementation status</h2>
+    <p class="mb-3">
+      Stage 1 is specified in <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/17-chain-dag.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/17-chain-dag.md</code></a>
+      and <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/18-verify-chain.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/18-verify-chain.md</code></a>.
+      The capability vocabulary it depends on shipped in 0.4.0 (<a href="/docs/capability-model" class="text-enprot-accent hover:underline">capability model</a>).
+    </p>
+    <p>
+      Implementation lands as a new <code>src/ledger/</code> module + new directive type
+      <code>Command::Chain</code> in the parser + new <code>verify-chain</code> subcommand.
+    </p>
+  </section>
+</Base>

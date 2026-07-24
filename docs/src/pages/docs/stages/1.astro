@@ -1,0 +1,60 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Stage 1 — Chain anchor DAG · enprot">
+  <h1 class="text-3xl font-bold mb-3">Stage 1 — Chain anchor DAG</h1>
+  <p class="text-enprot-muted mb-6">
+    Tamper-evident, merge-friendly, capability-scoped history. The blockchain-in-a-file core.
+  </p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Goal</h2>
+    <p class="mb-3">
+      Every meaningful mutation produces a chain anchor that attests: "the file looked like this
+      at this point, signed by me, building on these previous anchors." Anchors form a DAG, not a
+      linear chain, so multiple writers can fork and merge without locks.
+    </p>
+    <p>
+      See <a href="/docs/chain-dag" class="text-enprot-accent hover:underline">Chain DAG deep dive</a>
+      for the full algorithm.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Demonstration: signed release notes</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># One-time setup: release officer's keypair
+enprot keygen ed25519 --out-priv release.pem --out-pub release.pub
+
+# Each release adds a signed anchor to release-notes.ept
+enprot encrypt --anchor --signer release.pem \
+    -w ReleaseNotes -k ReleaseNotes=$(date +%s) \
+    release-notes.ept
+
+# Anyone can verify the full history
+enprot verify-chain --trust-root $(enprot fingerprint release.pub) \
+    release-notes.ept</code></pre>
+    <p class="mt-3 text-sm">
+      The resulting file has chain anchors interleaved with the content, each committing to
+      the file state at that point and signed by the release officer. Tampering with any
+      past release breaks verification.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Demonstration: append-only audit log</h2>
+    <p class="mb-3">
+      A common special case: each line becomes its own anchor. See
+      <a href="/docs/examples/audit-log" class="text-enprot-accent hover:underline">the audit log example</a>.
+    </p>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <p>
+      Specified in <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/17-chain-dag.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/17</code></a>
+      and <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/18-verify-chain.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/18</code></a>.
+      Implementation: <code>src/ledger/</code> module + new <code>CHAIN</code> directive + <code>verify-chain</code> subcommand.
+    </p>
+  </section>
+</Base>

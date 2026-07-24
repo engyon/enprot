@@ -1,0 +1,30 @@
+---
+import Base from "../../../layouts/Base.astro";
+
+const apps = [
+  { href: "/docs/examples/audit-log", title: "5a — Audit log mode" },
+  { href: "/docs/examples/contract", title: "5b — Contract mode (multi-sig)" },
+  { href: "/docs/examples/provenance", title: "5c — Source provenance (SLSA)" },
+  { href: "/docs/examples/snapshot-pin", title: "5d — Snapshot & pin" },
+  { href: "/docs/examples/supply-chain", title: "5e — Supply chain manifest" },
+];
+---
+
+<Base title="Stage 5 — Applications · enprot">
+  <h1 class="text-3xl font-bold mb-3">Stage 5 — Applications</h1>
+  <p class="text-enprot-muted mb-6">
+    Compositions of the primitives above. Each application is a worked example
+    with a real-life scenario, the capability framing, and the shell commands.
+  </p>
+
+  <ol class="space-y-3">
+    {apps.map((a) => (
+      <li>
+        <a href={a.href} class="block border border-enprot-ink/10 rounded p-4 hover:bg-enprot-ink/5 bg-white">
+          <span class="font-semibold">{a.title}</span>
+          <span class="text-enprot-accent ml-2">→</span>
+        </a>
+      </li>
+    ))}
+  </ol>
+</Base>

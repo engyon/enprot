@@ -1,0 +1,88 @@
+---
+import Base from "../../layouts/Base.astro";
+import CapabilityExplorer from "../../components/CapabilityExplorer.vue";
+---
+
+<Base title="Capability model · enprot">
+  <h1 class="text-3xl font-bold mb-3">Capability model</h1>
+  <p class="text-enprot-muted mb-6">
+    The four-plus-one access tiers that every enprot operation maps to.
+    Foundation for chain anchors, merge driver, and policy enforcement.
+  </p>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Tiers</h2>
+    <p class="mb-3">
+      Enprot never learns who you are — only what you can prove you can do. Each operation requires a
+      narrow capability, and every actor's reach can be described by the set of capabilities they hold.
+    </p>
+    <table class="w-full border border-enprot-ink/10 text-sm">
+      <thead class="bg-enprot-ink/5">
+        <tr>
+          <th class="p-2 text-left">Tier</th>
+          <th class="p-2 text-left">What you hold</th>
+          <th class="p-2 text-left">What unlocks</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="p-2 font-mono">Viewer</td><td class="p-2">nothing</td><td class="p-2"><code>parse</code>, <code>list</code>, <code>verify</code> structure, walk chain DAG</td></tr>
+        <tr><td class="p-2 font-mono">Reader</td><td class="p-2">CAS path</td><td class="p-2"><code>fetch</code> of <code>STORED</code> plaintext</td></tr>
+        <tr><td class="p-2 font-mono">Decryptor(WORD)</td><td class="p-2">WORD password</td><td class="p-2"><code>decrypt</code> of that WORD's segments</td></tr>
+        <tr><td class="p-2 font-mono">Signer(fp)</td><td class="p-2">privkey</td><td class="p-2">produce chain anchors, detached signatures</td></tr>
+        <tr><td class="p-2 font-mono">Verifier(fp)</td><td class="p-2">pubkey</td><td class="p-2">verify signatures (read-only, no decryption)</td></tr>
+      </tbody>
+    </table>
+    <p class="mt-3 text-sm text-enprot-muted">
+      <strong>Signer</strong> and <strong>Verifier</strong> are dual halves of one capability. Listed separately
+      because the operations are asymmetric.
+    </p>
+  </section>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Interactive explorer</h2>
+    <p class="mb-3">Toggle the flags you'd pass to enprot; the resulting capability set updates live.</p>
+    <CapabilityExplorer client:load />
+  </section>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">Why capability-based, not identity-based</h2>
+    <p class="mb-3">
+      Identity-based access control answers "who is asking?". That requires identity providers,
+      directories, key management infrastructure — all of it <em>outside</em> enprot's scope.
+    </p>
+    <p class="mb-3">
+      Capability-based access control answers "what can the caller prove they can do?". Possession of
+      a WORD password proves Decryptor capability. Possession of a privkey proves Signer capability.
+      No identity required.
+    </p>
+    <p>
+      The payoff: <strong>capability sets union cleanly</strong>. When Alice and Bob merge their work,
+      the merged file's capability set is the union of theirs — no "who wins?" decision needed.
+      Identity-based merging would have to pick a winner; capability-based merging accumulates.
+    </p>
+  </section>
+
+  <section class="mb-10">
+    <h2 class="text-2xl font-semibold mb-3">What's deliberately out of scope</h2>
+    <ul class="list-disc pl-6 space-y-1">
+      <li><strong>Key distribution</strong> — how Alice's key gets to Bob is solved by Signal, age, KMS, HSMs, manual exchange. Enprot consumes keys; it doesn't broker them.</li>
+      <li><strong>Identity</strong> — enprot never learns who you are. Identity is layered on top via fingerprint whitelists (policy file, Stage 4a).</li>
+      <li><strong>Capability revocation</strong> — rotating a key is a key-distribution problem; enprot just produces new signatures under new keys.</li>
+      <li><strong>Trust roots</strong> — caller pins trusted fingerprints via <code>--trust-root</code> or external verification.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">CLI surface</h2>
+    <p class="mb-3">The capability set is derivable from current flags:</p>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>$ enprot -c cas -k Agent_007=password -k GEHEIM=secret capabilities
+decryptor(Agent_007)
+decryptor(GEHEIM)
+reader
+viewer</code></pre>
+    <p class="mt-3 text-sm text-enprot-muted">
+      See <a href="https://github.com/engyon/enprot/blob/main/src/capability.rs" class="text-enprot-accent hover:underline">src/capability.rs</a>
+      for the typed model.
+    </p>
+  </section>
+</Base>

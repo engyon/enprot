@@ -1,0 +1,87 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Snapshot & pin · enprot">
+  <h1 class="text-3xl font-bold mb-3">Snapshot & pin</h1>
+  <p class="text-enprot-muted mb-6">
+    External verifiability without running a node. Pin the chain head hash,
+    publish it out-of-band, anyone can verify against the pin.
+  </p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Scenario</h2>
+    <p>
+      A vendor publishes a release. They want anyone — customers, security researchers,
+      regulators — to be able to verify the release's history without running a full node
+      or trusting the vendor's infrastructure. The vendor pins the chain head hash and
+      publishes it through channels whose integrity is independently verifiable (their
+      website over HTTPS, DNS TXT records, an anchoring service like OpenTimestamps that
+      commits to the Bitcoin blockchain).
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Vendor: snapshot and publish</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Build the release
+enprot encrypt --signer release.pem -w ReleaseNotes release.ept
+
+# Snapshot the chain head
+enprot snapshot --publish print:// release.ept > published-hash.txt
+# Output: &lt;head-hash&gt; &lt;timestamp&gt; &lt;signer-fp&gt;
+
+# Publish the hash:
+#   - On the vendor's website over HTTPS
+#   - As a DNS TXT record
+#   - Anchored in Bitcoin via OpenTimestamps
+#   - In a tweet from the vendor's account
+#   - On a printed invoice in the vendor's lobby
+# The more independent publication channels, the stronger the pin.</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Customer: verify against pin</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>curl -O https://vendor.example/release.ept
+curl -O https://vendor.example/anchors/release-1.0.txt
+
+enprot pin \
+    --fetch https://vendor.example/anchors/release-1.0.txt \
+    release.ept
+
+# Or pin to a specific hash you obtained out of band:
+enprot pin 7a4e9b… release.ept</code></pre>
+    <p class="mt-3 text-sm">
+      If the file's current chain head doesn't match the pinned hash, verification fails.
+      The vendor cannot retroactively alter history without breaking the pin.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Pluggable anchoring services</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>trait AnchorService &#123;
+    fn publish(&self, head: Hash) -> Result&lt;PublicationRef&gt;;
+    fn fetch(&self, r: PublicationRef) -> Result&lt;(Hash, Timestamp, Signature)&gt;;
+&#125;</code></pre>
+    <p class="mt-3 text-sm">
+      Built-in: <code>file://</code> (local), <code>print://</code> (manual). Future:
+      <code>opentimestamps://</code>, <code>dns://</code>, internal corporate services.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Capability framing</h2>
+    <p>
+      The pin itself is just a hash — anyone can verify it. The vendor's capability is
+      <code>Signer(release_fp)</code> at snapshot time; verifiers hold
+      <code>Verifier(release_fp)</code> and <code>Verifier(tsa_fp)</code> if using a TSA.
+    </p>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <p>
+      Specified in <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/30-snapshot-pin.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/30</code></a>.
+      Depends on Stage 1 (chain head hash is the chain's current tip).
+    </p>
+  </section>
+</Base>
