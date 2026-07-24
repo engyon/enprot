@@ -40,6 +40,7 @@ mod error;
 pub mod etree;
 mod password;
 mod pbkdf;
+pub mod pki;
 mod policy;
 pub mod prot;
 pub mod utils;
@@ -111,6 +112,16 @@ pub enum Command {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+    /// Generate a keypair (e.g. Ed25519) and write the PEM-encoded
+    /// halves to `--out-priv` / `--out-pub`.
+    Keygen(KeygenSubcmd),
+    /// Sign FILE (or stdin) with `--key` and write a detached signature
+    /// to `--out` (default: `<FILE>.sig`).
+    Sign(SignSubcmd),
+    /// Verify a detached signature (`SIG`, default `<FILE>.sig`)
+    /// against FILE using `--key`. Named `verify-sig` to avoid clashing
+    /// with the existing `verify` subcommand, which checks EPT markup.
+    VerifySig(VerifySigSubcmd),
 }
 
 /// Encrypt subcommand: encrypt-specific options plus the shared output
@@ -130,6 +141,72 @@ pub struct EncryptSubcmd {
 pub struct OperationSubcmd {
     #[command(flatten)]
     pub output: OutputArgs,
+}
+
+/// `keygen` subcommand: emit a fresh keypair.
+#[derive(Args)]
+pub struct KeygenSubcmd {
+    /// Signature algorithm.
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub alg: String,
+
+    /// Write private key to PATH (PEM). Default: stdout.
+    #[arg(long = "out-priv", value_name = "PATH")]
+    pub out_priv: Option<PathBuf>,
+
+    /// Write public key to PATH (PEM). Default: stdout.
+    #[arg(long = "out-pub", value_name = "PATH")]
+    pub out_pub: Option<PathBuf>,
+}
+
+/// `sign` subcommand: produce a detached signature.
+#[derive(Args)]
+pub struct SignSubcmd {
+    /// Signature algorithm (must match the key type).
+    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub alg: String,
+
+    /// Private key (PEM) to sign with. Named `--key-file` because the
+    /// global `-k/--key` already means a symmetric WORD=PASSWORD pair.
+    #[arg(long = "key-file", value_name = "PRIV.pem")]
+    pub key: PathBuf,
+
+    /// Input file (omit to read stdin).
+    #[arg(value_name = "FILE")]
+    pub input: Option<PathBuf>,
+
+    /// Write signature to PATH. Default: `<FILE>.sig`, or stdout when
+    /// reading from stdin.
+    #[arg(short = 'o', long = "out", value_name = "PATH")]
+    pub out: Option<PathBuf>,
+}
+
+/// `verify-sig` subcommand: verify a detached signature.
+#[derive(Args)]
+pub struct VerifySigSubcmd {
+    /// Signature algorithm (must match the key type).
+    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub alg: String,
+
+    /// Public key (PEM) to verify against. See `sign --key-file` for
+    /// the naming rationale.
+    #[arg(long = "key-file", value_name = "PUB.pem")]
+    pub key: PathBuf,
+
+    /// Signature file. Default: `<FILE>.sig`. Required when reading
+    /// the message from stdin.
+    #[arg(long = "sig-file", value_name = "SIG")]
+    pub sig: Option<PathBuf>,
+
+    /// Input file (omit to read stdin).
+    #[arg(value_name = "FILE")]
+    pub input: Option<PathBuf>,
 }
 
 /// Crypto-policy, separators, RNG source, password store. Defined at
@@ -349,6 +426,9 @@ where
             clap_complete::generate(shell, &mut Cli::command(), "enprot", &mut std::io::stdout());
             Ok(())
         }
+        Command::Keygen(a) => pki_keygen(common, a),
+        Command::Sign(a) => pki_sign(common, a),
+        Command::VerifySig(a) => pki_verify_sig(common, a),
     }
 }
 
@@ -842,4 +922,103 @@ fn apply_common(common: &CommonArgs, paops: &mut ParseOps) {
         paops.separators.right = common.right_separator.clone();
     }
     paops.passwords.extend(common.password.clone());
+}
+
+// ===== Public-key subcommands (`keygen`, `sign`, `verify-sig`) =====
+//
+// These don't touch EPT markup at all; they expose the Ed25519
+// primitives in `pki` as standalone commands. Future PQC variants
+// (ML-DSA, composites) plug into the same subcommand surface.
+
+fn pki_keygen(_common: CommonArgs, a: KeygenSubcmd) -> Result<()> {
+    let kind: pki::SigAlgKind = a.alg.parse()?;
+    let mut rng = botan::RandomNumberGenerator::new_system().map_err(Error::botan)?;
+    let (priv_pem, pub_pem) = pki::keygen(kind, &mut rng)?;
+    write_key_or_stdout(a.out_priv.as_deref(), priv_pem.as_bytes())?;
+    write_key_or_stdout(a.out_pub.as_deref(), pub_pem.as_bytes())?;
+    Ok(())
+}
+
+fn pki_sign(_common: CommonArgs, a: SignSubcmd) -> Result<()> {
+    let kind: pki::SigAlgKind = a.alg.parse()?;
+    let priv_pem = fs::read_to_string(&a.key)?;
+    let msg = read_file_or_stdin(a.input.as_deref())?;
+    let mut rng = botan::RandomNumberGenerator::new_system().map_err(Error::botan)?;
+    let sig = pki::sign(kind, &priv_pem, &msg, &mut rng)?;
+    let out_path = match (&a.out, &a.input) {
+        (Some(p), _) => p.clone(),
+        (None, Some(input)) => append_sig_ext(input),
+        (None, None) => PathBuf::from("-"),
+    };
+    if out_path == Path::new("-") {
+        std::io::stdout().write_all(&sig)?;
+    } else {
+        fs::write(&out_path, &sig)?;
+    }
+    Ok(())
+}
+
+fn pki_verify_sig(_common: CommonArgs, a: VerifySigSubcmd) -> Result<()> {
+    let kind: pki::SigAlgKind = a.alg.parse()?;
+    let pub_pem = fs::read_to_string(&a.key)?;
+    let sig = match (&a.sig, &a.input) {
+        (Some(p), _) => fs::read(p)?,
+        (None, Some(input)) => fs::read(append_sig_ext(input))?,
+        (None, None) => {
+            return Err(Error::Msg(
+                "verify-sig: no signature file or input file given".into(),
+            ));
+        }
+    };
+    let msg = read_file_or_stdin(a.input.as_deref())?;
+    let ok = pki::verify(kind, &pub_pem, &msg, &sig)?;
+    if ok {
+        Ok(())
+    } else {
+        Err(Error::Msg("signature verification failed".into()))
+    }
+}
+
+/// `foo.txt` → `foo.txt.sig`, `foo` → `foo.sig`. Idempotent if the
+/// `.sig` extension is already present.
+fn append_sig_ext(input: &Path) -> PathBuf {
+    let mut p = input.to_path_buf();
+    if p.extension().and_then(|e| e.to_str()) == Some("sig") {
+        return p;
+    }
+    match p.extension() {
+        Some(e) => {
+            let mut new_ext = e.to_os_string();
+            new_ext.push(".sig");
+            p.set_extension(new_ext);
+        }
+        None => {
+            p.set_extension("sig");
+        }
+    }
+    p
+}
+
+fn read_file_or_stdin(path: Option<&Path>) -> Result<Vec<u8>> {
+    match path {
+        Some(p) if p != Path::new("-") => Ok(fs::read(p)?),
+        _ => {
+            use std::io::Read;
+            let mut buf = Vec::new();
+            std::io::stdin().read_to_end(&mut buf)?;
+            Ok(buf)
+        }
+    }
+}
+
+fn write_key_or_stdout(path: Option<&Path>, data: &[u8]) -> Result<()> {
+    match path {
+        Some(p) if p != Path::new("-") => {
+            fs::write(p, data)?;
+        }
+        _ => {
+            std::io::stdout().write_all(data)?;
+        }
+    }
+    Ok(())
 }

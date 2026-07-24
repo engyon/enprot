@@ -20,7 +20,8 @@ without breaking the host language's syntax.
   always produces identical ciphertext — enabling CAS dedup on encrypted
   segments.
 * *Subcommand CLI*: `encrypt`, `decrypt`, `store`, `fetch`,
-  `encrypt-store`, `verify`, `list`, `passthrough`, `completions`.
+  `encrypt-store`, `verify`, `list`, `passthrough`, `completions`,
+  `keygen`, `sign`, `verify-sig`.
 
 
 === Installation
@@ -246,6 +247,25 @@ enprot completions zsh   > ~/.zsh/completions/_enprot
 enprot completions fish  > ~/.config/fish/completions/enprot.fish
 enprot completions powershell | Out-File enprot.ps1
 ```
+
+==== keygen / sign / verify-sig
+
+Detached Ed25519 signatures (PQC Phase 1; ML-DSA and composite
+constructions are tracked in `TODO.finalize/`).
+
+```sh
+# Generate a keypair (PEM, one file each).
+enprot keygen ed25519 --out-priv priv.pem --out-pub pub.pem
+
+# Sign a file → produces FILE.sig (raw 64-byte Ed25519 signature).
+enprot sign --alg ed25519 --key-file priv.pem document.txt
+
+# Verify → reads document.txt.sig by default.
+enprot verify-sig --alg ed25519 --key-file pub.pem document.txt
+```
+
+Override the signature path with `--sig-file PATH` (verify-sig) or
+`-o PATH` (sign). Both commands read stdin when no `FILE` is given.
 
 
 === Common options
