@@ -29,6 +29,46 @@ use crate::policy::default::CryptoPolicyDefault;
 
 pub struct CryptoPolicyNIST {}
 
+/// Categories of cryptographic algorithm the NIST policy distinguishes.
+/// Replaces the stringly-typed `kind: &str` parameter the previous
+/// implementation used so the compiler enforces exhaustive matching.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum AlgKind {
+    Cipher,
+    Hash,
+    Pbkdf,
+}
+
+impl AlgKind {
+    fn approved_set(self) -> &'static phf::Set<&'static str> {
+        match self {
+            Self::Cipher => &CryptoPolicyNIST::NIST_APPROVED_CIPHERS,
+            Self::Hash => &CryptoPolicyNIST::NIST_APPROVED_HASHES,
+            Self::Pbkdf => &CryptoPolicyNIST::NIST_APPROVED_PBKDFS,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Cipher => "Cipher",
+            Self::Hash => "Hash",
+            Self::Pbkdf => "PBKDF",
+        }
+    }
+
+    fn is_approved(self, alg: &str) -> Result<(), String> {
+        if self.approved_set().contains(alg) {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} algorithm is not permitted by policy: {}",
+                self.label(),
+                alg
+            ))
+        }
+    }
+}
+
 impl CryptoPolicyNIST {
     const DEFAULT_PBKDF_ALG: &'static str = "pbkdf2-sha512";
     const DEFAULT_PBKDF_SALT_LEN: usize = 32;
@@ -47,28 +87,11 @@ impl CryptoPolicyNIST {
         "sha3-256",
         "sha3-512",
     };
-
-    fn check_alg(kind: &str, alg: &str) -> Result<(), String> {
-        let lst = match kind {
-            "Cipher" => &Self::NIST_APPROVED_CIPHERS,
-            "Hash" => &Self::NIST_APPROVED_HASHES,
-            "PBKDF" => &Self::NIST_APPROVED_PBKDFS,
-            _ => return Err("Invalid algorithm kind".to_string()),
-        };
-        if lst.contains(alg) {
-            Ok(())
-        } else {
-            Err(format!(
-                "{} algorithm is not permitted by policy: {}",
-                kind, alg
-            ))
-        }
-    }
 }
 
 impl CryptoPolicy for CryptoPolicyNIST {
     fn check_hash(&self, alg: &str) -> Result<(), String> {
-        Self::check_alg("Hash", alg)
+        AlgKind::Hash.is_approved(alg)
     }
 
     fn check_pbkdf(
@@ -79,7 +102,7 @@ impl CryptoPolicy for CryptoPolicyNIST {
         salt: &[u8],
         params: &BTreeMap<String, usize>,
     ) -> Result<(), String> {
-        Self::check_alg("PBKDF", alg)?;
+        AlgKind::Pbkdf.is_approved(alg)?;
         if salt.len() < Self::NIST_PBKDF_MIN_SALT_LEN {
             return Err("Salt length violates policy".to_string());
         }
@@ -101,12 +124,12 @@ impl CryptoPolicy for CryptoPolicyNIST {
     }
 
     fn check_cipher_alg_impl(&self, alg: &str) -> Result<(), String> {
-        Self::check_alg("Cipher", alg)
+        AlgKind::Cipher.is_approved(alg)
     }
 
     fn check_cipher(&self, alg: &str, _key: &[u8], iv: &[u8], _ad: &[u8]) -> Result<(), String> {
         let base = alg.trim_end_matches("-det");
-        Self::check_alg("Cipher", base)?;
+        AlgKind::Cipher.is_approved(base)?;
         if base == "aes-256-gcm" && iv.len() != 96 / 8 {
             return Err(
                 "IV length does not match NIST recommendations for this cipher.".to_string(),
