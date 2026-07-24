@@ -4,10 +4,14 @@ version     = "0.3.1"
 authors     = ["Ribose Inc. <open.source@ribose.com>"]
 license     = "BSD-2-Clause"
 description = "enprot command line tool for Engyon"
-repository  = "https://github.com/riboseinc/enprot"
+repository  = "https://github.com/engyon/enprot"
+homepage    = "https://github.com/engyon/enprot"
+documentation = "https://github.com/engyon/enprot/blob/main/README.adoc"
+readme      = "README.adoc"
 categories  = ["command-line-utilities", "cryptography"]
-keywords    = ["encryption", "engyon"]
+keywords    = ["encryption", "engyon", "ept", "botan"]
 edition     = "2024"
+rust-version = "1.85"
 autotests   = false
 
 [[bin]]
