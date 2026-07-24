@@ -2,7 +2,12 @@ use crate::Fixture;
 use cpu_time::ThreadTime;
 use std::fs;
 
+// Timing-sensitive: asserts the PBKDF cache is faster than re-deriving
+// per file. Flaky on shared CI runners where thread-time can swing by
+// more than the cache savings. Run manually:
+//   cargo test --test integration -- cli::pbkdf::pbkdf_cache --ignored
 #[test]
+#[ignore]
 fn pbkdf_cache() {
     let ept = Fixture::blank("in.ept");
     fs::write(
