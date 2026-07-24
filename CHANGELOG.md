@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-24
+
 ### Breaking Changes
 
 - **CLI is now subcommand-style**: `enprot encrypt -w WORD file.ept` instead of `enprot -e WORD file.ept`. The flat-flag form is gone. (#22)
@@ -22,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`enprot verify` subcommand**: check markup structure, CAS pointers, and extfield format without decrypting.
 - **`enprot list` subcommand**: list all WORD segments in a file with type and crypto metadata.
 - **`enprot completions <SHELL>`**: generate bash/zsh/fish/PowerShell completion scripts.
+- **`enprot keygen`, `sign`, `verify-sig`**: Ed25519 detached signatures (PQC Phase 1). Foundation for ML-DSA / ML-KEM / composites tracked in `TODO.finalize/10-12`.
 - **Typed `Error` enum** (`src/error.rs`) with `thiserror`. `app_main` returns `Result<()>`. (#23)
 - **Property-based tests** via `proptest`: round-trip + determinism checks for the `-det` variants. (A10)
 - **`ParseOps` decomposition**: `Separators`, `Transforms`, `CryptoConfig` inner structs. (A1)
@@ -56,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **#50**: Windows stdin password reading now works via rpassword 7's TTY-aware path.
 - **#23**: All `Result<T, &'static str>` replaced with typed `Error` enum. `panic!` calls on max recursion depth replaced with `Err` returns.
 - **AES-SIV key length**: Botan 3 reports 64-byte keys for `AES-256/SIV` (RFC 5297 double-key); PBKDF derives `key_len_max()` bytes.
+- **Windows CI link failure**: `--library-suffix=-3` is redundant on Botan 3.x (the major version already adds `-3`); dropping it lets the static library name match the cargo link directive (`botan-3.lib`).
 
 ## [0.3.1] - 2020-10-05
 
