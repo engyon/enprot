@@ -30,43 +30,6 @@ use crate::etree;
 use crate::pbkdf::{PBKDFCache, derive_key, parse_phc};
 use crate::utils;
 
-pub fn get_password(name: &str, rep: bool) -> String {
-    use std::io::IsTerminal;
-    let prompt = format!("Password for {}: ", name);
-    let pass = read_password(&prompt).expect("password read failure");
-    // Only require repetition when reading from a TTY — a human might have
-    // mistyped. Piped input is already trusted by the caller.
-    if rep && std::io::stdin().is_terminal() {
-        let again_prompt = format!("Repeat password for {}: ", name);
-        let again = read_password(&again_prompt).expect("password read failure");
-        if pass != again {
-            eprintln!("Password mismatch. Try again.");
-            return get_password(name, rep);
-        }
-    }
-    pass
-}
-
-/// If stdin is a TTY, use rpassword's TTY-backed prompt (echo suppression,
-/// reads from `/dev/tty`). Otherwise read from stdin so callers can pipe
-/// passwords in scripts and tests.
-fn read_password(prompt: &str) -> std::io::Result<String> {
-    use rpassword::ConfigBuilder;
-    use std::io::{IsTerminal, stdin, stdout};
-    let pass = if stdin().is_terminal() {
-        rpassword::prompt_password(prompt)?
-    } else {
-        let config = ConfigBuilder::new()
-            .input_reader(stdin())
-            .output_writer(stdout())
-            .build();
-        rpassword::prompt_password_with_config(prompt, config)?
-    };
-    // Strip a trailing CR so CRLF-terminated piped input (e.g. from Windows
-    // or some terminals) is treated identically to LF-terminated input.
-    Ok(pass.trim_end_matches('\r').to_string())
-}
-
 pub fn encrypt(
     pt: Vec<u8>,
     password: &str,

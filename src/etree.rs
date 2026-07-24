@@ -32,6 +32,7 @@ use crate::cas;
 use crate::consts;
 use crate::crypto::CryptoPolicy;
 use crate::error::{Error, Result};
+use crate::password;
 use crate::pbkdf::PBKDFCache;
 use crate::prot;
 use crate::utils;
@@ -719,7 +720,7 @@ fn ensure_password(keyw: &str, paops: &mut ParseOps, repeat: bool) -> String {
     if let Some(p) = paops.passwords.get(keyw) {
         return p.clone();
     }
-    let p = prot::get_password(keyw, repeat);
+    let p = password::get_password(keyw, repeat);
     paops.passwords.insert(keyw.to_string(), p.clone());
     p
 }
