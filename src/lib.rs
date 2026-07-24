@@ -37,11 +37,11 @@ mod cipher;
 mod consts;
 pub mod crypto;
 mod error;
-mod etree;
+pub mod etree;
 mod password;
 mod pbkdf;
 mod policy;
-mod prot;
+pub mod prot;
 pub mod utils;
 
 pub use error::{Error, Result};
