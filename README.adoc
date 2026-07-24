@@ -12,7 +12,8 @@ Engyon Protected Text (EPT) is a human-editable annotation method that
 allows a text format document to contain finely grained cryptographic
 confidentiality and integrity features.
 
-Enprot requires a recent version of https://github.com/randombit/botan[botan].
+Enprot requires a recent version of https://github.com/randombit/botan[botan]
+(Botan 3.x; CI builds against 3.7.0, Homebrew ships 3.12.0).
 Use `cargo build --release` to build the release binary `target/release/enprot`
 or `cargo run --` to build and run the debug version. Some dependencies may
 require the latest compiler.
@@ -373,11 +374,41 @@ Will produce files `outputfile.1`, `outputfile.2`, etc.
 
 Due to its minimal message expansion and non-sequential nature of data
 being encrypted, a nonce-reuse/misuse resistant Authenticated Encryption
-with Associated Data (AEAD) mechanism is used. We have chosen to use
+with Associated Data (AEAD) mechanism is used. The default is
 AES-256 in SIV (Synthetic Initialization Vector) mode [RFC5297]. A SIV
 ciphertext is always 16 bytes larger than plaintext and the 16-byte
 authentication tag also serves as the "`synthetic IV`".
 
+The cipher backend is split:
+
+[cols="1,2,1", options="header"]
+|===
+| Algorithm | Backend | Notes
+| `aes-256-siv` (default)   | link:https://botan.randombit.net/[Botan 3]            | RFC 5297, 64-byte double key (derived from PBKDF).
+| `aes-256-gcm`             | link:https://botan.randombit.net/[Botan 3]            | NIST policy default; 96-bit IV.
+| `aes-256-gcm-siv`         | link:https://github.com/RustCrypto/AEADs[aes-gcm-siv (RustCrypto)] | RFC 8452; Botan does not implement this AEAD.
+|===
+
 All hash function computations for CAS utilize SHA-3 [FIPS202] variants.
-It is also used to derive keying material from passwords.
+SHA-3 is also used to derive keying material from passwords.
+
+Supported PBKDFs: `argon2` (default-policy default), `scrypt`,
+`pbkdf2-sha256`, `pbkdf2-sha512`, and `legacy`. The `legacy` PBKDF is
+plain SHA3-512 truncation with no salt or work factor; it is retained
+only so documents encrypted by very old enprot releases can still be
+decrypted. Selecting it for new encryption prints a warning.
+
+
+==== Compatibility
+
+Documents encrypted by enprot ≤0.3.1 still decrypt. The wire format of
+the `pbkdf:` and `cipher:` extended fields is unchanged:
+
+[source]
+----
+// <( ENCRYPTED <keyword> pbkdf:$<id>$<k=v,k=v>$<base64-salt> cipher:$<alg>$iv=<base64-iv> )>
+----
+
+When the ciphertext is in CAS rather than inline, the CAS hash replaces
+the inner `DATA` lines and the `cipher:` field carries the IV.
 

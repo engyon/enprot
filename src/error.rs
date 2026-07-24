@@ -23,29 +23,46 @@
 
 use thiserror::Error;
 
+/// Errors raised by enprot's library code. Every public function returns
+/// `Result<T>` (= `std::result::Result<T, Error>`).
+///
+/// Variants are grouped by subsystem so callers can react to broad
+/// categories (e.g. all policy violations, all PHC parse failures) without
+/// matching every stringly-typed message.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// IO failure reading an input file, writing output, or reading CAS.
     #[error("i/o error: {0}")]
     Io(#[from] std::io::Error),
 
+    /// Botan FFI call returned an error. The payload is `botan::Error`'s
+    /// `Display` form.
     #[error("botan: {0}")]
     Botan(String),
 
+    /// `hex::decode` failed.
     #[error("hex: {0}")]
     Hex(String),
 
+    /// `botan::base64_decode` failed.
     #[error("base64: {0}")]
     Base64(String),
 
+    /// Cipher creation or processing failure (unknown algorithm, wrong key
+    /// length, authentication failure on decrypt, etc.).
     #[error("cipher: {0}")]
     Cipher(String),
 
+    /// PBKDF parameter resolution or key derivation failure.
     #[error("pbkdf: {0}")]
     Pbkdf(String),
 
+    /// `CryptoPolicy` rejected the requested algorithm or parameters.
     #[error("policy violation: {0}")]
     Policy(String),
 
+    /// EPT markup parse failure. `file` is the source path or `<stdin>`;
+    /// `lineno` is 1-based, 0 when the error isn't line-bound.
     #[error("parse error in {file}:{lineno}: {msg}")]
     Parse {
         file: String,
@@ -53,21 +70,29 @@ pub enum Error {
         msg: String,
     },
 
+    /// CAS load/save failure (hash mismatch, missing file, etc.).
     #[error("CAS: {0}")]
     Cas(String),
 
+    /// PHC string parse failure (missing `$`, non-numeric param value,
+    /// bad base64 salt, etc.).
     #[error("PHC: {0}")]
     Phc(String),
 
+    /// Catch-all for one-off messages that don't fit a more specific
+    /// variant. Prefer adding a new variant when the same message shape
+    /// appears in more than one place.
     #[error("{0}")]
     Msg(String),
 }
 
 impl Error {
+    /// Wrap any `Display` value (typically `botan::Error`) as `Error::Botan`.
     pub fn botan(e: impl std::fmt::Display) -> Self {
         Error::Botan(e.to_string())
     }
 
+    /// Construct `Error::Msg` from anything stringifiable.
     pub fn msg(s: impl Into<String>) -> Self {
         Error::Msg(s.into())
     }
@@ -85,4 +110,5 @@ impl From<hex::FromHexError> for Error {
     }
 }
 
+/// Convenience alias used everywhere in the crate.
 pub type Result<T> = std::result::Result<T, Error>;
