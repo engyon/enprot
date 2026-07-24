@@ -36,7 +36,7 @@ use crate::error::{Error, Result};
 ///
 /// The CLI accepts the lower-case string form (`ed25519`); `from_str`
 /// parses it. Future PQC variants join this enum.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SigAlgKind {
     Ed25519,
 }
