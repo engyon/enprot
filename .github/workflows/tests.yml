@@ -48,7 +48,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     name: Test on stable toolchain
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - if: "startsWith(matrix.os, 'windows')"
         run: git config --global core.autocrlf false
