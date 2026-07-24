@@ -99,7 +99,9 @@ fn encrypt_decrypt_both_agent007_geheim() {
         .arg("--pbkdf")
         .arg("legacy")
         .arg("-k")
-        .arg("Agent_007=password,GEHEIM=password")
+        .arg("Agent_007=password")
+        .arg("-k")
+        .arg("GEHEIM=password")
         .arg(&ept.path)
         .assert()
         .success();

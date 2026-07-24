@@ -115,8 +115,10 @@ pub struct Cli {
     pub decrypt: Vec<String>,
 
     /// Specify a secret PASSWORD for WORD (format: WORD=PASSWORD).
-    #[arg(short = 'k', long = "key", value_name = "WORD=PASSWORD",
-          value_delimiter = ',', value_parser = parse_word_password)]
+    ///
+    /// One pair per `-k` occurrence; passwords containing commas are
+    /// accepted verbatim. Use multiple `-k` flags for multiple pairs.
+    #[arg(short = 'k', long = "key", value_name = "WORD=PASSWORD", value_parser = parse_word_password)]
     pub password: Vec<(String, String)>,
 
     /// Set the policy to restrict cryptographic algorithms.
