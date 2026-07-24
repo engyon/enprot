@@ -1,0 +1,73 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Stage 2 — PQC signatures + KEM · enprot">
+  <h1 class="text-3xl font-bold mb-3">Stage 2 — Post-quantum cryptography</h1>
+  <p class="text-enprot-muted mb-6">
+    ML-DSA signatures, ML-KEM key encapsulation, PQ+classical composites.
+  </p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Why</h2>
+    <p class="mb-3">
+      A cryptographically relevant quantum computer breaks RSA and ECC. NIST has standardized
+      post-quantum replacements: ML-DSA (FIPS 204) for signatures, ML-KEM (FIPS 203) for key
+      encapsulation. rnp already ships these. Enprot adopts them so today's encrypted files
+      remain confidential against tomorrow's adversaries.
+    </p>
+    <p>
+      Composite constructions (PQ + classical) hedge against either leg being broken alone.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Phase 2a — ML-DSA-65 signatures</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>enprot keygen mldsa65 --out-priv signer.pem --out-pub signer.pub
+enprot sign --alg mldsa65 --key-file signer.pem document.txt
+enprot verify-sig --alg mldsa65 --key-file signer.pub document.txt</code></pre>
+    <p class="mt-3 text-sm">
+      Signatures are ~2000 bytes (vs Ed25519's 64). Larger but quantum-safe. Chain anchors
+      (Stage 1) accept any <code>SigAlgKind</code> in the <code>signer:</code> field.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Phase 2b — ML-KEM-768 multi-recipient encryption</h2>
+    <p class="mb-3">
+      Today's password-based encryption doesn't scale — every recipient needs the same WORD
+      password. ML-KEM lets each recipient publish a public key; encryptors wrap the per-file
+      AES key per recipient.
+    </p>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Recipients publish their pubkeys
+enprot keygen mlkem768 --out-pub alice.pub
+enprot keygen mlkem768 --out-pub bob.pub
+
+# Encrypt to multiple recipients in one shot
+enprot encrypt --recipient alice.pub --recipient bob.pub \
+    -w SharedDoc shared-doc.ept
+
+# Each recipient decrypts with their own privkey
+enprot decrypt --key-file alice.priv shared-doc.ept   # Alice's view
+enprot decrypt --key-file bob.priv   shared-doc.ept   # Bob's view</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Phase 2c — Composite (PQ + classical)</h2>
+    <p class="mb-3">
+      Hedge against either leg being broken. A composite signature requires both halves to
+      validate; a composite KEM derives the shared key from both halves via HKDF.
+    </p>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>enprot keygen composite-dilithium-ed25519 --out-priv signer.pem --out-pub signer.pub
+enprot sign --alg composite-dilithium-ed25519 --key-file signer.pem doc.txt</code></pre>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <ul class="list-disc pl-6 space-y-1">
+      <li><a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/21-pqc-phase2-ml-dsa.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/21</code></a> — ML-DSA-65/87</li>
+      <li><a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/22-pqc-phase3-ml-kem.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/22</code></a> — ML-KEM-768/1024</li>
+      <li><a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/23-pqc-phase4-composite.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/23</code></a> — Composites</li>
+    </ul>
+  </section>
+</Base>

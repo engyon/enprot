@@ -1,0 +1,78 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const stages = [
+  {
+    n: "0",
+    title: "Shipped (0.4.0)",
+    href: "/docs/stages/0",
+    summary: "CAS, 4 transforms, deterministic AEAD, Ed25519 signatures, subcommand CLI.",
+    status: "shipped",
+  },
+  {
+    n: "1",
+    title: "Chain anchor DAG + verifier",
+    href: "/docs/stages/1",
+    summary: "Blockchain-in-a-file core. Tamper-evident, merge-friendly, capability-scoped.",
+    status: "specified",
+  },
+  {
+    n: "2",
+    title: "PQC: ML-DSA, ML-KEM, composites",
+    href: "/docs/stages/2",
+    summary: "FIPS 204 signatures, FIPS 203 KEM, PQ+classical composites.",
+    status: "specified",
+  },
+  {
+    n: "3",
+    title: "Merkle tree + INCLUDE",
+    href: "/docs/stages/3",
+    summary: "Per-file Merkle structure, cross-file DAG references, Merkle proofs.",
+    status: "specified",
+  },
+  {
+    n: "4a",
+    title: "Capability requirement policy",
+    href: "/docs/stages/4a",
+    summary: "TOML policy file. Trust roots, monotonic timestamps, per-WORD capability requirements.",
+    status: "specified",
+  },
+  {
+    n: "5",
+    title: "Applications",
+    href: "/docs/stages/5",
+    summary: "Audit log, contract multi-sig, source provenance (SLSA), snapshot/pin, supply-chain manifest.",
+    status: "specified",
+  },
+];
+
+const statusColor: Record<string, string> = {
+  shipped: "bg-green-100 text-green-800",
+  specified: "bg-blue-100 text-blue-800",
+};
+---
+
+<Base title="Stages · enprot">
+  <h1 class="text-3xl font-bold mb-3">Roadmap stages</h1>
+  <p class="text-enprot-muted mb-6">
+    From 0.4.0 (shipped) through Stage 5 applications. Each stage has a TODO
+    spec, a deep-dive page, and a list of follow-on PRs.
+  </p>
+
+  <ol class="space-y-3">
+    {stages.map((s) => (
+      <li>
+        <a href={s.href} class="block border border-enprot-ink/10 rounded p-4 hover:bg-enprot-ink/5 bg-white">
+          <div class="flex items-baseline justify-between gap-4">
+            <div>
+              <div class="font-mono text-sm text-enprot-muted">Stage {s.n}</div>
+              <div class="font-semibold">{s.title}</div>
+              <div class="text-sm text-enprot-muted mt-1">{s.summary}</div>
+            </div>
+            <span class={`text-xs px-2 py-1 rounded ${statusColor[s.status]}`}>{s.status}</span>
+          </div>
+        </a>
+      </li>
+    ))}
+  </ol>
+</Base>

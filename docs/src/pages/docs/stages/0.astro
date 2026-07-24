@@ -1,0 +1,59 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Stage 0 — Shipped (0.4.0) · enprot">
+  <h1 class="text-3xl font-bold mb-3">Stage 0 — shipped in 0.4.0</h1>
+  <p class="text-enprot-muted mb-6">The foundation everything else builds on.</p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">What landed</h2>
+    <ul class="list-disc pl-6 space-y-1">
+      <li><strong>Content-addressed CAS</strong> (SHA3-256). Filename = hash; idempotent writes.</li>
+      <li><strong>Four transforms</strong>: <code>store</code>, <code>fetch</code>, <code>encrypt</code>, <code>decrypt</code>.</li>
+      <li><strong>Deterministic AEAD</strong>: <code>aes-256-gcm-det</code>, <code>aes-256-gcm-siv-det</code>. HKDF+HMAC nonce derivation enables CAS dedup on encrypted segments.</li>
+      <li><strong>Ed25519 signatures</strong> (PQC Phase 1): <code>keygen</code>, <code>sign</code>, <code>verify-sig</code>.</li>
+      <li><strong>Subcommand CLI</strong>: encrypt, decrypt, store, fetch, encrypt-store, passthrough, verify, list, completions, keygen, sign, verify-sig, capabilities.</li>
+      <li><strong>Host-language presets</strong>: <code>--lang raw|c|python|html|latex</code>.</li>
+      <li><strong>Capability model</strong>: formal Viewer/Reader/Decryptor/Signer/Verifier tiers.</li>
+    </ul>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">CLI cheatsheet</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Encryption round-trip
+enprot encrypt -w Agent_007 -k Agent_007=password file.ept
+enprot decrypt -w Agent_007 -k Agent_007=password file.ept
+
+# Store to CAS, restore later
+enprot store  -w Agent_007 file.ept
+enprot fetch  -w Agent_007 file.ept
+
+# Inspect
+enprot list   file.ept
+enprot verify file.ept
+enprot -k Agent_007=password capabilities
+
+# Signatures (PQC Phase 1)
+enprot keygen ed25519 --out-priv priv.pem --out-pub pub.pem
+enprot sign --alg ed25519 --key-file priv.pem file.txt
+enprot verify-sig --alg ed25519 --key-file pub.pem file.txt</code></pre>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Cryptographic primitives</h2>
+    <table class="w-full border border-enprot-ink/10 text-sm">
+      <thead class="bg-enprot-ink/5">
+        <tr><th class="p-2 text-left">Category</th><th class="p-2 text-left">Algorithms</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="p-2">AEAD</td><td class="p-2">aes-256-siv, aes-256-gcm, aes-256-gcm-siv, <strong>det variants</strong></td></tr>
+        <tr><td class="p-2">Hash</td><td class="p-2">SHA-3 (256/512), SHA-2 (256/512)</td></tr>
+        <tr><td class="p-2">PBKDF</td><td class="p-2">Argon2, Scrypt, PBKDF2-SHA256/512, legacy</td></tr>
+        <tr><td class="p-2">KDF</td><td class="p-2">HKDF-SHA256 (for det AEAD nonce derivation)</td></tr>
+        <tr><td class="p-2">MAC</td><td class="p-2">HMAC-SHA256 (for det AEAD nonce derivation)</td></tr>
+        <tr><td class="p-2">Signature</td><td class="p-2">Ed25519 (PQC Phase 1)</td></tr>
+      </tbody>
+    </table>
+  </section>
+</Base>

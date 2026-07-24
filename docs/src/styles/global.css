@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+  --color-enprot-ink: #0d1117;
+  --color-enprot-paper: #f9f7f2;
+  --color-enprot-accent: #2563eb;
+  --color-enprot-muted: #6b7280;
+  --font-display: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html {
+  font-family: var(--font-display);
+  background-color: var(--color-enprot-paper);
+  color: var(--color-enprot-ink);
+}
+
+pre, code, .mono {
+  font-family: var(--font-mono);
+}
+
+/* Smooth-scroll for in-page TOC links */
+html {
+  scroll-behavior: smooth;
+}

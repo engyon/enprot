@@ -1,0 +1,96 @@
+---
+import Base from "../layouts/Base.astro";
+
+const stages = [
+  { n: "0", title: "Shipped (0.4.0)", href: "/docs/stages/0",
+    summary: "CAS, 4 transforms, deterministic AEAD, Ed25519 signatures, subcommand CLI." },
+  { n: "1", title: "Chain anchor DAG", href: "/docs/stages/1",
+    summary: "Append-only chain of mutations with cryptographic back-pointers. The blockchain-in-a-file core." },
+  { n: "2", title: "PQC: ML-DSA, ML-KEM, composites", href: "/docs/stages/2",
+    summary: "Post-quantum signatures and multi-recipient encryption. PQ+classical composites for break-resistance." },
+  { n: "3", title: "Merkle tree + cross-file DAG", href: "/docs/stages/3",
+    summary: "Per-file Merkle structure, INCLUDE directive for cross-file references, Merkle proofs." },
+  { "n_a": "4a", title: "Capability policy", href: "/docs/stages/4a",
+    summary: "Capability requirement specifications: trust roots, monotonic timestamps, per-WORD capability enforcement." },
+  { n: "5", title: "Applications", href: "/docs/stages/5",
+    summary: "Audit log mode, contract multi-sig, source provenance (SLSA), snapshot/pin, supply-chain manifest." },
+];
+
+const examples = [
+  { href: "/docs/examples/audit-log", title: "Audit log mode",
+    summary: "Append-only signed event stream. tail -f for cryptographic logs." },
+  { href: "/docs/examples/contract", title: "Two-party contract",
+    summary: "Multi-sig chain anchors requiring both parties' signatures to advance." },
+  { href: "/docs/examples/provenance", title: "Source provenance",
+    summary: "SLSA-style build provenance with INCLUDE'd source files and builder signatures." },
+  { href: "/docs/examples/snapshot-pin", title: "Snapshot & pin",
+    summary: "Publish a chain head hash out-of-band for external verifiability without a node." },
+  { href: "/docs/examples/supply-chain", title: "Supply chain manifest",
+    summary: "Vendor → customer flow: manifest enumerates sources, deps, builder, signatures." },
+];
+
+const principles = [
+  { title: "Capability-based, not identity-based", body: "Each operation requires a narrow capability (Viewer / Reader / Decryptor / Signer / Verifier). Possession proves capability; enprot never learns who you are." },
+  { title: "Key distribution is external", body: "Enprot consumes keys; it doesn't broker them. Use Signal, age, KMS, HSMs, manual PEM exchange — whatever your threat model demands." },
+  { title: "Merge-friendly by construction", body: "Deterministic AEAD + CAS-referenced ciphertext + capability set-union = mutations commute at the block level. Lock-free git workflows work." },
+  { title: "Single-file ledger", body: "Each EPT file is its own consent graph. No peer-to-peer network required; external publication (snapshot/pin) bridges to global verifiability." },
+];
+---
+
+<Base title="enprot — Engyon Protected Text">
+  <section class="mb-12">
+    <h1 class="text-4xl font-bold mb-3">enprot</h1>
+    <p class="text-xl text-enprot-muted mb-4">
+      Confidentiality processor and capability ledger for text/source files.
+    </p>
+    <p class="text-lg">
+      Embed encrypted, stored, signed, and chain-anchored segments inside any
+      text-based file — source code, documentation, configuration, contracts —
+      without breaking the host language's syntax. Same document round-trips;
+      transformations are keyed by capability.
+    </p>
+    <div class="mt-6 flex gap-3">
+      <a href="/docs/architecture" class="px-4 py-2 bg-enprot-accent text-white rounded hover:opacity-90">Read the architecture →</a>
+      <a href="https://github.com/engyon/enprot" class="px-4 py-2 border border-enprot-ink/20 rounded hover:bg-enprot-ink/5">Source on GitHub</a>
+    </div>
+  </section>
+
+  <section class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Design principles</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      {principles.map((p) => (
+        <div class="border border-enprot-ink/10 rounded p-4 bg-white">
+          <h3 class="font-semibold mb-1">{p.title}</h3>
+          <p class="text-enprot-muted text-sm">{p.body}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <section class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Roadmap</h2>
+    <ol class="space-y-2">
+      {stages.map((s) => (
+        <li>
+          <a href={s.href} class="block border border-enprot-ink/10 rounded p-3 hover:bg-enprot-ink/5 bg-white">
+            <div class="font-mono text-sm text-enprot-muted">Stage {s.n}</div>
+            <div class="font-semibold">{s.title}</div>
+            <div class="text-sm text-enprot-muted">{s.summary}</div>
+          </a>
+        </li>
+      ))}
+    </ol>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-4">Worked examples</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      {examples.map((e) => (
+        <a href={e.href} class="block border border-enprot-ink/10 rounded p-4 hover:bg-enprot-ink/5 bg-white">
+          <div class="font-semibold">{e.title}</div>
+          <div class="text-sm text-enprot-muted">{e.summary}</div>
+        </a>
+      ))}
+    </div>
+  </section>
+</Base>

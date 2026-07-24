@@ -1,0 +1,88 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Supply chain manifest · enprot">
+  <h1 class="text-3xl font-bold mb-3">Supply chain manifest</h1>
+  <p class="text-enprot-muted mb-6">
+    Vendor → customer flow: manifest enumerates sources, deps, builder, signatures.
+    Distinct from provenance (build-time) — supply-chain manifest is distributable.
+  </p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Scenario</h2>
+    <p>
+      A vendor distributing software wants to attest to: which sources were used, which
+      dependencies (with hashes), which build commands, which tests ran. Customers verify
+      the manifest before installing. The manifest travels with the artifact — the customer
+      doesn't need access to the vendor's build logs.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Vendor side</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>cd my-crate/
+enprot scm init
+enprot scm add src/
+enprot scm add Cargo.toml
+enprot scm deps Cargo.toml   # adds each [dependencies] crate hash
+enprot scm attest --signer vendor.pem
+# publishes manifest.v1.ept alongside the .crate file</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Customer side</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>curl -O https://vendor.example/my-crate-1.0.crate
+curl -O https://vendor.example/manifest.v1.ept
+
+cat > customer-policy.toml &lt;&lt;EOF
+[chain]
+trust_roots = ["ed25519:$(enprot fingerprint vendor.pub)"]
+
+[scm]
+allowed_licenses = ["MIT", "BSD-2-Clause", "Apache-2.0"]
+forbidden_deps = ["openssl-sys"]   # policy: no openssl
+EOF
+
+enprot scm verify --policy-file customer-policy.toml manifest.v1.ept</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Differential verification</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># What changed between v1 and v2 of the manifest?
+enprot scm diff manifest.v1.ept manifest.v2.ept
+# Output: added deps, removed deps, changed source hashes, new signers</code></pre>
+    <p class="mt-3 text-sm">
+      Audit-friendly: a security team can see exactly what changed between releases without
+      diffing the entire manifest by hand.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Ecosystem support</h2>
+    <ul class="list-disc pl-6 space-y-1">
+      <li><strong>Cargo</strong>: parses <code>Cargo.toml</code> <code>[dependencies]</code>; resolves via cargo index</li>
+      <li><strong>npm</strong>: parses <code>package.json</code> + <code>package-lock.json</code></li>
+      <li><strong>pip</strong>: parses <code>requirements.txt</code> + <code>pyproject.toml</code></li>
+      <li>Leverages <code>cargo-deny</code> for license info, <code>cargo-audit</code> for advisories</li>
+    </ul>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Capability framing</h2>
+    <p>
+      Vendor holds <code>Signer(vendor_fp)</code>; customer holds
+      <code>Verifier(vendor_fp)</code> plus a <code>Reader</code> capability if their CAS
+      mirror has the dependency blobs. License/dependency policy is enforced locally —
+      the customer decides what's acceptable.
+    </p>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <p>
+      Specified in <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/31-supply-chain-manifest.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/31</code></a>.
+      Depends on Stage 1 + Stage 3 (INCLUDE).
+    </p>
+  </section>
+</Base>

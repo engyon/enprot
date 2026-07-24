@@ -1,0 +1,28 @@
+---
+import Base from "../../layouts/Base.astro";
+
+const examples = [
+  { href: "/docs/examples/audit-log", title: "Audit log mode", icon: "📜" },
+  { href: "/docs/examples/contract", title: "Two-party contract (multi-sig)", icon: "✍️" },
+  { href: "/docs/examples/provenance", title: "Source provenance (SLSA)", icon: "🔨" },
+  { href: "/docs/examples/snapshot-pin", title: "Snapshot & pin", icon: "📌" },
+  { href: "/docs/examples/supply-chain", title: "Supply-chain manifest", icon: "📦" },
+];
+---
+
+<Base title="Examples · enprot">
+  <h1 class="text-3xl font-bold mb-3">Worked examples</h1>
+  <p class="text-enprot-muted mb-6">
+    Real-life usage patterns. Each walks through setup, common operations,
+    verification, and the capability framing for the participants.
+  </p>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    {examples.map((e) => (
+      <a href={e.href} class="block border border-enprot-ink/10 rounded p-4 hover:bg-enprot-ink/5 bg-white">
+        <div class="text-2xl mb-2">{e.icon}</div>
+        <div class="font-semibold">{e.title}</div>
+      </a>
+    ))}
+  </div>
+</Base>

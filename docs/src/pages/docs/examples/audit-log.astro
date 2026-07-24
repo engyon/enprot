@@ -1,0 +1,82 @@
+---
+import Base from "../../../layouts/Base.astro";
+---
+
+<Base title="Audit log mode · enprot">
+  <h1 class="text-3xl font-bold mb-3">Audit log mode</h1>
+  <p class="text-enprot-muted mb-6">Append-only signed event stream. <code>tail -f</code> for cryptographic logs.</p>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Scenario</h2>
+    <p class="mb-3">
+      A compliance team needs a tamper-evident access log. Every login, every deployment, every
+      configuration change. The log must be verifiable by auditors weeks later, and any tampering
+      must be detectable down to the individual event.
+    </p>
+    <p>
+      Audit log mode maps directly onto Stage 1 chain anchors: each event is its own anchor,
+      signed by the logger's key.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Setup</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Generate the auditor's signing key (once)
+enprot keygen ed25519 --out-priv auditor.pem --out-pub auditor.pub
+
+# Pin the fingerprint in your verification policy
+AUDITOR_FP=$(enprot fingerprint auditor.pub)
+echo "Trust root: $AUDITOR_FP"</code></pre>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Streaming events</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># Pipe events in; each line becomes a chain anchor
+(echo "user=alice action=login    ts=$(date -Iseconds)"
+ echo "user=bob   action=deploy   ts=$(date -Iseconds)"
+ echo "user=alice action=logout   ts=$(date -Iseconds)") | \
+  enprot audit-log --signer auditor.pem access-log.ept</code></pre>
+    <p class="mt-3 text-sm">
+      The resulting file has three chain anchors, each signing the file state with that line
+      appended. Every anchor's parent is the previous one — a linear chain.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Verification (later)</h2>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code>enprot verify-chain \
+    --trust-root $AUDITOR_FP \
+    --strict-timestamps \
+    access-log.ept</code></pre>
+    <p class="mt-3 text-sm">
+      Any tampering — deleting a line, inserting one, modifying one — breaks the chain at that
+      point. <code>verify-chain</code> reports OK or FAIL with the specific broken anchor.
+    </p>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-2xl font-semibold mb-3">Capability framing</h2>
+    <table class="w-full border border-enprot-ink/10 text-sm">
+      <thead class="bg-enprot-ink/5">
+        <tr><th class="p-2 text-left">Participant</th><th class="p-2 text-left">Holds</th><th class="p-2 text-left">Capability</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="p-2">Logger</td><td class="p-2">auditor.pem (privkey)</td><td class="p-2 font-mono">Signer(auditor_fp)</td></tr>
+        <tr><td class="p-2">Auditor</td><td class="p-2">auditor.pub</td><td class="p-2 font-mono">Verifier(auditor_fp)</td></tr>
+        <tr><td class="p-2">Public</td><td class="p-2">nothing</td><td class="p-2 font-mono">Viewer</td></tr>
+      </tbody>
+    </table>
+    <p class="mt-3 text-sm">
+      The public can see the log structure but can't tamper with it; the auditor can verify;
+      only the logger can append.
+    </p>
+  </section>
+
+  <section>
+    <h2 class="text-2xl font-semibold mb-3">Status</h2>
+    <p>
+      Specified in <a href="https://github.com/engyon/enprot/blob/main/TODO.finalize/27-audit-log-mode.md" class="text-enprot-accent hover:underline"><code>TODO.finalize/27</code></a>.
+      Depends on Stage 1 (<a href="/docs/stages/1" class="text-enprot-accent hover:underline">chain DAG</a>) + Stage 4a (policy for <code>--strict-timestamps</code>).
+    </p>
+  </section>
+</Base>
