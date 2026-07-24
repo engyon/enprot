@@ -4,7 +4,7 @@
 [files]
 extend-exclude = ["target/", ".git/", "test-data/"]
 
-[default.extend.words]
+[default.extend-words]
 enprot = "enprot"
 Engyon = "Engyon"
 GEHEIM = "GEHEIM"

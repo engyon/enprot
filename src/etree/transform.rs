@@ -134,7 +134,7 @@ fn transform_encrypted(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         ) {
             Ok(ct) => ct.to_vec(),
             Err(e) => {
-                eprintln!("Error decrypting {}: {}.", &keyw, e);
+                eprintln!("Error decrypting {}: {}.", keyw, e);
                 return Err(e);
             }
         };
