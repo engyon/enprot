@@ -108,16 +108,36 @@ pub struct CryptoConfig {
     pub pbkdf_cache: Option<PBKDFCache>,
 }
 
+/// Per-invocation mutable state: stuff that changes during a parse
+/// or transform pass. Extracted from `ParseOps` to make the
+/// runtime-vs-config distinction visible at the type level
+/// (TODO.finalize/35).
+pub struct RuntimeState {
+    /// Current recursion depth (for max-depth enforcement).
+    pub level: usize,
+    /// File currently being processed (for error messages).
+    pub fname: String,
+}
+
+/// IO and observability configuration. Extracted from `ParseOps`
+/// alongside `RuntimeState` so the configuration/runtime split is
+/// clean: `RuntimeState` mutates per-file, `IoConfig` is set once
+/// at startup.
+pub struct IoConfig {
+    /// CAS directory: where `STORED` blobs live.
+    pub casdir: PathBuf,
+    /// Verbose output (caller asked for `-v`).
+    pub verbose: bool,
+}
+
 pub struct ParseOps {
     pub max_depth: usize,
     pub separators: Separators,
     pub transforms: Transforms,
     pub passwords: HashMap<String, String>,
-    pub fname: String,
-    pub casdir: PathBuf,
-    pub verbose: bool,
     pub crypto: CryptoConfig,
-    pub level: usize,
+    pub runtime: RuntimeState,
+    pub io: IoConfig,
 }
 
 impl ParseOps {
@@ -138,16 +158,20 @@ impl ParseOps {
                 decrypt: HashSet::new(),
             },
             passwords: HashMap::new(),
-            fname: String::new(),
-            casdir: Path::new("").to_path_buf(),
-            verbose: false,
-            level: 0,
             crypto: CryptoConfig {
                 policy,
                 pbkdfopts,
                 cipheropts,
                 rng: Some(rng),
                 pbkdf_cache: Some(Vec::new()),
+            },
+            runtime: RuntimeState {
+                level: 0,
+                fname: String::new(),
+            },
+            io: IoConfig {
+                casdir: Path::new("").to_path_buf(),
+                verbose: false,
             },
         })
     }
@@ -203,7 +227,7 @@ pub(crate) fn parse_error(
     msg: impl Into<String>,
 ) -> Error {
     Error::Parse {
-        file: paops.fname.clone(),
+        file: paops.runtime.fname.clone(),
         lineno,
         msg: msg.into() + "\n" + line,
     }
@@ -220,8 +244,14 @@ mod tests {
     fn parse_ept(ept_file: &str) -> (TextTree, ParseOps, tempfile::TempDir) {
         let casdir = tempdir().unwrap();
         let mut paops = ParseOps {
-            fname: ept_file.to_string(),
-            casdir: casdir.path().to_path_buf(),
+            runtime: RuntimeState {
+                fname: ept_file.to_string(),
+                level: 0,
+            },
+            io: IoConfig {
+                casdir: casdir.path().to_path_buf(),
+                verbose: false,
+            },
             ..ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap()
         };
         let tree = parse(BufReader::new(File::open(ept_file).unwrap()), &mut paops).unwrap();
@@ -284,7 +314,7 @@ mod tests {
     #[test]
     fn empty_command_line_is_skipped() {
         let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap();
-        paops.fname = "<test>".into();
+        paops.runtime.fname = "<test>".into();
         let input = "// <( )>\n";
         let tree = parse(BufReader::new(input.as_bytes()), &mut paops).unwrap();
         assert!(tree.is_empty());

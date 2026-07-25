@@ -35,7 +35,7 @@ use crate::password;
 use crate::prot;
 
 pub fn transform(text_in: &TextTree, paops: &mut crate::etree::ParseOps) -> Result<TextTree> {
-    if paops.max_depth != 0 && paops.level > paops.max_depth {
+    if paops.max_depth != 0 && paops.runtime.level > paops.max_depth {
         return Err(Error::Msg("Maximum recursion depth!".into()));
     }
     let mut out = Vec::with_capacity(text_in.len());
@@ -64,9 +64,9 @@ fn transform_begin_end(
     paops: &mut crate::etree::ParseOps,
 ) -> Result<TextNode> {
     if paops.transforms.encrypt.contains(keyw) {
-        paops.level += 1;
+        paops.runtime.level += 1;
         let block = transform(txt, paops)?;
-        paops.level -= 1;
+        paops.runtime.level -= 1;
 
         let pt = crate::etree::tree_to_blob(&block, paops)?;
         let pass = ensure_password(keyw, paops, true);
@@ -97,9 +97,9 @@ fn transform_begin_end(
     }
 
     if paops.transforms.store.contains(keyw) {
-        paops.level += 1;
+        paops.runtime.level += 1;
         let block = transform(txt, paops)?;
-        paops.level -= 1;
+        paops.runtime.level -= 1;
 
         let blob = crate::etree::tree_to_blob(&block, paops)?;
         let hexhash = cas::save(blob, paops)?;
@@ -109,9 +109,9 @@ fn transform_begin_end(
         });
     };
 
-    paops.level += 1;
+    paops.runtime.level += 1;
     let block = transform(txt, paops)?;
-    paops.level -= 1;
+    paops.runtime.level -= 1;
     Ok(TextNode::BeginEnd {
         keyw: keyw.to_string(),
         txt: block,
@@ -150,9 +150,9 @@ fn transform_encrypted(
         };
 
         let mut block = crate::etree::blob_to_tree(pt, "decrypted".to_string(), paops)?;
-        paops.level += 1;
+        paops.runtime.level += 1;
         block = transform(&block, paops)?;
-        paops.level -= 1;
+        paops.runtime.level -= 1;
         return Ok(TextNode::BeginEnd {
             keyw: keyw.to_string(),
             txt: block,
@@ -201,9 +201,9 @@ fn transform_stored(keyw: &str, cas: &str, paops: &mut crate::etree::ParseOps) -
     if paops.transforms.fetch.contains(keyw) {
         let blob = cas::load(cas, paops)?;
         let mut block = crate::etree::blob_to_tree(blob, cas.to_string(), paops)?;
-        paops.level += 1;
+        paops.runtime.level += 1;
         block = transform(&block, paops)?;
-        paops.level -= 1;
+        paops.runtime.level -= 1;
         return Ok(TextNode::BeginEnd {
             keyw: keyw.to_string(),
             txt: block,

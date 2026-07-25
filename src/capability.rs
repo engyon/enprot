@@ -187,7 +187,7 @@ impl CapabilitySet {
     /// [`CapabilitySet::with_verifier`] to add them.
     pub fn from_paops(paops: &ParseOps) -> Self {
         let mut s = Self::viewing();
-        if Path::new(&paops.casdir).is_dir() {
+        if Path::new(&paops.io.casdir).is_dir() {
             s.0.insert(Capability::Reader);
         }
         for word in paops.passwords.keys() {
@@ -311,7 +311,7 @@ mod tests {
     fn reader_added_when_casdir_exists() {
         let tmp = tempfile::tempdir().unwrap();
         let mut paops = empty_paops();
-        paops.casdir = tmp.path().to_path_buf();
+        paops.io.casdir = tmp.path().to_path_buf();
         let caps = CapabilitySet::from_paops(&paops);
         assert!(caps.contains(&Capability::Reader));
     }
@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn reader_not_added_when_casdir_missing() {
         let mut paops = empty_paops();
-        paops.casdir = "/nonexistent/path/that/does/not/exist".into();
+        paops.io.casdir = "/nonexistent/path/that/does/not/exist".into();
         let caps = CapabilitySet::from_paops(&paops);
         assert!(!caps.contains(&Capability::Reader));
     }

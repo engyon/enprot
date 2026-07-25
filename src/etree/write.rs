@@ -44,9 +44,9 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                     "{} BEGIN {} {}",
                     paops.separators.left, keyw, paops.separators.right
                 )?;
-                paops.level += 1;
+                paops.runtime.level += 1;
                 tree_write(outw, txt, paops)?;
-                paops.level -= 1;
+                paops.runtime.level -= 1;
                 writeln!(
                     outw,
                     "{} END {} {}",
@@ -70,9 +70,9 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                         write!(outw, " {}:{}", key, value)?;
                     }
                     writeln!(outw, " {}", paops.separators.right)?;
-                    paops.level += 1;
+                    paops.runtime.level += 1;
                     tree_write(outw, txt, paops)?;
-                    paops.level -= 1;
+                    paops.runtime.level -= 1;
                     writeln!(
                         outw,
                         "{} END {} {}",

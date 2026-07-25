@@ -502,14 +502,14 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
     };
 
     if let Some(dir) = common.casdir.clone() {
-        paops.casdir = dir;
+        paops.io.casdir = dir;
     } else if Path::new("cas").is_dir() {
-        paops.casdir = Path::new("cas").to_path_buf();
+        paops.io.casdir = Path::new("cas").to_path_buf();
     } else {
-        paops.casdir = Path::new(".").to_path_buf();
+        paops.io.casdir = Path::new(".").to_path_buf();
     }
 
-    paops.verbose = common.verbose && !common.quiet;
+    paops.io.verbose = common.verbose && !common.quiet;
     paops.max_depth = common.max_depth;
     let (left, right) = resolve_separators(&common);
     paops.separators.left = left;
@@ -577,12 +577,12 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
         }
     }
 
-    if paops.verbose {
+    if paops.io.verbose {
         eprintln!(
             "LEFT_SEP='{}' RIGHT_SEP='{}' casdir = '{}'",
             paops.separators.left,
             paops.separators.right,
-            paops.casdir.display(),
+            paops.io.casdir.display(),
         );
     }
 
@@ -650,7 +650,7 @@ fn join_with_basename(dir: &Path, input: &str) -> String {
 }
 
 fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Result<()> {
-    if paops.verbose {
+    if paops.io.verbose {
         eprintln!("Reading {}", path_in);
     }
 
@@ -668,7 +668,7 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
         }
     };
 
-    paops.fname = if path_in == "-" {
+    paops.runtime.fname = if path_in == "-" {
         "<stdin>".to_string()
     } else {
         path_in.to_string()
@@ -677,13 +677,13 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
     let tree_in = etree::parse(reader_in, paops)
         .map_err(|e| Error::Msg(format!("{} in {}, aborting.", e, path_in)))?;
 
-    if paops.verbose {
+    if paops.io.verbose {
         eprintln!("Transforming {}", path_in);
     }
     let tree_out = etree::transform(&tree_in, paops)
         .map_err(|e| Error::Msg(format!("{} in {}, aborting.", e, path_in)))?;
 
-    if paops.verbose {
+    if paops.io.verbose {
         eprintln!("Writing {}", path_out);
     }
 
@@ -729,7 +729,7 @@ fn list_files(common: CommonArgs, output: OutputArgs) -> Result<()> {
                 Error::Msg(format!("Failed to open {}: {}", path_in, e))
             })?))
         };
-        paops.fname = path_in.clone();
+        paops.runtime.fname = path_in.clone();
 
         let tree = etree::parse(reader, &mut paops)?;
 
@@ -800,7 +800,7 @@ fn verify_files(common: CommonArgs, output: OutputArgs) -> Result<()> {
 
     let mut issues = 0usize;
     for (path_in, _) in &files {
-        if paops.verbose {
+        if paops.io.verbose {
             eprintln!("Verifying {}", path_in);
         }
 
@@ -811,7 +811,7 @@ fn verify_files(common: CommonArgs, output: OutputArgs) -> Result<()> {
                 Error::Msg(format!("Failed to open {}: {}", path_in, e))
             })?))
         };
-        paops.fname = path_in.clone();
+        paops.runtime.fname = path_in.clone();
 
         let tree = match etree::parse(reader, &mut paops) {
             Ok(t) => t,
@@ -940,13 +940,13 @@ fn resolve_separators(common: &CommonArgs) -> (String, String) {
 /// Apply common args to ParseOps (shared by `run` and `verify_files`).
 fn apply_common(common: &CommonArgs, paops: &mut ParseOps) {
     if let Some(dir) = common.casdir.clone() {
-        paops.casdir = dir;
+        paops.io.casdir = dir;
     } else if Path::new("cas").is_dir() {
-        paops.casdir = Path::new("cas").to_path_buf();
+        paops.io.casdir = Path::new("cas").to_path_buf();
     } else {
-        paops.casdir = Path::new(".").to_path_buf();
+        paops.io.casdir = Path::new(".").to_path_buf();
     }
-    paops.verbose = common.verbose && !common.quiet;
+    paops.io.verbose = common.verbose && !common.quiet;
     paops.max_depth = common.max_depth;
     let (left, right) = resolve_separators(common);
     paops.separators.left = left;
