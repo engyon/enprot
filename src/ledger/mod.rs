@@ -38,7 +38,7 @@
 pub mod anchor;
 pub mod dag;
 
-pub use anchor::{Anchor, AnchorBuilder, SignedAnchor};
+pub use anchor::{Anchor, AnchorBuilder, AnchorHash, PayloadHash, SignedAnchor, SignerId};
 pub use dag::{AnchorDag, DagError, DagReport};
 
 use crate::error::Result;

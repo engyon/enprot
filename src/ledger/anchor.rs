@@ -327,6 +327,84 @@ impl SignedAnchor {
     pub fn id(&self) -> Result<AnchorHash> {
         self.anchor.id()
     }
+
+    /// Serialize to the wire-format `key:value` extfield map used by
+    /// the `CHAIN` directive (TODO.finalize/17). Round-trips through
+    /// [`SignedAnchor::from_extfields`].
+    ///
+    /// Field names: `parents` (comma-separated hex), `signer`
+    /// (`<alg>:<fp-hex>`), `ts` (RFC 3339, optional), `mut`
+    /// (description, optional), `payload` (hex), `sig` (hex).
+    pub fn to_extfields(&self) -> std::collections::BTreeMap<String, String> {
+        let mut m = std::collections::BTreeMap::new();
+        if !self.anchor.parents.is_empty() {
+            let joined = self
+                .anchor
+                .parents
+                .iter()
+                .map(|h| h.to_hex())
+                .collect::<Vec<_>>()
+                .join(",");
+            m.insert("parents".into(), joined);
+        }
+        m.insert("signer".into(), self.anchor.signer.to_string());
+        if let Some(ref ts) = self.anchor.timestamp {
+            m.insert("ts".into(), ts.clone());
+        }
+        if !self.anchor.mutations.is_empty() {
+            m.insert("mut".into(), self.anchor.mutations.clone());
+        }
+        m.insert("payload".into(), self.anchor.payload_hash.to_hex());
+        m.insert("sig".into(), hex::encode(&self.signature));
+        m
+    }
+
+    /// Parse a wire-format extfield map (as produced by the CHAIN
+    /// directive parser) into a [`SignedAnchor`]. Inverse of
+    /// [`SignedAnchor::to_extfields`].
+    ///
+    /// Required fields: `signer`, `payload`, `sig`. Optional: `ts`,
+    /// `mut`, `parents` (empty parents = genesis anchor).
+    pub fn from_extfields(extfields: &std::collections::BTreeMap<String, String>) -> Result<Self> {
+        let signer_str = extfields
+            .get("signer")
+            .ok_or_else(|| Error::msg("CHAIN missing required 'signer' field"))?;
+        let signer: SignerId = signer_str.parse()?;
+
+        let payload_str = extfields
+            .get("payload")
+            .ok_or_else(|| Error::msg("CHAIN missing required 'payload' field"))?;
+        let payload_hash = PayloadHash::from_hex(payload_str)?;
+
+        let sig_str = extfields
+            .get("sig")
+            .ok_or_else(|| Error::msg("CHAIN missing required 'sig' field"))?;
+        let signature = hex::decode(sig_str)?;
+
+        let parents: Vec<AnchorHash> = extfields
+            .get("parents")
+            .map(|s| {
+                s.split(',')
+                    .filter(|p| !p.is_empty())
+                    .map(AnchorHash::from_hex)
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+
+        let timestamp = extfields.get("ts").cloned();
+        let mutations = extfields.get("mut").cloned().unwrap_or_default();
+
+        let anchor = Anchor {
+            parents,
+            signer,
+            timestamp,
+            mutations,
+            payload_hash,
+        };
+
+        Ok(SignedAnchor { anchor, signature })
+    }
 }
 
 #[cfg(test)]
@@ -481,5 +559,74 @@ mod tests {
         assert_eq!(hex.len(), 64);
         let parsed = AnchorHash::from_hex(&hex).unwrap();
         assert_eq!(h, parsed);
+    }
+
+    #[test]
+    fn signed_anchor_extfields_round_trip() {
+        let (priv_pem, pub_pem) = ed25519_keypair();
+        let fp = KeyFp::from_pem(&pub_pem).unwrap();
+        let signer = SignerId::new(SigAlgKind::Ed25519, fp);
+
+        let parent = AnchorHash([0xaa; 32]);
+        let anchor = Anchor::builder(signer, PayloadHash([0xbb; 32]))
+            .with_parent(parent)
+            .with_timestamp("20260725T143000Z")
+            .with_mutations("encrypt+WORD")
+            .build();
+        let signed = anchor
+            .sign(&priv_pem, &pub_pem, SigAlgKind::Ed25519)
+            .unwrap();
+
+        let ext = signed.to_extfields();
+        let rebuilt = SignedAnchor::from_extfields(&ext).unwrap();
+        assert_eq!(rebuilt.anchor, signed.anchor);
+        assert_eq!(rebuilt.signature, signed.signature);
+    }
+
+    #[test]
+    fn from_extfields_rejects_missing_required() {
+        let mut m = std::collections::BTreeMap::new();
+        // Missing everything → error
+        assert!(SignedAnchor::from_extfields(&m).is_err());
+
+        // Missing sig only
+        m.insert(
+            "signer".into(),
+            "ed25519:0000000000000000000000000000000000000000000000000000000000000000".into(),
+        );
+        m.insert(
+            "payload".into(),
+            "1111111111111111111111111111111111111111111111111111111111111111".into(),
+        );
+        assert!(SignedAnchor::from_extfields(&m).is_err());
+    }
+
+    #[test]
+    fn from_extfields_rejects_malformed_hex() {
+        let mut m = std::collections::BTreeMap::new();
+        m.insert(
+            "signer".into(),
+            "ed25519:0000000000000000000000000000000000000000000000000000000000000000".into(),
+        );
+        m.insert("payload".into(), "not-hex!".into());
+        m.insert("sig".into(), "ab".into());
+        assert!(SignedAnchor::from_extfields(&m).is_err());
+    }
+
+    #[test]
+    fn genesis_anchor_round_trips_without_parents() {
+        let (priv_pem, pub_pem) = ed25519_keypair();
+        let fp = KeyFp::from_pem(&pub_pem).unwrap();
+        let signer = SignerId::new(SigAlgKind::Ed25519, fp);
+        let anchor = Anchor::builder(signer, PayloadHash([0x11; 32])).build();
+        let signed = anchor
+            .sign(&priv_pem, &pub_pem, SigAlgKind::Ed25519)
+            .unwrap();
+
+        let ext = signed.to_extfields();
+        // Genesis anchor: no parents field
+        assert!(!ext.contains_key("parents"));
+        let rebuilt = SignedAnchor::from_extfields(&ext).unwrap();
+        assert!(rebuilt.anchor.parents.is_empty());
     }
 }
