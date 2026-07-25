@@ -20,6 +20,7 @@ mod pipe;
 mod pki;
 mod policy;
 mod resolve;
+mod smudge_clean;
 mod snapshot_pin;
 mod store_fetch;
 mod verify_chain;
