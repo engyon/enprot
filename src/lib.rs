@@ -60,6 +60,31 @@ use std::path::{Path, PathBuf};
 use clap::builder::PossibleValuesParser;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
+/// Chain-anchor production config (TODO.finalize/17). Populated by
+/// `run()` when `--anchor --signer <priv>` are both supplied. Lives
+/// on `ParseOps` so the per-file pipeline can append anchors as it
+/// writes outputs.
+#[derive(Clone, Debug, Default)]
+pub struct AnchorConfig {
+    /// True iff `--anchor` was supplied AND `--signer <priv>` resolves.
+    pub enabled: bool,
+    /// Human-readable label of the operation that produced this anchor
+    /// (e.g., "encrypt", "store", "encrypt-store"). Informational;
+    /// appears in the `mut:` field of the wire-format CHAIN block.
+    pub operation: String,
+    /// WORDs the operation targeted. Joined into the `mut:` field.
+    pub words: Vec<String>,
+    /// Loaded once at startup; the privkey PEM that signs each anchor.
+    /// The pubkey is derived from this via Botan (`Privkey::pubkey()`).
+    pub signer_priv_pem: Option<String>,
+}
+
+impl AnchorConfig {
+    pub fn disabled() -> Self {
+        AnchorConfig::default()
+    }
+}
+
 use crate::etree::ParseOps;
 
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
@@ -323,6 +348,22 @@ pub struct CommonArgs {
     /// derivation) and decrypt (same derivation, repeated per file).
     #[arg(long = "pbkdf-disable-cache", global = true)]
     pub pbkdf_disable_cache: bool,
+
+    /// After running the transform, append a CHAIN block to the
+    /// output that signs the new file state. Requires `--signer`.
+    /// The resulting anchor can be verified later with
+    /// `enprot verify-chain --trust-root <pubkey>`.
+    ///
+    /// Mutually exclusive with `passthrough` (which by definition
+    /// performs no transformation and thus has nothing to anchor).
+    #[arg(long, global = true)]
+    pub anchor: bool,
+
+    /// Private key (PEM) used to sign chain anchors when `--anchor`
+    /// is set. The corresponding pubkey is derived automatically;
+    /// pass it to `verify-chain --trust-root` later.
+    #[arg(long, global = true, value_name = "PRIV.pem")]
+    pub signer: Option<PathBuf>,
 }
 
 /// Encrypt-specific cryptographic knobs.
@@ -511,6 +552,19 @@ enum Operation {
     EncryptStore,
 }
 
+impl Operation {
+    /// Human-readable label for chain-anchor `mut:` field.
+    fn label(self) -> &'static str {
+        match self {
+            Operation::Encrypt => "encrypt",
+            Operation::Decrypt => "decrypt",
+            Operation::Store => "store",
+            Operation::Fetch => "fetch",
+            Operation::EncryptStore => "encrypt-store",
+        }
+    }
+}
+
 fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operation)>) -> Result<()> {
     let explicit_policy = common.policy.clone();
     let mut policy_name = explicit_policy
@@ -635,6 +689,17 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
         &output.prefix,
         output.output_dir.as_deref(),
     );
+
+    // Populate the anchor context once. `passthrough` (op == None) is
+    // excluded because it performs no transformation and therefore
+    // has nothing meaningful to anchor.
+    paops.anchor = build_anchor_config(
+        common.anchor,
+        common.signer.as_deref(),
+        op.as_ref().map(|(_, k)| *k),
+        &output.word,
+    )?;
+
     for (path_in, path_out) in files {
         process_one_file(&path_in, &path_out, &mut paops)?;
     }
@@ -692,6 +757,30 @@ fn join_with_basename(dir: &Path, input: &str) -> String {
     dir.join(base).to_string_lossy().into_owned()
 }
 
+fn build_anchor_config(
+    anchor_flag: bool,
+    signer_path: Option<&Path>,
+    op_kind: Option<Operation>,
+    words: &[String],
+) -> Result<AnchorConfig> {
+    if !anchor_flag {
+        return Ok(AnchorConfig::disabled());
+    }
+    let signer_path =
+        signer_path.ok_or_else(|| Error::msg("--anchor requires --signer <PRIV.pem>"))?;
+    let priv_pem = fs::read_to_string(signer_path)?;
+    let op = op_kind
+        .map(|k| k.label())
+        .unwrap_or("passthrough")
+        .to_string();
+    Ok(AnchorConfig {
+        enabled: true,
+        operation: op,
+        words: words.to_vec(),
+        signer_priv_pem: Some(priv_pem),
+    })
+}
+
 fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Result<()> {
     if paops.io.verbose {
         eprintln!("Reading {}", path_in);
@@ -723,8 +812,15 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
     if paops.io.verbose {
         eprintln!("Transforming {}", path_in);
     }
-    let tree_out = etree::transform(&tree_in, paops)
+    let mut tree_out = etree::transform(&tree_in, paops)
         .map_err(|e| Error::Msg(format!("{} in {}, aborting.", e, path_in)))?;
+
+    // Optionally append a CHAIN block signing the new file state.
+    // Must happen BEFORE tree_write so the anchor lands in the output.
+    if paops.anchor.enabled {
+        let chain_node = build_chain_anchor_node(&tree_out, paops)?;
+        tree_out.push(chain_node);
+    }
 
     if paops.io.verbose {
         eprintln!("Writing {}", path_out);
@@ -746,6 +842,103 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
 
     etree::tree_write(&mut writer_out, &tree_out, paops)
         .map_err(|e| Error::Msg(format!("Write to {} failed: {}", path_out, e)))?;
+    Ok(())
+}
+
+/// Build a [`TextNode::Chain`] node that signs the post-transform
+/// `tree_out` state. The payload hash commits to the file content
+/// EXCLUDING any chain anchors — that way the anchor isn't
+/// self-referential and the hash is stable across re-anchoring.
+///
+/// parents: hashes of every CHAIN block already present in tree_out,
+/// in file order. This makes the new anchor a linear descendant of
+/// the most-recent prior anchor (TODO.finalize/17 DAG semantics;
+/// multiple-parents / merge anchors are a future extension).
+fn build_chain_anchor_node(
+    tree_out: &etree::TextTree,
+    paops: &mut ParseOps,
+) -> Result<etree::TextNode> {
+    use crate::ledger::{Anchor, PayloadHash, SignerId};
+    use crate::pki::SigAlgKind;
+    use std::collections::BTreeMap;
+
+    let priv_pem = paops
+        .anchor
+        .signer_priv_pem
+        .clone()
+        .ok_or_else(|| Error::msg("anchor config missing signer_priv_pem"))?;
+
+    // Derive pubkey from privkey; compute fingerprint.
+    let botan_priv = botan::Privkey::load_pem(&priv_pem).map_err(Error::botan)?;
+    let botan_pub = botan_priv.pubkey().map_err(Error::botan)?;
+    let pub_pem = botan_pub.pem_encode().map_err(Error::botan)?;
+    let fp = capability::KeyFp::from_pem(&pub_pem)?;
+
+    // payload_hash: SHA3-256 over the post-transform tree bytes,
+    // excluding any existing CHAIN nodes (so the hash commits to the
+    // "content layer", not to other anchors).
+    let content_only: etree::TextTree = tree_out
+        .iter()
+        .filter(|n| !matches!(n, etree::TextNode::Chain { .. }))
+        .cloned()
+        .collect();
+    let blob = etree::tree_to_blob(&content_only, paops)?;
+    let policy = crate::crypto::CryptoPolicyDefault {};
+    let payload_hex = crate::crypto::hexdigest("sha3-256", &blob, &policy)?;
+    let mut payload_arr = [0u8; 32];
+    payload_arr.copy_from_slice(&hex::decode(payload_hex)?);
+    let payload_hash = PayloadHash(payload_arr);
+
+    // parents: linear chain back through every existing CHAIN block.
+    // For v1 we take them in file order; the DAG module accepts
+    // multiple parents but linear is the simplest meaningful shape.
+    let parents = collect_existing_anchors(tree_out, paops)?;
+
+    // mutations: e.g., "encrypt+Agent_007,GEHEIM". URL-encoded space.
+    let words_joined = paops.anchor.words.join(",");
+    let mutations = if words_joined.is_empty() {
+        paops.anchor.operation.clone()
+    } else {
+        format!("{}+{}", paops.anchor.operation, words_joined)
+    };
+
+    let signer = SignerId::new(SigAlgKind::Ed25519, fp);
+    let anchor = Anchor::builder(signer, payload_hash)
+        .with_parents(parents)
+        .with_mutations(mutations)
+        .build();
+    let signed = anchor.sign(&priv_pem, &pub_pem, SigAlgKind::Ed25519)?;
+    let extfields: BTreeMap<String, String> = signed.to_extfields();
+    Ok(etree::TextNode::Chain { extfields })
+}
+
+/// Walk the tree and return the [`AnchorHash`](crate::ledger::AnchorHash)es
+/// of every existing [`TextNode::Chain`], in file order. Used by
+/// [`build_chain_anchor_node`] to populate the new anchor's `parents`.
+fn collect_existing_anchors(
+    tree: &etree::TextTree,
+    _paops: &ParseOps,
+) -> Result<Vec<crate::ledger::AnchorHash>> {
+    let mut out = Vec::new();
+    walk_for_chains(tree, &mut out)?;
+    Ok(out)
+}
+
+fn walk_for_chains(tree: &etree::TextTree, out: &mut Vec<crate::ledger::AnchorHash>) -> Result<()> {
+    for node in tree {
+        match node {
+            etree::TextNode::Chain { extfields } => {
+                let signed = crate::ledger::SignedAnchor::from_extfields(extfields)?;
+                if let Ok(h) = signed.id() {
+                    out.push(h);
+                }
+            }
+            etree::TextNode::BeginEnd { txt, .. } | etree::TextNode::Encrypted { txt, .. } => {
+                walk_for_chains(txt, out)?;
+            }
+            _ => {}
+        }
+    }
     Ok(())
 }
 

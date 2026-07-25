@@ -138,6 +138,10 @@ pub struct ParseOps {
     pub crypto: CryptoConfig,
     pub runtime: RuntimeState,
     pub io: IoConfig,
+    /// Chain-anchor production config. Default-disabled; populated
+    /// by `run()` when the caller passes `--anchor --signer <priv>`.
+    /// See TODO.finalize/17.
+    pub anchor: crate::AnchorConfig,
 }
 
 impl ParseOps {
@@ -173,6 +177,7 @@ impl ParseOps {
                 casdir: Path::new("").to_path_buf(),
                 verbose: false,
             },
+            anchor: crate::AnchorConfig::disabled(),
         })
     }
 }
