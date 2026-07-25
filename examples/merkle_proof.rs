@@ -27,7 +27,10 @@ fn main() -> enprot::Result<()> {
     let mut tampered = proof.clone();
     tampered.leaf = merkle::hash_leaf(b"wrong")?;
     let ok_tampered = merkle::verify_proof(&root, &tampered)?;
-    println!("\nTampered proof: {}", if ok_tampered { "VALID" } else { "INVALID" });
+    println!(
+        "\nTampered proof: {}",
+        if ok_tampered { "VALID" } else { "INVALID" }
+    );
 
     Ok(())
 }

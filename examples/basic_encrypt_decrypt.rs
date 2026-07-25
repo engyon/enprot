@@ -10,7 +10,10 @@ fn main() -> enprot::Result<()> {
     let ept = tempfile::tempdir()?.into_path().join("test.ept");
 
     // Write a fixture file
-    std::fs::write(&ept, "// <( BEGIN Secret )>\nplaintext\n// <( END Secret )>\n")?;
+    std::fs::write(
+        &ept,
+        "// <( BEGIN Secret )>\nplaintext\n// <( END Secret )>\n",
+    )?;
 
     // Encrypt
     {
@@ -19,10 +22,7 @@ fn main() -> enprot::Result<()> {
         paops.transforms.encrypt.insert("Secret".into());
         paops.passwords.insert("Secret".into(), "password".into());
         let content = std::fs::read_to_string(&ept)?;
-        let tree = enprot::etree::parse(
-            std::io::Cursor::new(content.into_bytes()),
-            &mut paops,
-        )?;
+        let tree = enprot::etree::parse(std::io::Cursor::new(content.into_bytes()), &mut paops)?;
         let tree = enprot::etree::transform(&tree, &mut paops)?;
         let mut out = Vec::new();
         enprot::etree::tree_write(&mut out, &tree, &mut paops)?;
@@ -37,10 +37,7 @@ fn main() -> enprot::Result<()> {
         paops.transforms.decrypt.insert("Secret".into());
         paops.passwords.insert("Secret".into(), "password".into());
         let content = std::fs::read_to_string(&ept)?;
-        let tree = enprot::etree::parse(
-            std::io::Cursor::new(content.into_bytes()),
-            &mut paops,
-        )?;
+        let tree = enprot::etree::parse(std::io::Cursor::new(content.into_bytes()), &mut paops)?;
         let tree = enprot::etree::transform(&tree, &mut paops)?;
         let mut out = Vec::new();
         enprot::etree::tree_write(&mut out, &tree, &mut paops)?;
