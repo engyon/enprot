@@ -35,6 +35,7 @@
 pub mod capability;
 mod cas;
 mod cipher;
+mod config;
 mod consts;
 pub mod crypto;
 mod error;
@@ -189,6 +190,24 @@ pub enum Command {
     /// Useful for verifying "what would I be able to do?" before running
     /// a real command. Output is one capability per line.
     Capabilities,
+    /// Write a commented TOML template to `.enprot.toml` (or, with
+    /// `--global`, to `~/.config/enprot/config.toml`). Refuses to
+    /// overwrite an existing file. See TODO.roadmap/40.
+    Init(InitSubcmd),
+}
+
+/// `init` subcommand: scaffold a commented TOML config the user can
+/// edit in place.
+#[derive(Args)]
+pub struct InitSubcmd {
+    /// Write to `~/.config/enprot/config.toml` instead of `./.enprot.toml`.
+    #[arg(long)]
+    pub global: bool,
+
+    /// Overwrite an existing file. Off by default to prevent stomping
+    /// hand-edited config.
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Encrypt subcommand: encrypt-specific options plus the shared output
@@ -560,7 +579,14 @@ where
     // <( END AUTHOR )>
 
     let cli = Cli::parse_from(args);
-    let common = cli.common;
+    // `init` is the one subcommand that does NOT load config — it
+    // writes a fresh template, so applying existing config would be
+    // noise. Dispatch it before the layered-load step below.
+    if let Command::Init(a) = cli.command {
+        return init_config(a);
+    }
+    let mut common = cli.common;
+    common = apply_config(common)?;
     match cli.command {
         Command::Encrypt(a) => run(common, a.output, Some((a.encrypt, Operation::Encrypt))),
         Command::Decrypt(a) => run(
@@ -621,7 +647,64 @@ where
             }
             Ok(())
         }
+        // Init is dispatched at the top of app_main so it skips config
+        // loading entirely. The wildcard here keeps the match exhaustive.
+        Command::Init(_) => unreachable!("dispatched at top of app_main"),
     }
+}
+
+/// Load layered TOML config and fill in `Option<T>` fields on `common`
+/// where the user did not pass an explicit CLI flag. Built-in defaults
+/// (clap `default_value_t`) are treated as "not explicitly set" — they
+/// defer to config when present.
+fn apply_config(mut common: CommonArgs) -> Result<CommonArgs> {
+    let cfg = config::Config::load(&PathBuf::from("."))?;
+    if common.casdir.is_none() {
+        common.casdir = cfg.casdir.clone();
+    }
+    if common.policy.is_none() {
+        common.policy = cfg.policy.clone();
+    }
+    if common.defaults.is_none() {
+        common.defaults = cfg.defaults.clone();
+    }
+    if common.lang.is_none() {
+        common.lang = cfg.lang.clone();
+    }
+    if common.signer.is_none() {
+        common.signer = cfg.chain.signer.as_ref().map(PathBuf::from);
+    }
+    if cfg.chain.auto_anchor == Some(true) {
+        common.anchor = true;
+    }
+    if cfg.fips == Some(true) {
+        common.fips = true;
+    }
+    Ok(common)
+}
+
+/// `enprot init` implementation: write the commented template either
+/// to `.enprot.toml` in cwd or, with `--global`, to
+/// `~/.config/enprot/config.toml`. Refuses to overwrite unless `--force`.
+fn init_config(a: InitSubcmd) -> Result<()> {
+    let target = if a.global {
+        config::user_config_path()
+            .ok_or_else(|| Error::msg("could not resolve user config path (is $HOME set?)"))?
+    } else {
+        PathBuf::from(".enprot.toml")
+    };
+    if target.exists() && !a.force {
+        return Err(Error::msg(format!(
+            "{} already exists; pass --force to overwrite",
+            target.display()
+        )));
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&target, config::Config::template())?;
+    println!("wrote {}", target.display());
+    Ok(())
 }
 
 #[derive(Copy, Clone)]

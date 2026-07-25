@@ -4,6 +4,7 @@ mod capabilities;
 mod cas_default;
 mod chain_directive;
 mod cipher;
+mod config_file;
 mod deterministic;
 mod encrypt_decrypt;
 mod encrypt_store;
