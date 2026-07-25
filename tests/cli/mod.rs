@@ -8,6 +8,7 @@ mod encrypt_decrypt;
 mod encrypt_store;
 mod fingerprint;
 mod issue_15;
+mod json_output;
 mod misc;
 mod multi_file;
 mod pbkdf;

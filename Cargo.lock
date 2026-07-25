@@ -419,6 +419,7 @@ dependencies = [
  "predicates",
  "proptest",
  "rpassword",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror",
