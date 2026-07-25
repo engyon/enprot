@@ -61,10 +61,18 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use crate::etree::ParseOps;
 
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
+    // Invariant: callers route `name` through clap's `VALID_POLICIES`
+    // value_parser, so only "default" or "nist" reach here. Returning
+    // an `Err` would be incorrect — this function is infallible by
+    // contract; an unknown name indicates a programming error in the
+    // caller, not user input.
     match name {
         "default" => Box::new(crypto::CryptoPolicyDefault {}),
         "nist" => Box::new(crypto::CryptoPolicyNIST {}),
-        _ => unreachable!("clap value_parser restricts to VALID_POLICIES"),
+        other => panic!(
+            "make_policy: unknown policy '{}' (callers must validate via VALID_POLICIES)",
+            other
+        ),
     }
 }
 
