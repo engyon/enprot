@@ -40,6 +40,7 @@ pub mod crypto;
 mod error;
 pub mod etree;
 pub mod ledger;
+pub mod merkle;
 mod password;
 mod pbkdf;
 pub mod pki;
