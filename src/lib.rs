@@ -795,6 +795,16 @@ fn list_tree<W: Write>(tree: &etree::TextTree, depth: usize, out: &mut W) -> Res
                 )?;
             }
             etree::TextNode::Plain(_) | etree::TextNode::Data(_) => {}
+            etree::TextNode::Chain { extfields } => {
+                let signer = extfields.get("signer").map(|s| s.as_str()).unwrap_or("?");
+                let payload = extfields.get("payload").map(|s| s.as_str()).unwrap_or("?");
+                let short_payload = &payload[..payload.len().min(16)];
+                writeln!(
+                    out,
+                    "{}CHAIN     signer={}  payload={}…",
+                    indent, signer, short_payload
+                )?;
+            }
         }
     }
     Ok(())

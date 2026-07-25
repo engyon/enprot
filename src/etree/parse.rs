@@ -95,11 +95,12 @@ where
             }
             Command::End => parse_end(rest, &line, lineno, paops, &mut pstack, &mut text)?,
             Command::Stored => parse_stored(rest, &line, lineno, paops, &mut text)?,
-            // Reserved keywords (TODOs 17/19/25). Parser support lands
+            Command::Chain => parse_chain(rest, &line, lineno, paops, &mut text)?,
+            // Reserved keywords (TODOs 19/25). Parser support lands
             // in follow-up PRs; for now, encountering one is a clean
             // parse error so users know the directive exists but
             // isn't wired up yet.
-            Command::Chain | Command::Conflict | Command::Include => {
+            Command::Conflict | Command::Include => {
                 return Err(parse_error(
                     paops,
                     lineno,
@@ -374,5 +375,32 @@ fn parse_stored(
         keyw: cmd[0].to_owned(),
         cas: cmd[1].to_owned(),
     });
+    Ok(())
+}
+
+/// Parse a `CHAIN` directive line. All fields use the same
+/// `key:value` extfield format as `ENCRYPTED`; the resulting map
+/// becomes a [`TextNode::Chain`]. Required fields (`parents`,
+/// `signer`, `payload`, `sig`) are validated by the verifier
+/// (`verify-chain`, TODO.finalize/18), not here — the parser
+/// accepts anything that parses as extfields so unknown-future
+/// fields don't break old parsers.
+fn parse_chain(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &ParseOps,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    let extfields = parse_encrypted_extfields(cmd, paops, lineno, line)?;
+    if extfields.is_empty() {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "CHAIN needs at least one key:value field (parents / signer / payload / sig).",
+        ));
+    }
+    text.push(TextNode::Chain { extfields });
     Ok(())
 }

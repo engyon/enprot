@@ -1,0 +1,2 @@
+// <( CHAIN parents:575d69f5b0034279bc3ef164e94287e6366e9df76729895a302a66a8817cf306 signer:ed25519:9f3a7b1c4d5e6f8012345678abcdef0123456789abcdef0123456789abcdef01 ts:20260725T143000Z mut:encrypt+WORD%3DAgent_007 payload:7a4e9b2c1d5e3f8012345678abcdef0123456789abcdef0123456789abcdef01 sig:3045022100abcdef )>
+hello, this is a file with a chain anchor

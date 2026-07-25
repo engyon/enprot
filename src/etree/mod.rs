@@ -196,6 +196,21 @@ pub enum TextNode {
         keyw: String,
         txt: TextTree,
     },
+    /// Chain anchor (TODO.finalize/17). Single-line directive using
+    /// the same `key:value` extfield pattern as `Encrypted`. The
+    /// transform passes ignore `Chain` nodes — they're metadata
+    /// about file history, not content to encrypt/store/etc.
+    ///
+    /// Known extfields (others preserved for forward compatibility):
+    /// - `parents` — comma-separated SHA3-256 hex hashes of parent anchors
+    /// - `signer` — `<alg>:<fp-hex>` (e.g., `ed25519:9f3a7b…`)
+    /// - `ts` — compact RFC 3339 timestamp (`20260725T143000Z`); optional
+    /// - `mut` — human-readable mutation description; `+` for spaces; optional
+    /// - `payload` — SHA3-256 hex of the file-tree state at this anchor
+    /// - `sig` — hex-encoded signature over `parents || signer || ts || payload`
+    Chain {
+        extfields: BTreeMap<String, String>,
+    },
 }
 
 /// EPT directive types — one per recognized keyword in the markup.
