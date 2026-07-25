@@ -1041,6 +1041,9 @@ fn list_tree<W: Write>(tree: &etree::TextTree, depth: usize, out: &mut W) -> Res
                     indent, signer, short_payload
                 )?;
             }
+            etree::TextNode::Include { hash } => {
+                writeln!(out, "{}INCLUDE   {}…", indent, &hash[..hash.len().min(16)])?;
+            }
         }
     }
     Ok(())

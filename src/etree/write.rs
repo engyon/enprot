@@ -132,6 +132,16 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                 }
                 writeln!(outw, " {}", paops.separators.right)?;
             }
+            TextNode::Include { hash } => {
+                writeln!(
+                    outw,
+                    "{} {} {} {}",
+                    paops.separators.left,
+                    Directive::Include.keyword(),
+                    hash,
+                    paops.separators.right
+                )?;
+            }
         }
     }
     Ok(())
