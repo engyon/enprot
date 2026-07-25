@@ -2,6 +2,7 @@
 == Engyon: enprot
 
 image:https://github.com/engyon/enprot/actions/workflows/tests.yml/badge.svg["Build Status", link="https://github.com/engyon/enprot/actions?workflow=tests"]
+image:https://img.shields.io/badge/MSRV-1.85-blue["MSRV 1.85", link="https://blog.rust-lang.org/2025/02/20/Rust-1.85.0.html"]
 
 Enprot is a confidentiality processor for text and source code files.
 It lets you embed encrypted, stored, and authenticated segments directly

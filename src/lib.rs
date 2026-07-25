@@ -631,13 +631,13 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
                 Err(_) => false,
             });
     if fips {
-        if let Some(p) = explicit_policy.as_deref()
-            && p != "nist"
-        {
-            return Err(Error::Msg(format!(
-                "Policy setting of '{}' conflicts with --fips",
-                p
-            )));
+        if let Some(p) = explicit_policy.as_deref() {
+            if p != "nist" {
+                return Err(Error::Msg(format!(
+                    "Policy setting of '{}' conflicts with --fips",
+                    p
+                )));
+            }
         }
         policy_name = "nist".to_string();
     }
@@ -1189,13 +1189,13 @@ fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> 
                 Err(_) => false,
             });
     if fips {
-        if let Some(p) = explicit_policy.as_deref()
-            && p != "nist"
-        {
-            return Err(Error::Msg(format!(
-                "Policy setting of '{}' conflicts with --fips",
-                p
-            )));
+        if let Some(p) = explicit_policy.as_deref() {
+            if p != "nist" {
+                return Err(Error::Msg(format!(
+                    "Policy setting of '{}' conflicts with --fips",
+                    p
+                )));
+            }
         }
         policy_name = "nist".to_string();
     }
