@@ -51,6 +51,7 @@ pub mod pki;
 mod policy;
 pub mod prot;
 pub mod provider;
+pub mod resolve;
 pub mod utils;
 
 pub use error::{Error, Result};
@@ -202,6 +203,11 @@ pub enum Command {
     /// CONFLICT markers when both sides modified the same WORD region
     /// differently.
     MergeDriver(MergeDriverSubcmd),
+    /// Walk CONFLICT blocks in FILE and replace each one with the
+    /// chosen resolution (TODO.roadmap/44). The default mode is
+    /// `--interactive`; pass `--ours`/`--theirs`/`--both`/`--skip`
+    /// for non-interactive runs (e.g., CI).
+    Resolve(ResolveSubcmd),
 }
 
 /// `init` subcommand: scaffold a commented TOML config the user can
@@ -235,6 +241,21 @@ pub struct MergeDriverSubcmd {
     /// Working-tree path (`%P`); informational.
     #[arg(value_name = "PATH")]
     pub path: Option<PathBuf>,
+}
+
+/// `resolve` subcommand: clear CONFLICT markers by replacing each one
+/// with the chosen side. Modes: `--ours`, `--theirs`, `--both`,
+/// `--skip`, or `--interactive` (default).
+#[derive(Args)]
+pub struct ResolveSubcmd {
+    /// Resolution mode. One of: ours, theirs, both, skip, interactive.
+    /// Default: interactive.
+    #[arg(long, short = 'm', value_name = "MODE", default_value = "interactive")]
+    pub mode: String,
+
+    /// Input file. Resolved output is written back here in-place.
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
 }
 
 /// Encrypt subcommand: encrypt-specific options plus the shared output
@@ -624,6 +645,11 @@ where
     if let Command::MergeDriver(a) = cli.command {
         return run_merge_driver(a);
     }
+    // `resolve` needs to read the file but doesn't load config —
+    // dispatch directly so a malformed config doesn't block cleanup.
+    if let Command::Resolve(a) = cli.command {
+        return run_resolve(a);
+    }
     let mut common = cli.common;
     common = apply_config(common)?;
     match cli.command {
@@ -690,6 +716,7 @@ where
         // loading entirely. The wildcard here keeps the match exhaustive.
         Command::Init(_) => unreachable!("dispatched at top of app_main"),
         Command::MergeDriver(_) => unreachable!("dispatched at top of app_main"),
+        Command::Resolve(_) => unreachable!("dispatched at top of app_main"),
     }
 }
 
@@ -761,6 +788,29 @@ fn run_merge_driver(a: MergeDriverSubcmd) -> Result<()> {
             a.ours.display()
         );
     }
+    Ok(())
+}
+
+/// `resolve` entry point. Reads FILE, walks CONFLICT blocks, applies
+/// the chosen mode, writes the result back to FILE in-place.
+fn run_resolve(a: ResolveSubcmd) -> Result<()> {
+    use std::io::{BufReader, BufWriter, IsTerminal};
+    let mode = resolve::ResolveMode::from_cli_flag(&a.mode)?;
+    if matches!(mode, resolve::ResolveMode::Interactive) && !std::io::stdin().is_terminal() {
+        return Err(Error::msg(
+            "resolve --interactive requires a TTY (pass --mode ours/theirs/both/skip for non-interactive runs)",
+        ));
+    }
+
+    let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
+    let mut paops = ParseOps::new(policy)?;
+    paops.runtime.fname = a.file.display().to_string();
+    let f = File::open(&a.file)?;
+    let tree = etree::parse(BufReader::new(f), &mut paops)?;
+    let (resolved, n) = resolve::resolve_tree(&tree, mode)?;
+    let out = File::create(&a.file)?;
+    etree::tree_write(&mut BufWriter::new(out), &resolved, &mut paops)?;
+    eprintln!("resolve: cleared {} conflict(s) in {}", n, a.file.display());
     Ok(())
 }
 

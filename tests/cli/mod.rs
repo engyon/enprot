@@ -19,6 +19,7 @@ mod pbkdf;
 mod pipe;
 mod pki;
 mod policy;
+mod resolve;
 mod snapshot_pin;
 mod store_fetch;
 mod verify_chain;
