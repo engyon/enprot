@@ -42,28 +42,34 @@ pub fn transform(text_in: &TextTree, paops: &mut crate::etree::ParseOps) -> Resu
     for node in text_in {
         let new_node = match node {
             TextNode::Plain(_) | TextNode::Data(_) => node.clone(),
-            TextNode::BeginEnd { .. } => transform_begin_end(node, paops)?,
-            TextNode::Encrypted { .. } => transform_encrypted(node, paops)?,
-            TextNode::Stored { .. } => transform_stored(node, paops)?,
+            TextNode::BeginEnd { keyw, txt } => transform_begin_end(keyw, txt, paops)?,
+            TextNode::Encrypted {
+                keyw,
+                txt,
+                extfields,
+            } => transform_encrypted(keyw, txt, extfields, paops)?,
+            TextNode::Stored { keyw, cas } => transform_stored(keyw, cas, paops)?,
         };
         out.push(new_node);
     }
     Ok(out)
 }
 
-fn transform_begin_end(node: &TextNode, paops: &mut crate::etree::ParseOps) -> Result<TextNode> {
-    let (keyw, txt) = match node {
-        TextNode::BeginEnd { keyw, txt } => (keyw.clone(), txt.clone()),
-        _ => unreachable!(),
-    };
-
-    if paops.transforms.encrypt.contains(&keyw) {
+/// Transform a `BeginEnd` segment. Takes the variant's fields
+/// directly (not the whole `TextNode`) so the type system enforces
+/// the variant — no runtime check or `unreachable!`.
+fn transform_begin_end(
+    keyw: &str,
+    txt: &TextTree,
+    paops: &mut crate::etree::ParseOps,
+) -> Result<TextNode> {
+    if paops.transforms.encrypt.contains(keyw) {
         paops.level += 1;
-        let block = transform(&txt, paops)?;
+        let block = transform(txt, paops)?;
         paops.level -= 1;
 
         let pt = crate::etree::tree_to_blob(&block, paops)?;
-        let pass = ensure_password(&keyw, paops, true);
+        let pass = ensure_password(keyw, paops, true);
         let (ct, extfields) = prot::encrypt(
             pt,
             &pass,
@@ -74,7 +80,7 @@ fn transform_begin_end(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
             &*paops.crypto.policy,
         )?;
 
-        let inner = if paops.transforms.store.contains(&keyw) {
+        let inner = if paops.transforms.store.contains(keyw) {
             let hexhash = cas::save(ct, paops)?;
             vec![TextNode::Stored {
                 keyw: "ct".to_string(),
@@ -84,46 +90,50 @@ fn transform_begin_end(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
             vec![TextNode::Data(ct)]
         };
         return Ok(TextNode::Encrypted {
-            keyw,
+            keyw: keyw.to_string(),
             txt: inner,
             extfields,
         });
     }
 
-    if paops.transforms.store.contains(&keyw) {
+    if paops.transforms.store.contains(keyw) {
         paops.level += 1;
-        let block = transform(&txt, paops)?;
+        let block = transform(txt, paops)?;
         paops.level -= 1;
 
         let blob = crate::etree::tree_to_blob(&block, paops)?;
         let hexhash = cas::save(blob, paops)?;
-        return Ok(TextNode::Stored { keyw, cas: hexhash });
+        return Ok(TextNode::Stored {
+            keyw: keyw.to_string(),
+            cas: hexhash,
+        });
     };
 
     paops.level += 1;
-    let block = transform(&txt, paops)?;
+    let block = transform(txt, paops)?;
     paops.level -= 1;
-    Ok(TextNode::BeginEnd { keyw, txt: block })
+    Ok(TextNode::BeginEnd {
+        keyw: keyw.to_string(),
+        txt: block,
+    })
 }
 
-fn transform_encrypted(node: &TextNode, paops: &mut crate::etree::ParseOps) -> Result<TextNode> {
-    let (keyw, txt, extfields) = match node {
-        TextNode::Encrypted {
-            keyw,
-            txt,
-            extfields,
-        } => (keyw.clone(), txt.clone(), extfields.clone()),
-        _ => unreachable!(),
-    };
-
-    if paops.transforms.decrypt.contains(&keyw) {
+/// Transform an `Encrypted` segment. Takes the variant's fields
+/// directly; see `transform_begin_end` for rationale.
+fn transform_encrypted(
+    keyw: &str,
+    txt: &TextTree,
+    extfields: &std::collections::BTreeMap<String, String>,
+    paops: &mut crate::etree::ParseOps,
+) -> Result<TextNode> {
+    if paops.transforms.decrypt.contains(keyw) {
         let ct = match &txt[0] {
             TextNode::Data(data) => data.clone(),
             TextNode::Stored { cas: hexhash, .. } => cas::load(hexhash, paops)?,
             _ => return Err(Error::Msg("No data in ENCRYPTED.".into())),
         };
 
-        let pass = ensure_password(&keyw, paops, false);
+        let pass = ensure_password(keyw, paops, false);
         let pt = match prot::decrypt(
             ct,
             &pass,
@@ -143,17 +153,20 @@ fn transform_encrypted(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         paops.level += 1;
         block = transform(&block, paops)?;
         paops.level -= 1;
-        return Ok(TextNode::BeginEnd { keyw, txt: block });
+        return Ok(TextNode::BeginEnd {
+            keyw: keyw.to_string(),
+            txt: block,
+        });
     }
 
-    if paops.transforms.store.contains(&keyw) {
+    if paops.transforms.store.contains(keyw) {
         let hexhash = match &txt[0] {
             TextNode::Data(data) => cas::save(data.clone(), paops)?,
             TextNode::Stored { cas: hexhash, .. } => hexhash.clone(),
             _ => return Err(Error::Msg("No data in ENCRYPTED.".into())),
         };
         return Ok(TextNode::Encrypted {
-            keyw,
+            keyw: keyw.to_string(),
             txt: vec![TextNode::Stored {
                 keyw: "ct".to_string(),
                 cas: hexhash,
@@ -162,38 +175,45 @@ fn transform_encrypted(node: &TextNode, paops: &mut crate::etree::ParseOps) -> R
         });
     }
 
-    if paops.transforms.fetch.contains(&keyw) {
+    if paops.transforms.fetch.contains(keyw) {
         let ct = match &txt[0] {
             TextNode::Data(data) => data.clone(),
             TextNode::Stored { cas: hexhash, .. } => cas::load(hexhash, paops)?,
             _ => return Err(Error::Msg("No data in ENCRYPTED.".into())),
         };
         return Ok(TextNode::Encrypted {
-            keyw,
+            keyw: keyw.to_string(),
             txt: vec![TextNode::Data(ct)],
             extfields: std::collections::BTreeMap::new(),
         });
     }
 
-    Ok(node.clone())
+    // Caller already destructured; re-construct from references.
+    Ok(TextNode::Encrypted {
+        keyw: keyw.to_string(),
+        txt: txt.clone(),
+        extfields: extfields.clone(),
+    })
 }
 
-fn transform_stored(node: &TextNode, paops: &mut crate::etree::ParseOps) -> Result<TextNode> {
-    let (keyw, cas) = match node {
-        TextNode::Stored { keyw, cas } => (keyw.clone(), cas.clone()),
-        _ => unreachable!(),
-    };
-
-    if paops.transforms.fetch.contains(&keyw) {
-        let blob = cas::load(&cas, paops)?;
-        let mut block = crate::etree::blob_to_tree(blob, cas.clone(), paops)?;
+/// Transform a `Stored` pointer. Takes the variant's fields directly.
+fn transform_stored(keyw: &str, cas: &str, paops: &mut crate::etree::ParseOps) -> Result<TextNode> {
+    if paops.transforms.fetch.contains(keyw) {
+        let blob = cas::load(cas, paops)?;
+        let mut block = crate::etree::blob_to_tree(blob, cas.to_string(), paops)?;
         paops.level += 1;
         block = transform(&block, paops)?;
         paops.level -= 1;
-        return Ok(TextNode::BeginEnd { keyw, txt: block });
+        return Ok(TextNode::BeginEnd {
+            keyw: keyw.to_string(),
+            txt: block,
+        });
     }
 
-    Ok(node.clone())
+    Ok(TextNode::Stored {
+        keyw: keyw.to_string(),
+        cas: cas.to_string(),
+    })
 }
 
 fn ensure_password(keyw: &str, paops: &mut crate::etree::ParseOps, repeat: bool) -> String {
