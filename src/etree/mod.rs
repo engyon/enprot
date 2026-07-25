@@ -174,27 +174,76 @@ pub enum TextNode {
     },
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Command {
+/// EPT directive types — one per recognized keyword in the markup.
+///
+/// Single source of truth for directive names: the parser uses
+/// [`Directive::from_keyword`] to dispatch, the writer uses
+/// [`Directive::keyword`] to serialize. Adding a new directive type
+/// (e.g., `CHAIN`, `CONFLICT`, `INCLUDE`) is one variant plus one
+/// match arm in each consumer — OCP-friendly.
+///
+/// Variants not yet wired into the parser (`Chain`, `Conflict`,
+/// `Include`) are present so that downstream code (chain anchors,
+/// merge driver, cross-file DAG) can reference them without touching
+/// this enum again.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Directive {
     Begin,
     End,
     Data,
     Stored,
     Encrypted,
+    /// Chain anchor (TODO.finalize/17). Specified; parser integration
+    /// lands in a follow-up PR.
+    Chain,
+    /// Conflict marker (TODO.finalize/19). Used by the merge driver.
+    Conflict,
+    /// Cross-file DAG reference (TODO.finalize/25).
+    Include,
 }
 
-impl Command {
-    pub(crate) fn from_keyword(kw: &str) -> Option<Self> {
+impl Directive {
+    /// The wire-format keyword (`"BEGIN"`, `"END"`, etc.). Stable,
+    /// uppercase, never localized.
+    pub fn keyword(self) -> &'static str {
+        match self {
+            Directive::Begin => "BEGIN",
+            Directive::End => "END",
+            Directive::Data => "DATA",
+            Directive::Stored => "STORED",
+            Directive::Encrypted => "ENCRYPTED",
+            Directive::Chain => "CHAIN",
+            Directive::Conflict => "CONFLICT",
+            Directive::Include => "INCLUDE",
+        }
+    }
+
+    /// Parse a keyword string into a `Directive`. Returns `None` for
+    /// unrecognized keywords (caller decides whether that's an error
+    /// or a pass-through line).
+    pub fn from_keyword(kw: &str) -> Option<Self> {
         match kw {
-            "BEGIN" => Some(Self::Begin),
-            "END" => Some(Self::End),
-            "DATA" => Some(Self::Data),
-            "STORED" => Some(Self::Stored),
-            "ENCRYPTED" => Some(Self::Encrypted),
+            "BEGIN" => Some(Directive::Begin),
+            "END" => Some(Directive::End),
+            "DATA" => Some(Directive::Data),
+            "STORED" => Some(Directive::Stored),
+            "ENCRYPTED" => Some(Directive::Encrypted),
+            // Chain/Conflict/Include are reserved keywords — the
+            // parser doesn't accept them yet (TODOs 17/19/25), but
+            // reserving them now prevents future files from using
+            // them as WORD identifiers by accident.
+            "CHAIN" => Some(Directive::Chain),
+            "CONFLICT" => Some(Directive::Conflict),
+            "INCLUDE" => Some(Directive::Include),
             _ => None,
         }
     }
 }
+
+/// Backwards-compat alias. Earlier code referred to this as `Command`;
+/// the rename to `Directive` reflects that it's the wire-format token,
+/// not a parser-internal dispatch label.
+pub(crate) type Command = Directive;
 
 pub(crate) fn parse_error(
     paops: &ParseOps,
@@ -279,6 +328,47 @@ mod tests {
         assert_eq!(Command::from_keyword("STORED"), Some(Command::Stored));
         assert_eq!(Command::from_keyword("ENCRYPTED"), Some(Command::Encrypted));
         assert_eq!(Command::from_keyword("garbage"), None);
+    }
+
+    #[test]
+    fn directive_round_trips_through_keyword() {
+        // Every variant's keyword() must round-trip through from_keyword().
+        // Catches typos and case mismatches early.
+        for d in [
+            Directive::Begin,
+            Directive::End,
+            Directive::Data,
+            Directive::Stored,
+            Directive::Encrypted,
+            Directive::Chain,
+            Directive::Conflict,
+            Directive::Include,
+        ] {
+            let kw = d.keyword();
+            assert_eq!(Directive::from_keyword(kw), Some(d));
+        }
+    }
+
+    #[test]
+    fn directive_keywords_are_uppercase() {
+        // Wire-format stability: keywords are always uppercase ASCII.
+        for d in [
+            Directive::Begin,
+            Directive::End,
+            Directive::Data,
+            Directive::Stored,
+            Directive::Encrypted,
+            Directive::Chain,
+            Directive::Conflict,
+            Directive::Include,
+        ] {
+            let kw = d.keyword();
+            assert!(
+                kw.chars().all(|c| c.is_ascii_uppercase()),
+                "keyword '{}' must be uppercase ASCII",
+                kw
+            );
+        }
     }
 
     #[test]

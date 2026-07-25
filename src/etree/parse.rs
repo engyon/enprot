@@ -95,6 +95,21 @@ where
             }
             Command::End => parse_end(rest, &line, lineno, paops, &mut pstack, &mut text)?,
             Command::Stored => parse_stored(rest, &line, lineno, paops, &mut text)?,
+            // Reserved keywords (TODOs 17/19/25). Parser support lands
+            // in follow-up PRs; for now, encountering one is a clean
+            // parse error so users know the directive exists but
+            // isn't wired up yet.
+            Command::Chain | Command::Conflict | Command::Include => {
+                return Err(parse_error(
+                    paops,
+                    lineno,
+                    &line,
+                    format!(
+                        "{:?} directive not yet implemented (reserved keyword)",
+                        parsed
+                    ),
+                ));
+            }
         }
     }
 
