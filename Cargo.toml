@@ -3,16 +3,19 @@ name        = "enprot"
 version     = "0.4.0"
 authors     = ["Ribose Inc. <open.source@ribose.com>"]
 license     = "BSD-2-Clause"
-description = "enprot command line tool for Engyon"
+description = "Engyon Protected Text (EPT) — confidentiality processor and capability ledger"
 repository  = "https://github.com/engyon/enprot"
 homepage    = "https://github.com/engyon/enprot"
-documentation = "https://github.com/engyon/enprot/blob/main/README.adoc"
+documentation = "https://docs.rs/enprot"
 readme      = "README.adoc"
 categories  = ["command-line-utilities", "cryptography"]
-keywords    = ["encryption", "engyon", "ept", "botan"]
+keywords    = ["encryption", "engyon", "ept", "botan", "blockchain"]
 edition     = "2024"
 rust-version = "1.85"
 autotests   = false
+
+[package.metadata.docs.rs]
+all-features = true
 
 [[bin]]
 name = "enprot"
