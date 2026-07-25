@@ -33,6 +33,7 @@
 //! `crypto` and `utils` modules are re-exported for integration tests.
 
 pub mod capability;
+mod cappolicy;
 mod cas;
 mod cipher;
 mod config;
@@ -448,6 +449,13 @@ pub struct CommonArgs {
     /// self-contained single-file output.
     #[arg(long, global = true)]
     pub inline: bool,
+
+    /// Path to a capability policy TOML file (TODO.roadmap/46). When
+    /// set, `verify-chain` checks trust roots and timestamp
+    /// monotonicity, and `encrypt` refuses to write blocks for a WORD
+    /// whose required capability the caller doesn't hold.
+    #[arg(long, global = true, value_name = "PATH")]
+    pub policy_file: Option<PathBuf>,
 }
 
 /// Encrypt-specific cryptographic knobs.
@@ -784,6 +792,23 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
     // Apply the operation: populate the transform sets on paops. `op == None`
     // means Passthrough — leave the sets empty.
     if let Some((enc_opts, op_kind)) = op.as_ref() {
+        // Capability policy check (TODO.roadmap/46): when encrypting,
+        // refuse to write blocks for a WORD whose required capability
+        // the caller doesn't hold. Decrypt/store/fetch don't gate on
+        // per-WORD capability — they're not capability-changing ops.
+        if matches!(op_kind, Operation::Encrypt | Operation::EncryptStore) {
+            if let Some(p) = common
+                .policy_file
+                .as_ref()
+                .map(|p| cappolicy::CapPolicy::load_file(p))
+                .transpose()?
+            {
+                let held = capability::CapabilitySet::from_paops(&paops);
+                for w in &output.word {
+                    p.check_word_capability(w, &held)?;
+                }
+            }
+        }
         for w in &output.word {
             match op_kind {
                 Operation::Encrypt => {
@@ -1765,6 +1790,12 @@ fn verify_chain_files(common: CommonArgs, a: VerifyChainSubcmd) -> Result<()> {
         trust.insert(fp.to_hex(), pem);
     }
 
+    let cap_policy = common
+        .policy_file
+        .as_ref()
+        .map(|p| cappolicy::CapPolicy::load_file(p))
+        .transpose()?;
+
     let policy = resolve_policy(&common)?;
     let mut paops = ParseOps::new(policy)?;
     apply_common(&common, &mut paops);
@@ -1772,7 +1803,7 @@ fn verify_chain_files(common: CommonArgs, a: VerifyChainSubcmd) -> Result<()> {
     let mut json_reports: Vec<output::VerifyChainFileReport> = Vec::new();
     let mut any_failure = false;
     for path_in in &a.files {
-        let result = verify_chain_one_file(path_in, &mut paops, &trust);
+        let result = verify_chain_one_file(path_in, &mut paops, &trust, cap_policy.as_ref());
         match common.format {
             output::OutputFormat::Text => match &result {
                 Ok(()) => println!("OK    {}", path_in),
@@ -1916,6 +1947,7 @@ fn verify_chain_one_file(
     path_in: &str,
     paops: &mut ParseOps,
     trust: &HashMap<String, String>,
+    cap_policy: Option<&cappolicy::CapPolicy>,
 ) -> Result<()> {
     paops.runtime.fname = path_in.into();
     let reader: Box<dyn BufRead> = if path_in == "-" {
@@ -1938,6 +1970,22 @@ fn verify_chain_one_file(
             if let Some(ref e) = r.error {
                 errors.push(format!("{}: {}", r.id, e));
             }
+        }
+        if let Some(p) = cap_policy {
+            if let Some(signed) = dag.get(&r.id) {
+                if !p.trust_root_allows(&signed.anchor.signer) {
+                    errors.push(format!(
+                        "{}: signer {} not in policy trust_roots",
+                        r.id, signed.anchor.signer
+                    ));
+                }
+            }
+        }
+    }
+
+    if let Some(p) = cap_policy {
+        if p.chain.require_monotonic_timestamps {
+            errors.extend(check_monotonic_timestamps(&dag));
         }
     }
 
@@ -1991,6 +2039,34 @@ fn verify_payload_hashes(tree: &etree::TextTree, paops: &mut ParseOps) -> Result
         prefix.push(node.clone());
     }
     Ok(errors)
+}
+
+/// Walks the DAG in insertion order and reports any anchor whose
+/// timestamp is strictly less than the maximum timestamp of its
+/// parents. Anchors without a timestamp are skipped (treated as
+/// not-monotonic-data). Empty timestamps on every anchor → no errors.
+fn check_monotonic_timestamps(dag: &ledger::AnchorDag) -> Vec<String> {
+    let mut errors = Vec::new();
+    for (id, signed) in dag.iter() {
+        let Some(child_ts) = signed.anchor.timestamp.as_ref() else {
+            continue;
+        };
+        for parent_id in &signed.anchor.parents {
+            let Some(parent) = dag.get(parent_id) else {
+                continue;
+            };
+            let Some(parent_ts) = parent.anchor.timestamp.as_ref() else {
+                continue;
+            };
+            if child_ts < parent_ts {
+                errors.push(format!(
+                    "{}: timestamp {} older than parent {} ({})",
+                    id, child_ts, parent_id, parent_ts
+                ));
+            }
+        }
+    }
+    errors
 }
 
 /// Walk a parsed tree and push every `TextNode::Chain` into the DAG.

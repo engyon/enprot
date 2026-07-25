@@ -1,5 +1,6 @@
 mod anchor_flag;
 mod audit_log;
+mod cap_policy;
 mod capabilities;
 mod cas_default;
 mod chain_directive;
