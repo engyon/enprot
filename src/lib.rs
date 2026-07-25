@@ -133,6 +133,11 @@ pub enum Command {
     /// against FILE using `--key`. Named `verify-sig` to avoid clashing
     /// with the existing `verify` subcommand, which checks EPT markup.
     VerifySig(VerifySigSubcmd),
+    /// Compute and print the SHA3-256 fingerprint of a PEM-encoded
+    /// pubkey. Useful for building `trust_roots` lists in policy
+    /// files (TODO.finalize/26) and for visually comparing two keys
+    /// for equality.
+    Fingerprint(FingerprintSubcmd),
     /// Print the capability set implied by the current flags (passwords,
     /// CAS dir, key files) and exit. No file transformation occurs.
     /// Useful for verifying "what would I be able to do?" before running
@@ -223,6 +228,17 @@ pub struct VerifySigSubcmd {
     /// Input file (omit to read stdin).
     #[arg(value_name = "FILE")]
     pub input: Option<PathBuf>,
+}
+
+/// `fingerprint` subcommand: print the SHA3-256 fingerprint of a
+/// PEM-encoded pubkey. Used to populate `trust_roots` lists in
+/// policy files (TODO.finalize/26) and to compare two keys for
+/// equality without parsing the full PEM.
+#[derive(Args)]
+pub struct FingerprintSubcmd {
+    /// Public key (PEM) to fingerprint.
+    #[arg(value_name = "PUB.pem")]
+    pub key: PathBuf,
 }
 
 /// Crypto-policy, separators, RNG source, password store. Defined at
@@ -445,6 +461,7 @@ where
         Command::Keygen(a) => pki_keygen(common, a),
         Command::Sign(a) => pki_sign(common, a),
         Command::VerifySig(a) => pki_verify_sig(common, a),
+        Command::Fingerprint(a) => pki_fingerprint(a),
         Command::Capabilities => {
             let policy = resolve_policy(&common)?;
             let mut paops = ParseOps::new(policy)?;
@@ -1028,6 +1045,13 @@ fn append_sig_ext(input: &Path) -> PathBuf {
         }
     }
     p
+}
+
+fn pki_fingerprint(a: FingerprintSubcmd) -> Result<()> {
+    let pem = fs::read_to_string(&a.key)?;
+    let fp = capability::KeyFp::from_pem(&pem)?;
+    println!("{}", fp);
+    Ok(())
 }
 
 fn read_file_or_stdin(path: Option<&Path>) -> Result<Vec<u8>> {

@@ -3,6 +3,7 @@ mod cipher;
 mod deterministic;
 mod encrypt_decrypt;
 mod encrypt_store;
+mod fingerprint;
 mod issue_15;
 mod misc;
 mod multi_file;
