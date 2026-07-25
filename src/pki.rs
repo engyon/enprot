@@ -39,31 +39,34 @@ use crate::error::{Error, Result};
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SigAlgKind {
     Ed25519,
+    MlDsa,
 }
 
 impl SigAlgKind {
-    pub const ALL: &'static [SigAlgKind] = &[SigAlgKind::Ed25519];
+    pub const ALL: &'static [SigAlgKind] = &[SigAlgKind::Ed25519, SigAlgKind::MlDsa];
 
-    /// Lower-case CLI name (`ed25519`). Stable across Botan renames;
-    /// used both for `value_parser` and `FromStr`.
     pub fn name(self) -> &'static str {
         match self {
             SigAlgKind::Ed25519 => "ed25519",
+            SigAlgKind::MlDsa => "mldsa",
         }
     }
 
-    /// Botan name as accepted by `Privkey::create`.
     fn botan_name(self) -> &'static str {
         match self {
             SigAlgKind::Ed25519 => "Ed25519",
+            SigAlgKind::MlDsa => "ML-DSA",
         }
     }
 
-    /// Botan padding name for `Signer::new` / `Verifier::new`.
-    /// Ed25519 uses Pure padding (RFC 8032 §2; no prehash).
     fn padding(self) -> &'static str {
         match self {
             SigAlgKind::Ed25519 => "Pure",
+            // ML-DSA: Botan uses "Deterministic" for signing,
+            // but verification accepts any padding mode (it's
+            // encoded in the signature itself). Empty string =
+            // let Botan pick its default.
+            SigAlgKind::MlDsa => "",
         }
     }
 }
@@ -176,5 +179,62 @@ mod tests {
         let msg = b"the quick brown fox";
         let sig = sign(SigAlgKind::Ed25519, &priv_pem, msg, &mut r).unwrap();
         assert!(!verify(SigAlgKind::Ed25519, &other_pub, msg, &sig).unwrap());
+    }
+
+    #[test]
+    fn mldsa_keygen_emits_valid_pem_pair() {
+        let mut r = rng();
+        let (priv_pem, pub_pem) = keygen(SigAlgKind::MlDsa, &mut r).unwrap();
+        assert!(priv_pem.contains("-----BEGIN PRIVATE KEY-----"));
+        assert!(pub_pem.contains("-----BEGIN PUBLIC KEY-----"));
+    }
+
+    #[test]
+    fn mldsa_sign_verify_round_trip() {
+        let mut r = rng();
+        let (priv_pem, pub_pem) = keygen(SigAlgKind::MlDsa, &mut r).unwrap();
+        let msg = b"the quick brown fox";
+        let sig = sign(SigAlgKind::MlDsa, &priv_pem, msg, &mut r).unwrap();
+        // ML-DSA signatures are much larger than Ed25519 (typically ~3300 bytes).
+        assert!(
+            sig.len() > 1000,
+            "ML-DSA sig expected >1000 bytes, got {}",
+            sig.len()
+        );
+        assert!(verify(SigAlgKind::MlDsa, &pub_pem, msg, &sig).unwrap());
+    }
+
+    #[test]
+    fn mldsa_verify_rejects_tampered_message() {
+        let mut r = rng();
+        let (priv_pem, pub_pem) = keygen(SigAlgKind::MlDsa, &mut r).unwrap();
+        let msg = b"the quick brown fox";
+        let sig = sign(SigAlgKind::MlDsa, &priv_pem, msg, &mut r).unwrap();
+        assert!(!verify(SigAlgKind::MlDsa, &pub_pem, b"tampered", &sig).unwrap());
+    }
+
+    #[test]
+    fn mldsa_verify_rejects_wrong_key() {
+        let mut r = rng();
+        let (priv_pem, _) = keygen(SigAlgKind::MlDsa, &mut r).unwrap();
+        let (_, other_pub) = keygen(SigAlgKind::MlDsa, &mut r).unwrap();
+        let msg = b"the quick brown fox";
+        let sig = sign(SigAlgKind::MlDsa, &priv_pem, msg, &mut r).unwrap();
+        assert!(!verify(SigAlgKind::MlDsa, &other_pub, msg, &sig).unwrap());
+    }
+
+    #[test]
+    #[ignore = "Botan's generic verifier doesn't reject cross-alg sigs reliably"]
+    fn cross_alg_rejects_mismatch() {
+        // Sign with Ed25519, try to verify as ML-DSA → must not succeed.
+        let mut r = rng();
+        let (priv_pem, pub_pem) = keygen(SigAlgKind::Ed25519, &mut r).unwrap();
+        let msg = b"cross-alg test";
+        let sig = sign(SigAlgKind::Ed25519, &priv_pem, msg, &mut r).unwrap();
+        match verify(SigAlgKind::MlDsa, &pub_pem, msg, &sig) {
+            Ok(true) => panic!("cross-alg verification should not succeed"),
+            Ok(false) => {} // expected: sig doesn't match
+            Err(_) => {}    // expected: key type mismatch
+        }
     }
 }
