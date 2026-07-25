@@ -7,7 +7,8 @@ use enprot::etree::ParseOps;
 
 fn main() -> enprot::Result<()> {
     let casdir = tempfile::tempdir()?;
-    let ept = tempfile::tempdir()?.into_path().join("test.ept");
+    let ept_dir = tempfile::tempdir()?;
+    let ept = ept_dir.path().join("test.ept");
 
     // Write a fixture file
     std::fs::write(
