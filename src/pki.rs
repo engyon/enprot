@@ -40,15 +40,34 @@ use crate::error::{Error, Result};
 pub enum SigAlgKind {
     Ed25519,
     MlDsa,
+    /// Composite Ed25519 + ML-DSA. Signs with both legs; verifies
+    /// both. A break in either leg alone doesn't compromise the
+    /// signature. See TODO.roadmap/31.
+    CompositeEd25519MlDsa,
 }
 
 impl SigAlgKind {
-    pub const ALL: &'static [SigAlgKind] = &[SigAlgKind::Ed25519, SigAlgKind::MlDsa];
+    pub const ALL: &'static [SigAlgKind] = &[
+        SigAlgKind::Ed25519,
+        SigAlgKind::MlDsa,
+        SigAlgKind::CompositeEd25519MlDsa,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             SigAlgKind::Ed25519 => "ed25519",
             SigAlgKind::MlDsa => "mldsa",
+            SigAlgKind::CompositeEd25519MlDsa => "composite-ed25519-mldsa",
+        }
+    }
+
+    /// The individual legs of a composite algorithm. For non-composite
+    /// algorithms, returns a single-element slice containing self.
+    pub fn legs(self) -> &'static [SigAlgKind] {
+        match self {
+            SigAlgKind::CompositeEd25519MlDsa => &[SigAlgKind::Ed25519, SigAlgKind::MlDsa],
+            SigAlgKind::Ed25519 => &[SigAlgKind::Ed25519],
+            SigAlgKind::MlDsa => &[SigAlgKind::MlDsa],
         }
     }
 
@@ -56,17 +75,17 @@ impl SigAlgKind {
         match self {
             SigAlgKind::Ed25519 => "Ed25519",
             SigAlgKind::MlDsa => "ML-DSA",
+            // Composite has no single Botan name — it's assembled
+            // from individual legs.
+            SigAlgKind::CompositeEd25519MlDsa => "",
         }
     }
 
     fn padding(self) -> &'static str {
         match self {
             SigAlgKind::Ed25519 => "Pure",
-            // ML-DSA: Botan uses "Deterministic" for signing,
-            // but verification accepts any padding mode (it's
-            // encoded in the signature itself). Empty string =
-            // let Botan pick its default.
             SigAlgKind::MlDsa => "",
+            SigAlgKind::CompositeEd25519MlDsa => "",
         }
     }
 }
@@ -102,38 +121,132 @@ impl std::fmt::Display for SigAlgKind {
 ///
 /// Returns `(privkey_pem, pubkey_pem)`. Both are PEM-encoded
 /// (`-----BEGIN ... KEY-----`); callers write them to disk verbatim.
+/// For composite algorithms, the PEM is a bundle of individual legs'
+/// PEM blocks concatenated.
 pub fn keygen(kind: SigAlgKind, rng: &mut RandomNumberGenerator) -> Result<(String, String)> {
-    let privkey = Privkey::create(kind.botan_name(), "", rng).map_err(Error::botan)?;
-    let pubkey = privkey.pubkey().map_err(Error::botan)?;
-    let priv_pem = privkey.pem_encode().map_err(Error::botan)?;
-    let pub_pem = pubkey.pem_encode().map_err(Error::botan)?;
-    Ok((priv_pem, pub_pem))
+    match kind {
+        SigAlgKind::CompositeEd25519MlDsa => {
+            let (e_priv, e_pub) = keygen(SigAlgKind::Ed25519, rng)?;
+            let (m_priv, m_pub) = keygen(SigAlgKind::MlDsa, rng)?;
+            Ok((
+                format!("{}\n{}", e_priv.trim_end(), m_priv),
+                format!("{}\n{}", e_pub.trim_end(), m_pub),
+            ))
+        }
+        _ => {
+            let privkey = Privkey::create(kind.botan_name(), "", rng).map_err(Error::botan)?;
+            let pubkey = privkey.pubkey().map_err(Error::botan)?;
+            let priv_pem = privkey.pem_encode().map_err(Error::botan)?;
+            let pub_pem = pubkey.pem_encode().map_err(Error::botan)?;
+            Ok((priv_pem, pub_pem))
+        }
+    }
 }
 
-/// Sign `msg` with `privkey_pem`. The returned signature is raw bytes
-/// (64 bytes for Ed25519); callers wrap it in whatever container they
-/// need.
+/// Split a composite PEM bundle into individual leg PEM strings.
+/// Each leg is one `-----BEGIN ... KEY-----` ... `-----END ... KEY-----` block.
+fn split_pem_bundle(pem: &str) -> Vec<String> {
+    const BEGIN: &str = "-----BEGIN ";
+    const END: &str = "-----END ";
+    const DASHES: &str = "-----";
+
+    let mut blocks = Vec::new();
+    let mut pos = 0;
+    while let Some(rel) = pem[pos..].find(BEGIN) {
+        let begin_start = pos + rel;
+        let after_begin = &pem[begin_start..];
+        let Some(end_rel) = after_begin.find(END) else {
+            break;
+        };
+        let end_kw_start = begin_start + end_rel;
+        let after_end_kw = &pem[end_kw_start + END.len()..];
+        let close_offset = after_end_kw.find(DASHES).unwrap_or(0);
+        let block_end = end_kw_start + END.len() + close_offset + DASHES.len();
+        blocks.push(pem[begin_start..block_end].to_string());
+        pos = block_end;
+    }
+    blocks
+}
+
+/// Sign `msg` with `privkey_pem`. For composite algorithms, signs
+/// with each leg and concatenates the signatures with 4-byte
+/// big-endian length prefixes.
 pub fn sign(
     kind: SigAlgKind,
     privkey_pem: &str,
     msg: &[u8],
     rng: &mut RandomNumberGenerator,
 ) -> Result<Vec<u8>> {
-    let privkey = Privkey::load_pem(privkey_pem).map_err(Error::botan)?;
-    let mut signer = Signer::new(&privkey, kind.padding()).map_err(Error::botan)?;
-    signer.update(msg).map_err(Error::botan)?;
-    signer.finish(rng).map_err(Error::botan)
+    match kind {
+        SigAlgKind::CompositeEd25519MlDsa => {
+            let legs = split_pem_bundle(privkey_pem);
+            if legs.len() != 2 {
+                return Err(Error::msg(format!(
+                    "composite key bundle expected 2 PEM blocks, got {}",
+                    legs.len()
+                )));
+            }
+            let mut combined = Vec::new();
+            for (i, leg_alg) in [SigAlgKind::Ed25519, SigAlgKind::MlDsa].iter().enumerate() {
+                let sig = sign(*leg_alg, &legs[i], msg, rng)?;
+                combined.extend_from_slice(&(sig.len() as u32).to_be_bytes());
+                combined.extend_from_slice(&sig);
+            }
+            Ok(combined)
+        }
+        _ => {
+            let privkey = Privkey::load_pem(privkey_pem).map_err(Error::botan)?;
+            let mut signer = Signer::new(&privkey, kind.padding()).map_err(Error::botan)?;
+            signer.update(msg).map_err(Error::botan)?;
+            signer.finish(rng).map_err(Error::botan)
+        }
+    }
 }
 
 /// Verify `sig` over `msg` against `pubkey_pem`. Returns `Ok(true)` on
-/// a valid signature, `Ok(false)` on a malformed-but-well-formed
-/// signature that fails verification, and `Err` only when the pubkey
-/// cannot be loaded or the verifier cannot be constructed.
+/// a valid signature, `Ok(false)` on verification failure.
+/// For composite algorithms, ALL legs must verify.
 pub fn verify(kind: SigAlgKind, pubkey_pem: &str, msg: &[u8], sig: &[u8]) -> Result<bool> {
-    let pubkey = Pubkey::load_pem(pubkey_pem).map_err(Error::botan)?;
-    let mut verifier = Verifier::new(&pubkey, kind.padding()).map_err(Error::botan)?;
-    verifier.update(msg).map_err(Error::botan)?;
-    verifier.finish(sig).map_err(Error::botan)
+    match kind {
+        SigAlgKind::CompositeEd25519MlDsa => {
+            let legs = split_pem_bundle(pubkey_pem);
+            if legs.len() != 2 {
+                return Err(Error::msg(format!(
+                    "composite pubkey bundle expected 2 PEM blocks, got {}",
+                    legs.len()
+                )));
+            }
+            // Parse length-prefixed signatures
+            let mut offset = 0;
+            for (i, leg_alg) in [SigAlgKind::Ed25519, SigAlgKind::MlDsa].iter().enumerate() {
+                if offset + 4 > sig.len() {
+                    return Ok(false);
+                }
+                let len = u32::from_be_bytes([
+                    sig[offset],
+                    sig[offset + 1],
+                    sig[offset + 2],
+                    sig[offset + 3],
+                ]) as usize;
+                offset += 4;
+                if offset + len > sig.len() {
+                    return Ok(false);
+                }
+                let leg_sig = &sig[offset..offset + len];
+                offset += len;
+                if !verify(*leg_alg, &legs[i], msg, leg_sig)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        _ => {
+            let pubkey = Pubkey::load_pem(pubkey_pem).map_err(Error::botan)?;
+            let mut verifier = Verifier::new(&pubkey, kind.padding()).map_err(Error::botan)?;
+            verifier.update(msg).map_err(Error::botan)?;
+            verifier.finish(sig).map_err(Error::botan)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +349,64 @@ mod tests {
             Ok(false) => {} // expected: sig doesn't match
             Err(_) => {}    // expected: key type mismatch
         }
+    }
+
+    #[test]
+    fn composite_keygen_produces_two_leg_bundle() {
+        let mut r = rng();
+        let (priv_pem, pub_pem) = keygen(SigAlgKind::CompositeEd25519MlDsa, &mut r).unwrap();
+        assert_eq!(
+            priv_pem.matches("-----BEGIN ").count(),
+            2,
+            "composite privkey should have 2 PEM blocks"
+        );
+        assert_eq!(
+            pub_pem.matches("-----BEGIN ").count(),
+            2,
+            "composite pubkey should have 2 PEM blocks"
+        );
+    }
+
+    #[test]
+    fn composite_sign_verify_round_trip() {
+        let mut r = rng();
+        let (priv_pem, pub_pem) = keygen(SigAlgKind::CompositeEd25519MlDsa, &mut r).unwrap();
+        let msg = b"composite test message";
+        let sig = sign(SigAlgKind::CompositeEd25519MlDsa, &priv_pem, msg, &mut r).unwrap();
+        // Composite sig: 4-byte len + ed25519 sig (64) + 4-byte len + mldsa sig (~3300)
+        assert!(
+            sig.len() > 1000,
+            "composite sig should be large, got {} bytes",
+            sig.len()
+        );
+        assert!(verify(SigAlgKind::CompositeEd25519MlDsa, &pub_pem, msg, &sig).unwrap());
+    }
+
+    #[test]
+    fn composite_verify_rejects_tampered_message() {
+        let mut r = rng();
+        let (priv_pem, pub_pem) = keygen(SigAlgKind::CompositeEd25519MlDsa, &mut r).unwrap();
+        let msg = b"original message";
+        let sig = sign(SigAlgKind::CompositeEd25519MlDsa, &priv_pem, msg, &mut r).unwrap();
+        assert!(
+            !verify(
+                SigAlgKind::CompositeEd25519MlDsa,
+                &pub_pem,
+                b"tampered",
+                &sig
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn composite_verify_rejects_wrong_key() {
+        let mut r = rng();
+        let (priv_pem, _) = keygen(SigAlgKind::CompositeEd25519MlDsa, &mut r).unwrap();
+        let (_, other_pub) = keygen(SigAlgKind::CompositeEd25519MlDsa, &mut r).unwrap();
+        let msg = b"wrong key test";
+        let sig = sign(SigAlgKind::CompositeEd25519MlDsa, &priv_pem, msg, &mut r).unwrap();
+        assert!(!verify(SigAlgKind::CompositeEd25519MlDsa, &other_pub, msg, &sig).unwrap());
     }
 }
 
