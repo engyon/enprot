@@ -31,7 +31,7 @@ impl CryptoPolicyDefault {
     pub const DEFAULT_PBKDF_MSEC: u32 = 100;
     const DEFAULT_PBKDF_ALG: &'static str = "argon2";
     const DEFAULT_PBKDF_SALT_LEN: usize = 16;
-    const DEFAULT_CIPHER_ALG: &'static str = "aes-256-siv";
+    const DEFAULT_CIPHER_ALG: &'static str = "aes-256-gcm-siv-det";
 }
 
 impl CryptoPolicy for CryptoPolicyDefault {
