@@ -19,6 +19,7 @@ mod pbkdf;
 mod pipe;
 mod pki;
 mod policy;
+mod provenance;
 mod resolve;
 mod smudge_clean;
 mod snapshot_pin;

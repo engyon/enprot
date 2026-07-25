@@ -50,6 +50,7 @@ mod pbkdf;
 pub mod pki;
 mod policy;
 pub mod prot;
+pub mod provenance;
 pub mod provider;
 pub mod resolve;
 pub mod utils;
@@ -219,6 +220,14 @@ pub enum Command {
     Smudge(SmudgeCleanSubcmd),
     /// Git `textconv` for readable diffs (alias for `smudge`).
     Textconv(SmudgeCleanSubcmd),
+    /// Build a provenance manifest for a directory (TODO.roadmap/51):
+    /// walk the tree, store each file in CAS, emit INCLUDE per file.
+    /// Output is an EPT file ready for `enprot attest`.
+    Manifest(ManifestSubcmd),
+    /// Append a signed chain anchor to a provenance manifest
+    /// (TODO.roadmap/51). The anchor commits to the manifest's full
+    /// state — any later tampering invalidates the signature.
+    Attest(AttestSubcmd),
 }
 
 /// `init` subcommand: scaffold a commented TOML config the user can
@@ -299,6 +308,37 @@ pub struct SmudgeCleanSubcmd {
     /// (no random salt). Default: argon2 with auto-tuned params.
     #[arg(long, value_name = "ALG")]
     pub pbkdf: Option<String>,
+}
+
+/// `manifest` subcommand (TODO.roadmap/51): build a provenance
+/// manifest for a project tree. Walks the directory, stores each
+/// file in CAS, emits an EPT file with one INCLUDE per source file.
+#[derive(Args)]
+pub struct ManifestSubcmd {
+    /// Project root to walk.
+    #[arg(value_name = "DIR")]
+    pub dir: PathBuf,
+
+    /// CAS directory (default: `./cas` if it exists, else `.`).
+    #[arg(short = 'c', long, value_name = "DIR")]
+    pub casdir: Option<PathBuf>,
+
+    /// Output manifest path (default: stdout).
+    #[arg(short = 'o', long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+}
+
+/// `attest` subcommand (TODO.roadmap/51): append a signed chain
+/// anchor to a manifest, signing the file's current state.
+#[derive(Args)]
+pub struct AttestSubcmd {
+    /// Builder's private key (PEM).
+    #[arg(long, value_name = "PRIV.pem")]
+    pub signer: PathBuf,
+
+    /// Manifest file. Modified in-place.
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
 }
 
 /// Encrypt subcommand: encrypt-specific options plus the shared output
@@ -705,6 +745,12 @@ where
     if let Command::Textconv(a) = cli.command {
         return run_smudge_clean(SmudgeMode::Smudge, a, cli.common);
     }
+    if let Command::Manifest(a) = cli.command {
+        return run_manifest(a);
+    }
+    if let Command::Attest(a) = cli.command {
+        return run_attest(a);
+    }
     let mut common = cli.common;
     common = apply_config(common)?;
     match cli.command {
@@ -773,6 +819,9 @@ where
         Command::MergeDriver(_) => unreachable!("dispatched at top of app_main"),
         Command::Resolve(_) => unreachable!("dispatched at top of app_main"),
         Command::Clean(_) | Command::Smudge(_) | Command::Textconv(_) => {
+            unreachable!("dispatched at top of app_main")
+        }
+        Command::Manifest(_) | Command::Attest(_) => {
             unreachable!("dispatched at top of app_main")
         }
     }
@@ -914,6 +963,72 @@ fn run_resolve(a: ResolveSubcmd) -> Result<()> {
 enum SmudgeMode {
     Clean,
     Smudge,
+}
+
+/// `manifest` entry point: build a provenance manifest for a project
+/// tree. Walks the directory, stores each file in CAS, emits an EPT
+/// file with INCLUDE per source. Output goes to `--output` or stdout.
+fn run_manifest(a: ManifestSubcmd) -> Result<()> {
+    let casdir = a
+        .casdir
+        .clone()
+        .or_else(|| {
+            if Path::new("cas").is_dir() {
+                Some(PathBuf::from("cas"))
+            } else {
+                Some(PathBuf::from("."))
+            }
+        })
+        .unwrap();
+    if !casdir.is_dir() {
+        std::fs::create_dir_all(&casdir)?;
+    }
+
+    let tree = provenance::build_manifest(&a.dir, &casdir)?;
+    let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
+    let mut paops = ParseOps::new(policy)?;
+    paops.runtime.fname = a
+        .output
+        .as_ref()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "<stdout>".into());
+
+    match a.output.as_ref() {
+        Some(path) => {
+            let f = File::create(path)?;
+            etree::tree_write(&mut BufWriter::new(f), &tree, &mut paops)?;
+            eprintln!("manifest: wrote {}", path.display());
+        }
+        None => {
+            let stdout = std::io::stdout();
+            etree::tree_write(&mut stdout.lock(), &tree, &mut paops)?;
+        }
+    }
+    Ok(())
+}
+
+/// `attest` entry point: append a signed chain anchor to a manifest.
+fn run_attest(a: AttestSubcmd) -> Result<()> {
+    let priv_pem = fs::read_to_string(&a.signer)?;
+    let body = fs::read_to_string(&a.file)?;
+    let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
+    let mut paops = ParseOps::new(policy)?;
+    paops.runtime.fname = a.file.display().to_string();
+    let cursor = std::io::Cursor::new(body.into_bytes());
+    let tree = etree::parse(cursor, &mut paops)?;
+
+    // Default casdir to `.` so attest doesn't fail when the manifest
+    // has no CAS-referenced content (the chain anchor just needs to
+    // hash the file state).
+    if paops.io.casdir.as_os_str().is_empty() {
+        paops.io.casdir = PathBuf::from(".");
+    }
+
+    let attested = provenance::attest(&tree, &priv_pem, &paops.io.casdir, Vec::new())?;
+    let f = File::create(&a.file)?;
+    etree::tree_write(&mut BufWriter::new(f), &attested, &mut paops)?;
+    eprintln!("attest: signed {}", a.file.display());
+    Ok(())
 }
 
 /// `clean` / `smudge` / `textconv` entry point. Pipes stdin through
