@@ -61,6 +61,12 @@ pub enum Error {
     #[error("policy violation: {0}")]
     Policy(String),
 
+    /// Capability policy (`.enprot/policy.toml`, TODO.roadmap/46) rejected
+    /// an operation. `rule` identifies which clause triggered; `context`
+    /// carries the offending value (anchor ID, WORD name, fingerprint).
+    #[error("capability policy '{rule}' violated: {context}")]
+    PolicyViolation { rule: String, context: String },
+
     /// EPT markup parse failure. `file` is the source path or `<stdin>`;
     /// `lineno` is 1-based, 0 when the error isn't line-bound.
     #[error("parse error in {file}:{lineno}: {msg}")]
