@@ -82,7 +82,7 @@ fn transform_begin_end(
             &*paops.crypto.policy,
         )?;
 
-        let inner = if paops.transforms.store.contains(keyw) {
+        let inner = if paops.transforms.store.contains(keyw) || cas_default_applies(paops) {
             let hexhash = cas::save(ct, paops)?;
             vec![TextNode::Stored {
                 keyw: "ct".to_string(),
@@ -225,4 +225,12 @@ fn ensure_password(keyw: &str, paops: &mut crate::etree::ParseOps, repeat: bool)
     let p = password::get_password(keyw, repeat);
     paops.passwords.insert(keyw.to_string(), p.clone());
     p
+}
+
+/// True when CAS-referenced output should be produced for newly
+/// encrypted blocks. Per TODO.roadmap/42: the default is STORED ct
+/// unless the caller opted into inline mode (via `--inline`) or no
+/// CAS dir was supplied (stdin pipeline carve-out).
+fn cas_default_applies(paops: &crate::etree::ParseOps) -> bool {
+    !paops.io.inline_data
 }

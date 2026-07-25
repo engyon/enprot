@@ -422,6 +422,13 @@ pub struct CommonArgs {
     /// machine consumption.
     #[arg(long, global = true, value_enum, default_value_t = output::OutputFormat::Text)]
     pub format: output::OutputFormat,
+
+    /// Emit inline `DATA` blocks on encrypt instead of the default
+    /// CAS-referenced `STORED ct <hash>` (TODO.roadmap/42). Restores
+    /// the pre-42 behavior; useful when CAS isn't available or for
+    /// self-contained single-file output.
+    #[arg(long, global = true)]
+    pub inline: bool,
 }
 
 /// Encrypt-specific cryptographic knobs.
@@ -681,6 +688,7 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
     }
 
     paops.io.verbose = common.verbose && !common.quiet;
+    paops.io.inline_data = common.inline || common.casdir.is_none();
     paops.max_depth = common.max_depth;
     let (left, right) = resolve_separators(&common);
     paops.separators.left = left;
@@ -1405,6 +1413,7 @@ fn apply_common(common: &CommonArgs, paops: &mut ParseOps) {
         paops.io.casdir = Path::new(".").to_path_buf();
     }
     paops.io.verbose = common.verbose && !common.quiet;
+    paops.io.inline_data = common.inline || common.casdir.is_none();
     paops.max_depth = common.max_depth;
     let (left, right) = resolve_separators(common);
     paops.separators.left = left;
