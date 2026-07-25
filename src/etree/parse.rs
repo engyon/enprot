@@ -96,19 +96,15 @@ where
             Command::End => parse_end(rest, &line, lineno, paops, &mut pstack, &mut text)?,
             Command::Stored => parse_stored(rest, &line, lineno, paops, &mut text)?,
             Command::Chain => parse_chain(rest, &line, lineno, paops, &mut text)?,
-            // Reserved keywords (TODOs 19/25). Parser support lands
-            // in follow-up PRs; for now, encountering one is a clean
-            // parse error so users know the directive exists but
-            // isn't wired up yet.
-            Command::Conflict | Command::Include => {
+            Command::Include => parse_include(rest, &line, lineno, paops, &mut text)?,
+            // Reserved keyword (TODO 19). Parser support lands in a
+            // follow-up PR.
+            Command::Conflict => {
                 return Err(parse_error(
                     paops,
                     lineno,
                     &line,
-                    format!(
-                        "{:?} directive not yet implemented (reserved keyword)",
-                        parsed
-                    ),
+                    "CONFLICT directive not yet implemented (reserved keyword)",
                 ));
             }
         }
@@ -402,5 +398,30 @@ fn parse_chain(
         ));
     }
     text.push(TextNode::Chain { extfields });
+    Ok(())
+}
+
+/// Parse an `INCLUDE <hash>` directive. The hash is a CAS blob ID
+/// pointing to another EPT file. Resolution (loading the referenced
+/// file, recursive verification) is NOT done by the parser — callers
+/// like `verify-chain --include-path` handle it.
+fn parse_include(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &ParseOps,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 1 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "INCLUDE needs exactly one hash parameter.",
+        ));
+    }
+    text.push(TextNode::Include {
+        hash: cmd[0].to_owned(),
+    });
     Ok(())
 }

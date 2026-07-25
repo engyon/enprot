@@ -293,6 +293,10 @@ pub fn required_for(node: &TextNode) -> CapabilitySet {
         // for now — verify-chain (TODO.finalize/18) does the proper
         // capability check with the resolved key.
         TextNode::Chain { .. } => {}
+        // INCLUDE references require Reader (CAS access) to resolve.
+        TextNode::Include { .. } => {
+            s.insert(Capability::Reader);
+        }
     }
     s
 }

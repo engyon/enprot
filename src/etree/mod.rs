@@ -216,6 +216,13 @@ pub enum TextNode {
     Chain {
         extfields: BTreeMap<String, String>,
     },
+    /// Cross-file DAG reference (TODO.finalize/25). The `hash` is a
+    /// CAS blob ID pointing to another EPT file. Resolution and
+    /// recursive verification is done by `verify-chain` (not the
+    /// parser — the parser just records the reference).
+    Include {
+        hash: String,
+    },
 }
 
 /// EPT directive types — one per recognized keyword in the markup.
