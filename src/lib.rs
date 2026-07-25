@@ -50,6 +50,7 @@ pub mod utils;
 
 pub use error::{Error, Result};
 
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
@@ -138,6 +139,11 @@ pub enum Command {
     /// files (TODO.finalize/26) and for visually comparing two keys
     /// for equality.
     Fingerprint(FingerprintSubcmd),
+    /// Walk the chain anchor DAG in FILE(s): check that every CHAIN
+    /// block's signature validates against the named signer's pubkey,
+    /// that parent references resolve to earlier anchors, and that
+    /// there are no cycles. Exit non-zero on any failure (CI-friendly).
+    VerifyChain(VerifyChainSubcmd),
     /// Print the capability set implied by the current flags (passwords,
     /// CAS dir, key files) and exit. No file transformation occurs.
     /// Useful for verifying "what would I be able to do?" before running
@@ -239,6 +245,24 @@ pub struct FingerprintSubcmd {
     /// Public key (PEM) to fingerprint.
     #[arg(value_name = "PUB.pem")]
     pub key: PathBuf,
+}
+
+/// `verify-chain` subcommand: walk a file's CHAIN anchors and verify
+/// signatures + DAG structure. Repeatable `--trust-root` flags form
+/// a whitelist; if non-empty, anchors signed by anything else fail.
+#[derive(Args)]
+pub struct VerifyChainSubcmd {
+    /// Public key (PEM) whose fingerprint must match a CHAIN's
+    /// `signer:` field. Repeatable; if non-empty, forms a trust
+    /// whitelist. If empty, every anchor is checked against the
+    /// pubkey whose fingerprint matches — and fails if no key
+    /// matches.
+    #[arg(long = "trust-root", value_name = "PUB.pem")]
+    pub trust_roots: Vec<PathBuf>,
+
+    /// Input file(s). Each is verified independently.
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
 }
 
 /// Crypto-policy, separators, RNG source, password store. Defined at
@@ -462,6 +486,7 @@ where
         Command::Sign(a) => pki_sign(common, a),
         Command::VerifySig(a) => pki_verify_sig(common, a),
         Command::Fingerprint(a) => pki_fingerprint(a),
+        Command::VerifyChain(a) => verify_chain_files(common, a),
         Command::Capabilities => {
             let policy = resolve_policy(&common)?;
             let mut paops = ParseOps::new(policy)?;
@@ -1061,6 +1086,99 @@ fn pki_fingerprint(a: FingerprintSubcmd) -> Result<()> {
     let pem = fs::read_to_string(&a.key)?;
     let fp = capability::KeyFp::from_pem(&pem)?;
     println!("{}", fp);
+    Ok(())
+}
+
+/// `verify-chain` implementation: parse each file, collect CHAIN
+/// blocks into an [`AnchorDag`], verify signatures against the
+/// caller-supplied trust roots. Exit non-zero on any failure.
+fn verify_chain_files(common: CommonArgs, a: VerifyChainSubcmd) -> Result<()> {
+    // Load trust roots into a fingerprint → PEM map.
+    let mut trust: HashMap<String, String> = HashMap::new();
+    for pem_path in &a.trust_roots {
+        let pem = fs::read_to_string(pem_path)?;
+        let fp = capability::KeyFp::from_pem(&pem)?;
+        trust.insert(fp.to_hex(), pem);
+    }
+
+    let policy = resolve_policy(&common)?;
+    let mut paops = ParseOps::new(policy)?;
+    apply_common(&common, &mut paops);
+
+    let mut any_failure = false;
+    for path_in in &a.files {
+        let result = verify_chain_one_file(path_in, &mut paops, &trust);
+        match result {
+            Ok(()) => println!("OK    {}", path_in),
+            Err(e) => {
+                any_failure = true;
+                eprintln!("FAIL  {}: {}", path_in, e);
+            }
+        }
+    }
+
+    if any_failure {
+        Err(Error::msg("one or more files failed chain verification"))
+    } else {
+        Ok(())
+    }
+}
+
+fn verify_chain_one_file(
+    path_in: &str,
+    paops: &mut ParseOps,
+    trust: &HashMap<String, String>,
+) -> Result<()> {
+    paops.runtime.fname = path_in.into();
+    let reader: Box<dyn BufRead> = if path_in == "-" {
+        Box::new(BufReader::new(std::io::stdin()))
+    } else {
+        Box::new(BufReader::new(File::open(path_in).map_err(|e| {
+            Error::Msg(format!("Failed to open {}: {}", path_in, e))
+        })?))
+    };
+    let tree = etree::parse(reader, paops)?;
+
+    let mut dag = ledger::AnchorDag::new();
+    collect_chain_anchors(&tree, &mut dag)?;
+
+    let report = dag.verify_signatures(|fp_hex| trust.get(fp_hex).cloned());
+
+    let mut errors: Vec<String> = Vec::new();
+    for r in &report.reports {
+        if !r.ok {
+            if let Some(ref e) = r.error {
+                errors.push(format!("{}: {}", r.id, e));
+            }
+        }
+    }
+    if !errors.is_empty() {
+        return Err(Error::msg(format!(
+            "{} anchor(s) failed verification: {}",
+            errors.len(),
+            errors.join("; ")
+        )));
+    }
+    Ok(())
+}
+
+/// Walk a parsed tree and push every `TextNode::Chain` into the DAG.
+/// Recurses into `BeginEnd` and `Encrypted` children; CHAIN blocks
+/// typically live at the top level but can appear inside any block.
+fn collect_chain_anchors(tree: &etree::TextTree, dag: &mut ledger::AnchorDag) -> Result<()> {
+    for node in tree {
+        match node {
+            etree::TextNode::Chain { extfields } => {
+                let signed = ledger::SignedAnchor::from_extfields(extfields)?;
+                dag.push(signed)
+                    .map_err(|e| Error::msg(format!("DAG construction failed: {}", e)))?;
+            }
+            etree::TextNode::BeginEnd { txt, .. } | etree::TextNode::Encrypted { txt, .. } => {
+                collect_chain_anchors(txt, dag)?;
+            }
+            _ => {}
+        }
+    }
     Ok(())
 }
 

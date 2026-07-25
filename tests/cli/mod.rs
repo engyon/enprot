@@ -13,3 +13,4 @@ mod pipe;
 mod pki;
 mod policy;
 mod store_fetch;
+mod verify_chain;
