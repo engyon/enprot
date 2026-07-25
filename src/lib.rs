@@ -41,6 +41,7 @@ mod error;
 pub mod etree;
 pub mod ledger;
 pub mod merkle;
+pub mod output;
 mod password;
 mod pbkdf;
 pub mod pki;
@@ -414,6 +415,13 @@ pub struct CommonArgs {
     /// pass it to `verify-chain --trust-root` later.
     #[arg(long, global = true, value_name = "PRIV.pem")]
     pub signer: Option<PathBuf>,
+
+    /// Output format for inspection subcommands (`capabilities`,
+    /// `list`, `verify-chain`). `text` is the default; `json` emits a
+    /// versioned envelope (`$schema: enprot/v1`) suitable for
+    /// machine consumption.
+    #[arg(long, global = true, value_enum, default_value_t = output::OutputFormat::Text)]
+    pub format: output::OutputFormat,
 }
 
 /// Encrypt-specific cryptographic knobs.
@@ -588,8 +596,21 @@ where
             let caps = capability::CapabilitySet::from_paops(&paops);
             let stdout = std::io::stdout();
             let mut out = stdout.lock();
-            for c in caps.iter_sorted() {
-                writeln!(out, "{}", c)?;
+            match common.format {
+                output::OutputFormat::Text => {
+                    for c in caps.iter_sorted() {
+                        writeln!(out, "{}", c)?;
+                    }
+                }
+                output::OutputFormat::Json => {
+                    let dtos = caps
+                        .iter_sorted()
+                        .into_iter()
+                        .map(capability_to_dto)
+                        .collect::<Vec<_>>();
+                    let payload = output::CapabilitiesOutput { capabilities: dtos };
+                    writeln!(out, "{}", output::to_json(&payload)?)?;
+                }
             }
             Ok(())
         }
@@ -990,21 +1011,56 @@ fn walk_for_chains(tree: &etree::TextTree, out: &mut Vec<crate::ledger::AnchorHa
     Ok(())
 }
 
+/// Translate a [`capability::Capability`] into a stable DTO for JSON output.
+fn capability_to_dto(c: &capability::Capability) -> output::CapabilityDto {
+    use capability::Capability::*;
+    match c {
+        Viewer => output::CapabilityDto {
+            tier: "viewer",
+            word: None,
+            key_fp: None,
+        },
+        Reader => output::CapabilityDto {
+            tier: "reader",
+            word: None,
+            key_fp: None,
+        },
+        Decryptor(w) => output::CapabilityDto {
+            tier: "decryptor",
+            word: Some(w.to_string()),
+            key_fp: None,
+        },
+        Signer(fp) => output::CapabilityDto {
+            tier: "signer",
+            word: None,
+            key_fp: Some(fp.to_hex()),
+        },
+        Verifier(fp) => output::CapabilityDto {
+            tier: "verifier",
+            word: None,
+            key_fp: Some(fp.to_hex()),
+        },
+    }
+}
+
 /// Parse each input and list all WORD segments to stdout. One line per
 /// directive node, with keyword, type, and crypto metadata.
-fn list_files(common: CommonArgs, output: OutputArgs) -> Result<()> {
+fn list_files(common: CommonArgs, output_args: OutputArgs) -> Result<()> {
     let policy = resolve_policy(&common)?;
     let mut paops = ParseOps::new(policy)?;
     apply_common(&common, &mut paops);
 
     let files = pair_inputs_to_outputs(
-        &output.files,
-        &output.output,
-        &output.prefix,
-        output.output_dir.as_deref(),
+        &output_args.files,
+        &output_args.output,
+        &output_args.prefix,
+        output_args.output_dir.as_deref(),
     );
 
     let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    let mut json_listings: Vec<output::FileListing> = Vec::new();
+
     for (path_in, _) in &files {
         let reader: Box<dyn BufRead> = if path_in == "-" {
             Box::new(BufReader::new(std::io::stdin()))
@@ -1017,11 +1073,29 @@ fn list_files(common: CommonArgs, output: OutputArgs) -> Result<()> {
 
         let tree = etree::parse(reader, &mut paops)?;
 
-        let mut out = stdout.lock();
-        if files.len() > 1 {
-            writeln!(out, "== {} ==", path_in)?;
+        match common.format {
+            output::OutputFormat::Text => {
+                if files.len() > 1 {
+                    writeln!(out, "== {} ==", path_in)?;
+                }
+                list_tree(&tree, 0, &mut out)?;
+            }
+            output::OutputFormat::Json => {
+                let mut nodes = Vec::new();
+                list_tree_to_nodes(&tree, 0, &mut nodes);
+                json_listings.push(output::FileListing {
+                    path: path_in.clone(),
+                    nodes,
+                });
+            }
         }
-        list_tree(&tree, 0, &mut out)?;
+    }
+
+    if matches!(common.format, output::OutputFormat::Json) {
+        let payload = output::ListOutput {
+            files: json_listings,
+        };
+        writeln!(out, "{}", output::to_json(&payload)?)?;
     }
     Ok(())
 }
@@ -1077,6 +1151,93 @@ fn list_tree<W: Write>(tree: &etree::TextTree, depth: usize, out: &mut W) -> Res
         }
     }
     Ok(())
+}
+
+/// Flatten the parsed tree into JSON DTO nodes. Same selection logic
+/// as [`list_tree`] (skips Plain/Data); recurses into BeginEnd.
+fn list_tree_to_nodes(tree: &etree::TextTree, depth: usize, out: &mut Vec<output::ListNode>) {
+    for node in tree {
+        match node {
+            etree::TextNode::BeginEnd { keyw, txt } => {
+                let mut children = Vec::new();
+                list_tree_to_nodes(txt, depth + 1, &mut children);
+                out.push(output::ListNode {
+                    kind: "begin-end",
+                    word: keyw.clone(),
+                    depth,
+                    cipher: None,
+                    pbkdf: None,
+                    cas: None,
+                    signer: None,
+                    payload: None,
+                    children,
+                });
+            }
+            etree::TextNode::Encrypted {
+                keyw, extfields, ..
+            } => {
+                let cipher = extfields
+                    .get("cipher")
+                    .cloned()
+                    .or_else(|| Some("aes-256-siv".to_string()));
+                let pbkdf = extfields
+                    .get("pbkdf")
+                    .and_then(|s| s.split('$').nth(1).map(String::from))
+                    .or_else(|| Some("legacy".to_string()));
+                out.push(output::ListNode {
+                    kind: "encrypted",
+                    word: keyw.clone(),
+                    depth,
+                    cipher,
+                    pbkdf,
+                    cas: None,
+                    signer: None,
+                    payload: None,
+                    children: Vec::new(),
+                });
+            }
+            etree::TextNode::Stored { keyw, cas } => {
+                out.push(output::ListNode {
+                    kind: "stored",
+                    word: keyw.clone(),
+                    depth,
+                    cipher: None,
+                    pbkdf: None,
+                    cas: Some(cas.clone()),
+                    signer: None,
+                    payload: None,
+                    children: Vec::new(),
+                });
+            }
+            etree::TextNode::Plain(_) | etree::TextNode::Data(_) => {}
+            etree::TextNode::Chain { extfields } => {
+                out.push(output::ListNode {
+                    kind: "chain",
+                    word: String::new(),
+                    depth,
+                    cipher: None,
+                    pbkdf: None,
+                    cas: None,
+                    signer: extfields.get("signer").cloned(),
+                    payload: extfields.get("payload").cloned(),
+                    children: Vec::new(),
+                });
+            }
+            etree::TextNode::Include { hash } => {
+                out.push(output::ListNode {
+                    kind: "include",
+                    word: hash.clone(),
+                    depth,
+                    cipher: None,
+                    pbkdf: None,
+                    cas: None,
+                    signer: None,
+                    payload: None,
+                    children: Vec::new(),
+                });
+            }
+        }
+    }
 }
 
 /// Parse each input and check structural integrity: valid EPT markup,
@@ -1516,22 +1677,146 @@ fn verify_chain_files(common: CommonArgs, a: VerifyChainSubcmd) -> Result<()> {
     let mut paops = ParseOps::new(policy)?;
     apply_common(&common, &mut paops);
 
+    let mut json_reports: Vec<output::VerifyChainFileReport> = Vec::new();
     let mut any_failure = false;
     for path_in in &a.files {
         let result = verify_chain_one_file(path_in, &mut paops, &trust);
-        match result {
-            Ok(()) => println!("OK    {}", path_in),
-            Err(e) => {
-                any_failure = true;
-                eprintln!("FAIL  {}: {}", path_in, e);
+        match common.format {
+            output::OutputFormat::Text => match &result {
+                Ok(()) => println!("OK    {}", path_in),
+                Err(e) => {
+                    any_failure = true;
+                    eprintln!("FAIL  {}: {}", path_in, e);
+                }
+            },
+            output::OutputFormat::Json => {
+                let report = verify_chain_report_from_result(path_in, &result, &mut paops);
+                if !report.ok {
+                    any_failure = true;
+                }
+                json_reports.push(report);
             }
         }
+    }
+
+    if matches!(common.format, output::OutputFormat::Json) {
+        let payload = output::VerifyChainOutput {
+            ok: !any_failure,
+            files: json_reports,
+        };
+        println!("{}", output::to_json(&payload)?);
     }
 
     if any_failure {
         Err(Error::msg("one or more files failed chain verification"))
     } else {
         Ok(())
+    }
+}
+
+/// Build a JSON-friendly per-file report from a verify result. Even on
+/// failure, we want to surface the structured errors (and as much of
+/// the DAG as we parsed before the failure) rather than a bare string.
+fn verify_chain_report_from_result(
+    path_in: &str,
+    result: &Result<()>,
+    paops: &mut ParseOps,
+) -> output::VerifyChainFileReport {
+    let (ok, message) = match result {
+        Ok(()) => (true, None),
+        Err(e) => (false, Some(e.to_string())),
+    };
+
+    // Re-parse to collect the DAG info. On success this matches what
+    // verify_chain_one_file already did; on failure, we re-parse here
+    // because the error path returns early without exposing the DAG.
+    let reader: Box<dyn BufRead> = if path_in == "-" {
+        Box::new(BufReader::new(std::io::stdin()))
+    } else {
+        match File::open(path_in) {
+            Ok(f) => Box::new(BufReader::new(f)),
+            Err(_) => {
+                return output::VerifyChainFileReport {
+                    path: path_in.to_string(),
+                    ok: false,
+                    anchors_total: 0,
+                    signers: Vec::new(),
+                    forks: Vec::new(),
+                    errors: vec![output::VerifyError {
+                        anchor: None,
+                        message: message.unwrap_or_else(|| "unknown error".into()),
+                    }],
+                };
+            }
+        }
+    };
+    paops.runtime.fname = path_in.into();
+    let tree = match etree::parse(reader, paops) {
+        Ok(t) => t,
+        Err(e) => {
+            return output::VerifyChainFileReport {
+                path: path_in.to_string(),
+                ok: false,
+                anchors_total: 0,
+                signers: Vec::new(),
+                forks: Vec::new(),
+                errors: vec![output::VerifyError {
+                    anchor: None,
+                    message: e.to_string(),
+                }],
+            };
+        }
+    };
+
+    let mut dag = ledger::AnchorDag::new();
+    if let Err(e) = collect_chain_anchors(&tree, &mut dag) {
+        return output::VerifyChainFileReport {
+            path: path_in.to_string(),
+            ok: false,
+            anchors_total: 0,
+            signers: Vec::new(),
+            forks: Vec::new(),
+            errors: vec![output::VerifyError {
+                anchor: None,
+                message: e.to_string(),
+            }],
+        };
+    }
+
+    let tips = dag.tips();
+    let signers: Vec<String> = dag
+        .iter()
+        .map(|(_, s)| s.anchor.signer.to_string())
+        .collect();
+    let forks: Vec<output::ForkPoint> = tips
+        .into_iter()
+        .map(|id| {
+            let parents = dag
+                .get(&id)
+                .map(|s| s.anchor.parents.iter().map(|p| p.to_string()).collect())
+                .unwrap_or_default();
+            output::ForkPoint {
+                anchor: id.to_string(),
+                parents,
+            }
+        })
+        .collect();
+
+    let errors = match message {
+        Some(m) => vec![output::VerifyError {
+            anchor: None,
+            message: m,
+        }],
+        None => Vec::new(),
+    };
+
+    output::VerifyChainFileReport {
+        path: path_in.to_string(),
+        ok,
+        anchors_total: dag.len(),
+        signers,
+        forks,
+        errors,
     }
 }
 

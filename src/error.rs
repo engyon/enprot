@@ -79,6 +79,10 @@ pub enum Error {
     #[error("PHC: {0}")]
     Phc(String),
 
+    /// JSON serialization failure (output DTO could not be rendered).
+    #[error("JSON: {0}")]
+    Json(String),
+
     /// Catch-all for one-off messages that don't fit a more specific
     /// variant. Prefer adding a new variant when the same message shape
     /// appears in more than one place.
@@ -95,6 +99,11 @@ impl Error {
     /// Construct `Error::Msg` from anything stringifiable.
     pub fn msg(s: impl Into<String>) -> Self {
         Error::Msg(s.into())
+    }
+
+    /// Construct `Error::Json` from anything stringifiable.
+    pub fn json(e: impl std::fmt::Display) -> Self {
+        Error::Json(e.to_string())
     }
 }
 
