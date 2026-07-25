@@ -1,1 +1,1 @@
-aead,aes,argon2,auto_rng,base64,ed25519,ffi,gcm,hash,hkdf,hmac,ml_dsa,pbkdf2,scrypt,sha2_64,sha3,siv,system_rng
+aead,aes,argon2,auto_rng,base64,ed25519,ffi,gcm,hash,hkdf,hmac,ml_dsa,pbkdf2,scrypt,sha2_64,sha3,siv,ml_kem,system_rng
