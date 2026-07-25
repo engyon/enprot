@@ -53,6 +53,7 @@ pub mod prot;
 pub mod provenance;
 pub mod provider;
 pub mod resolve;
+pub mod scm;
 pub mod utils;
 
 pub use error::{Error, Result};
@@ -228,6 +229,11 @@ pub enum Command {
     /// (TODO.roadmap/51). The anchor commits to the manifest's full
     /// state — any later tampering invalidates the signature.
     Attest(AttestSubcmd),
+    /// Supply-chain manifest operations (TODO.roadmap/52). Wraps
+    /// provenance with dependency parsing, structural diff, and a
+    /// customer-side verify entry point. Subcommand form:
+    /// `enprot scm {init,add,deps,attest,verify,diff}`.
+    Scm(ScmSubcmd),
 }
 
 /// `init` subcommand: scaffold a commented TOML config the user can
@@ -339,6 +345,65 @@ pub struct AttestSubcmd {
     /// Manifest file. Modified in-place.
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
+}
+
+/// `scm` subcommand (TODO.roadmap/52). The subcommand selects the
+/// operation; common args (CAS dir, signer, etc.) are flat fields.
+/// Re-uses `provenance::attest` and the existing `verify-chain` so
+/// the wire format is identical to TODO.roadmap/51.
+#[derive(Args)]
+pub struct ScmSubcmd {
+    #[command(subcommand)]
+    pub command: ScmCommand,
+
+    /// CAS directory. Default: `./cas` if it exists, else `.`.
+    #[arg(short = 'c', long, global = true)]
+    pub casdir: Option<PathBuf>,
+}
+
+#[derive(Subcommand)]
+pub enum ScmCommand {
+    /// Create an empty manifest at MANIFEST.
+    Init {
+        #[arg(value_name = "MANIFEST")]
+        manifest: PathBuf,
+    },
+    /// Append PATH (file or directory) to MANIFEST.
+    Add {
+        #[arg(value_name = "MANIFEST")]
+        manifest: PathBuf,
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+    },
+    /// Parse Cargo.toml at MANIFEST_FILE and append each `[dependencies]`
+    /// entry as an INCLUDE. (npm + pyproject parsers are stubbed.)
+    Deps {
+        #[arg(value_name = "MANIFEST")]
+        manifest: PathBuf,
+        #[arg(value_name = "Cargo.toml")]
+        cargo_toml: PathBuf,
+    },
+    /// Sign MANIFEST with --signer (delegates to provenance::attest).
+    Attest {
+        #[arg(long, value_name = "PRIV.pem")]
+        signer: PathBuf,
+        #[arg(value_name = "MANIFEST")]
+        manifest: PathBuf,
+    },
+    /// Verify MANIFEST with --trust-root (delegates to verify-chain).
+    Verify {
+        #[arg(long, value_name = "PUB.pem")]
+        trust_root: PathBuf,
+        #[arg(value_name = "MANIFEST")]
+        manifest: PathBuf,
+    },
+    /// Structural diff between OLD and NEW manifests.
+    Diff {
+        #[arg(value_name = "OLD")]
+        old: PathBuf,
+        #[arg(value_name = "NEW")]
+        new: PathBuf,
+    },
 }
 
 /// Encrypt subcommand: encrypt-specific options plus the shared output
@@ -751,6 +816,9 @@ where
     if let Command::Attest(a) = cli.command {
         return run_attest(a);
     }
+    if let Command::Scm(a) = cli.command {
+        return run_scm(a);
+    }
     let mut common = cli.common;
     common = apply_config(common)?;
     match cli.command {
@@ -824,6 +892,7 @@ where
         Command::Manifest(_) | Command::Attest(_) => {
             unreachable!("dispatched at top of app_main")
         }
+        Command::Scm(_) => unreachable!("dispatched at top of app_main"),
     }
 }
 
@@ -1029,6 +1098,89 @@ fn run_attest(a: AttestSubcmd) -> Result<()> {
     etree::tree_write(&mut BufWriter::new(f), &attested, &mut paops)?;
     eprintln!("attest: signed {}", a.file.display());
     Ok(())
+}
+
+/// `scm` entry point: dispatch to the appropriate sub-operation.
+/// Re-uses provenance::attest for signing so the wire format is
+/// identical to TODO.roadmap/51.
+fn run_scm(a: ScmSubcmd) -> Result<()> {
+    let casdir = a.casdir.clone().unwrap_or_else(|| {
+        if Path::new("cas").is_dir() {
+            PathBuf::from("cas")
+        } else {
+            PathBuf::from(".")
+        }
+    });
+    if !casdir.is_dir() {
+        std::fs::create_dir_all(&casdir)?;
+    }
+    match a.command {
+        ScmCommand::Init { manifest } => {
+            scm::init_manifest(&manifest)?;
+            println!("scm init: wrote {}", manifest.display());
+            Ok(())
+        }
+        ScmCommand::Add { manifest, path } => {
+            let n = scm::add_to_manifest(&manifest, &path, &casdir)?;
+            println!("scm add: appended {} entries to {}", n, manifest.display());
+            Ok(())
+        }
+        ScmCommand::Deps {
+            manifest,
+            cargo_toml,
+        } => {
+            let n = scm::add_cargo_deps(&manifest, &cargo_toml, &casdir)?;
+            println!("scm deps: appended {} entries to {}", n, manifest.display());
+            Ok(())
+        }
+        ScmCommand::Attest { signer, manifest } => {
+            run_attest(AttestSubcmd {
+                signer,
+                file: manifest.clone(),
+            })?;
+            println!("scm attest: signed {}", manifest.display());
+            Ok(())
+        }
+        ScmCommand::Verify {
+            trust_root,
+            manifest,
+        } => {
+            // Delegate to the existing verify-chain implementation by
+            // reconstructing the subcommand args. We use the same
+            // code path so customers get identical semantics to
+            // `enprot verify-chain --trust-root X FILE`.
+            verify_chain_files(
+                CommonArgs {
+                    verbose: false,
+                    quiet: false,
+                    max_depth: consts::DEFAULT_MAX_DEPTH,
+                    left_separator: consts::DEFAULT_LEFT_SEP.to_string(),
+                    right_separator: consts::DEFAULT_RIGHT_SEP.to_string(),
+                    password: Vec::new(),
+                    casdir: Some(casdir.clone()),
+                    policy: None,
+                    defaults: None,
+                    fips: false,
+                    lang: None,
+                    pbkdf_disable_cache: false,
+                    anchor: false,
+                    signer: None,
+                    format: output::OutputFormat::Text,
+                    inline: false,
+                    policy_file: None,
+                },
+                VerifyChainSubcmd {
+                    trust_roots: vec![trust_root],
+                    files: vec![manifest.to_string_lossy().into_owned()],
+                },
+            )
+        }
+        ScmCommand::Diff { old, new } => {
+            let d = scm::diff_manifests(&old, &new)?;
+            print!("{d}");
+            Ok(())
+        }
+    }
 }
 
 /// `clean` / `smudge` / `textconv` entry point. Pipes stdin through

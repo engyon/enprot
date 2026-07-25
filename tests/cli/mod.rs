@@ -21,6 +21,7 @@ mod pki;
 mod policy;
 mod provenance;
 mod resolve;
+mod scm;
 mod smudge_clean;
 mod snapshot_pin;
 mod store_fetch;
