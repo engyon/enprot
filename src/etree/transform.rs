@@ -42,8 +42,11 @@ pub fn transform(text_in: &TextTree, paops: &mut crate::etree::ParseOps) -> Resu
     for node in text_in {
         let new_node = match node {
             TextNode::Plain(_) | TextNode::Data(_) => node.clone(),
-            // Chain anchors and INCLUDE references are metadata, not content.
-            TextNode::Chain { .. } | TextNode::Include { .. } => node.clone(),
+            // Chain anchors, INCLUDE references, and CONFLICT markers
+            // are metadata, not content — pass through unchanged.
+            TextNode::Chain { .. } | TextNode::Include { .. } | TextNode::Conflict { .. } => {
+                node.clone()
+            }
             TextNode::BeginEnd { keyw, txt } => transform_begin_end(keyw, txt, paops)?,
             TextNode::Encrypted {
                 keyw,

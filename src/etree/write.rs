@@ -142,6 +142,42 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                     paops.separators.right
                 )?;
             }
+            TextNode::Conflict { keyw, ours, theirs } => {
+                writeln!(
+                    outw,
+                    "{} {} {} {}",
+                    paops.separators.left,
+                    Directive::Conflict.keyword(),
+                    keyw,
+                    paops.separators.right
+                )?;
+                paops.runtime.level += 1;
+                writeln!(
+                    outw,
+                    "{} {} {}",
+                    paops.separators.left,
+                    Directive::Ours.keyword(),
+                    paops.separators.right
+                )?;
+                tree_write(outw, ours, paops)?;
+                writeln!(
+                    outw,
+                    "{} {} {}",
+                    paops.separators.left,
+                    Directive::Theirs.keyword(),
+                    paops.separators.right
+                )?;
+                tree_write(outw, theirs, paops)?;
+                paops.runtime.level -= 1;
+                writeln!(
+                    outw,
+                    "{} {} {} {}",
+                    paops.separators.left,
+                    Directive::End.keyword(),
+                    keyw,
+                    paops.separators.right
+                )?;
+            }
         }
     }
     Ok(())

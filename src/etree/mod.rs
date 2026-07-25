@@ -229,6 +229,16 @@ pub enum TextNode {
     Include {
         hash: String,
     },
+    /// Merge-driver conflict marker (TODO.roadmap/43). Holds both
+    /// sides of a conflicting WORD region so the file remains valid
+    /// host-language source (the `<<<<<<<` markers git would
+    /// otherwise emit aren't valid EPT). `enprot resolve` walks
+    /// these and produces a clean tree.
+    Conflict {
+        keyw: String,
+        ours: TextTree,
+        theirs: TextTree,
+    },
 }
 
 /// EPT directive types — one per recognized keyword in the markup.
@@ -255,6 +265,12 @@ pub enum Directive {
     Chain,
     /// Conflict marker (TODO.finalize/19). Used by the merge driver.
     Conflict,
+    /// Mode-switch inside a CONFLICT block (TODO.roadmap/43). Marks
+    /// the start of the "ours" side.
+    Ours,
+    /// Mode-switch inside a CONFLICT block. Marks the start of the
+    /// "theirs" side.
+    Theirs,
     /// Cross-file DAG reference (TODO.finalize/25).
     Include,
 }
@@ -271,6 +287,8 @@ impl Directive {
             Directive::Encrypted => "ENCRYPTED",
             Directive::Chain => "CHAIN",
             Directive::Conflict => "CONFLICT",
+            Directive::Ours => "OURS",
+            Directive::Theirs => "THEIRS",
             Directive::Include => "INCLUDE",
         }
     }
@@ -285,12 +303,10 @@ impl Directive {
             "DATA" => Some(Directive::Data),
             "STORED" => Some(Directive::Stored),
             "ENCRYPTED" => Some(Directive::Encrypted),
-            // Chain/Conflict/Include are reserved keywords — the
-            // parser doesn't accept them yet (TODOs 17/19/25), but
-            // reserving them now prevents future files from using
-            // them as WORD identifiers by accident.
             "CHAIN" => Some(Directive::Chain),
             "CONFLICT" => Some(Directive::Conflict),
+            "OURS" => Some(Directive::Ours),
+            "THEIRS" => Some(Directive::Theirs),
             "INCLUDE" => Some(Directive::Include),
             _ => None,
         }

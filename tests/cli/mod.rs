@@ -12,6 +12,7 @@ mod encrypt_store;
 mod fingerprint;
 mod issue_15;
 mod json_output;
+mod merge_driver;
 mod misc;
 mod multi_file;
 mod pbkdf;

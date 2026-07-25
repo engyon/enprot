@@ -297,6 +297,17 @@ pub fn required_for(node: &TextNode) -> CapabilitySet {
         TextNode::Include { .. } => {
             s.insert(Capability::Reader);
         }
+        // Conflict markers carry both sides verbatim. Required
+        // capability is the union of what each side requires; caller
+        // resolves and re-encrypts before they can act on it.
+        TextNode::Conflict { ours, theirs, .. } => {
+            for child in ours.iter().chain(theirs.iter()) {
+                let child_req = required_for(child);
+                for c in child_req.iter_sorted() {
+                    s.insert(c.clone());
+                }
+            }
+        }
     }
     s
 }

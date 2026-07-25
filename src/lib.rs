@@ -42,6 +42,7 @@ pub mod crypto;
 mod error;
 pub mod etree;
 pub mod ledger;
+pub mod merge;
 pub mod merkle;
 pub mod output;
 mod password;
@@ -195,6 +196,12 @@ pub enum Command {
     /// `--global`, to `~/.config/enprot/config.toml`). Refuses to
     /// overwrite an existing file. See TODO.roadmap/40.
     Init(InitSubcmd),
+    /// Git merge-driver contract: `enprot merge-driver %O %A %B %P`
+    /// (TODO.roadmap/43). Performs a three-way WORD-aware merge and
+    /// writes the result back into `%A` (the "ours" path). Emits
+    /// CONFLICT markers when both sides modified the same WORD region
+    /// differently.
+    MergeDriver(MergeDriverSubcmd),
 }
 
 /// `init` subcommand: scaffold a commented TOML config the user can
@@ -209,6 +216,25 @@ pub struct InitSubcmd {
     /// hand-edited config.
     #[arg(long)]
     pub force: bool,
+}
+
+/// `merge-driver` subcommand: invoked by git with four positional
+/// arguments — the ancestor version, our version, their version,
+/// and the path of the file in the working tree. Output goes back
+/// into the "ours" path (the second argument). Exits non-zero on
+/// parse errors; exits zero even when conflicts are emitted (the
+/// presence of CONFLICT markers in the output is the merge's signal).
+#[derive(Args)]
+pub struct MergeDriverSubcmd {
+    /// Common ancestor version (`%O` in git's contract).
+    pub base: PathBuf,
+    /// Our version (`%A`); the merge result is written here.
+    pub ours: PathBuf,
+    /// Their version (`%B`).
+    pub theirs: PathBuf,
+    /// Working-tree path (`%P`); informational.
+    #[arg(value_name = "PATH")]
+    pub path: Option<PathBuf>,
 }
 
 /// Encrypt subcommand: encrypt-specific options plus the shared output
@@ -593,6 +619,11 @@ where
     if let Command::Init(a) = cli.command {
         return init_config(a);
     }
+    // `merge-driver` is invoked by git with a fixed argv shape and
+    // doesn't take enprot flags. Dispatch it directly.
+    if let Command::MergeDriver(a) = cli.command {
+        return run_merge_driver(a);
+    }
     let mut common = cli.common;
     common = apply_config(common)?;
     match cli.command {
@@ -658,6 +689,7 @@ where
         // Init is dispatched at the top of app_main so it skips config
         // loading entirely. The wildcard here keeps the match exhaustive.
         Command::Init(_) => unreachable!("dispatched at top of app_main"),
+        Command::MergeDriver(_) => unreachable!("dispatched at top of app_main"),
     }
 }
 
@@ -712,6 +744,23 @@ fn init_config(a: InitSubcmd) -> Result<()> {
     }
     std::fs::write(&target, config::Config::template())?;
     println!("wrote {}", target.display());
+    Ok(())
+}
+
+/// `merge-driver` entry point. Performs a three-way WORD-aware
+/// merge and writes the result back into the "ours" path. Exits
+/// zero on success even when conflicts are emitted; the caller
+/// detects conflicts by scanning the output for CONFLICT markers.
+/// Exits non-zero only on parse / IO errors.
+fn run_merge_driver(a: MergeDriverSubcmd) -> Result<()> {
+    let conflicts = merge::merge_paths(&a.base, &a.ours, &a.theirs)?;
+    if conflicts > 0 {
+        eprintln!(
+            "merge-driver: {} conflict(s) emitted in {}",
+            conflicts,
+            a.ours.display()
+        );
+    }
     Ok(())
 }
 
@@ -1264,6 +1313,9 @@ fn list_tree<W: Write>(tree: &etree::TextTree, depth: usize, out: &mut W) -> Res
             etree::TextNode::Include { hash } => {
                 writeln!(out, "{}INCLUDE   {}…", indent, &hash[..hash.len().min(16)])?;
             }
+            etree::TextNode::Conflict { keyw, .. } => {
+                writeln!(out, "{}CONFLICT  {}", indent, keyw)?;
+            }
         }
     }
     Ok(())
@@ -1343,6 +1395,19 @@ fn list_tree_to_nodes(tree: &etree::TextTree, depth: usize, out: &mut Vec<output
                 out.push(output::ListNode {
                     kind: "include",
                     word: hash.clone(),
+                    depth,
+                    cipher: None,
+                    pbkdf: None,
+                    cas: None,
+                    signer: None,
+                    payload: None,
+                    children: Vec::new(),
+                });
+            }
+            etree::TextNode::Conflict { keyw, .. } => {
+                out.push(output::ListNode {
+                    kind: "conflict",
+                    word: keyw.clone(),
                     depth,
                     cipher: None,
                     pbkdf: None,
