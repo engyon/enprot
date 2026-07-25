@@ -173,6 +173,15 @@ pub enum Command {
     /// signed chain anchor in FILE — `tail -f` for cryptographic
     /// logs. Verify later with `enprot verify-chain --trust-root`.
     AuditLog(AuditLogSubcmd),
+    /// Print the current chain head hash of FILE. The head is the
+    /// AnchorHash of the last CHAIN block (or a full-file SHA3-256
+    /// if the file has no anchors). Publish the hash out-of-band;
+    /// later verify with `enprot pin`.
+    Snapshot(SnapshotSubcmd),
+    /// Verify that FILE's chain head hash matches EXPECTED-HASH.
+    /// Exit non-zero on mismatch. Use after `enprot snapshot` to
+    /// detect retroactive modification against a published pin.
+    Pin(PinSubcmd),
     /// Print the capability set implied by the current flags (passwords,
     /// CAS dir, key files) and exit. No file transformation occurs.
     /// Useful for verifying "what would I be able to do?" before running
@@ -308,6 +317,24 @@ pub struct AuditLogSubcmd {
     /// Log file. Appended to if it exists; created if not. Each
     /// invocation reads the existing content into memory, appends
     /// new anchors, and writes the result back atomically.
+    #[arg(value_name = "FILE")]
+    pub file: String,
+}
+
+/// `snapshot` subcommand: print the chain head hash.
+#[derive(Args)]
+pub struct SnapshotSubcmd {
+    #[arg(value_name = "FILE")]
+    pub file: String,
+}
+
+/// `pin` subcommand: verify the chain head hash matches EXPECTED.
+#[derive(Args)]
+pub struct PinSubcmd {
+    /// Expected chain head hash (64 hex chars).
+    #[arg(value_name = "EXPECTED-HASH")]
+    pub expected: String,
+
     #[arg(value_name = "FILE")]
     pub file: String,
 }
@@ -551,6 +578,8 @@ where
         Command::Fingerprint(a) => pki_fingerprint(a),
         Command::VerifyChain(a) => verify_chain_files(common, a),
         Command::AuditLog(a) => audit_log_stream(common, a),
+        Command::Snapshot(a) => snapshot_file(a),
+        Command::Pin(a) => pin_file(a),
         Command::Capabilities => {
             let policy = resolve_policy(&common)?;
             let mut paops = ParseOps::new(policy)?;
@@ -1301,6 +1330,48 @@ fn pki_fingerprint(a: FingerprintSubcmd) -> Result<()> {
     let fp = capability::KeyFp::from_pem(&pem)?;
     println!("{}", fp);
     Ok(())
+}
+
+/// Compute the chain head hash of a file: SHA3-256 over the
+/// canonical serialized tree. This detects ANY byte-level change —
+/// content, anchors, metadata. For external pinning (publish the
+/// hash out-of-band, later compare with `enprot pin`), this is the
+/// strongest guarantee.
+fn compute_chain_head(path: &str) -> Result<String> {
+    let mut paops = ParseOps::new(Box::new(crate::crypto::CryptoPolicyDefault {}))?;
+    paops.runtime.fname = path.to_string();
+    let reader: Box<dyn BufRead> = if path == "-" {
+        Box::new(BufReader::new(std::io::stdin()))
+    } else {
+        Box::new(BufReader::new(File::open(path)?))
+    };
+    let tree = etree::parse(reader, &mut paops)?;
+
+    // Always hash the full canonical tree serialization. This catches
+    // any tampering — content, anchors, separators, whitespace.
+    let mut blob = Vec::new();
+    etree::tree_write(&mut blob, &tree, &mut paops)?;
+    let policy = crate::crypto::CryptoPolicyDefault {};
+    crate::crypto::hexdigest("sha3-256", &blob, &policy)
+}
+
+fn snapshot_file(a: SnapshotSubcmd) -> Result<()> {
+    let head = compute_chain_head(&a.file)?;
+    println!("{}", head);
+    Ok(())
+}
+
+fn pin_file(a: PinSubcmd) -> Result<()> {
+    let head = compute_chain_head(&a.file)?;
+    if head == a.expected {
+        println!("OK");
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "chain head mismatch: expected {}, got {}",
+            a.expected, head
+        )))
+    }
 }
 
 /// `audit-log` implementation: read stdin lines, append each as a
