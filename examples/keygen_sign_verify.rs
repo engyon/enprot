@@ -29,7 +29,10 @@ fn main() -> enprot::Result<()> {
 
     // Tamper detection
     let ok_tampered = pki::verify(SigAlgKind::Ed25519, &pub_pem, b"tampered", &sig)?;
-    println!("Tampered message: {}", if ok_tampered { "VALID" } else { "INVALID" });
+    println!(
+        "Tampered message: {}",
+        if ok_tampered { "VALID" } else { "INVALID" }
+    );
 
     Ok(())
 }
