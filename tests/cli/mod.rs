@@ -1,4 +1,5 @@
 mod anchor_flag;
+mod audit_log;
 mod capabilities;
 mod chain_directive;
 mod cipher;
