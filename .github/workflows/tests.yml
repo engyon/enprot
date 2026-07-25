@@ -137,3 +137,21 @@ jobs:
         run: ./ci/install.sh
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+
+  bench:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Compile benchmarks
+        run: cargo bench --no-run
+      - name: Smoke-run benchmarks (quick)
+        run: |
+          cargo bench --bench merkle -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench crypto  -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench parser  -- --quick --warm-up-time 1 --measurement-time 2
