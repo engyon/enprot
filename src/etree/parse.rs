@@ -32,6 +32,41 @@ use crate::error::{Error, Result};
 use crate::etree::{Command, ParseOps, TextNode, TextTree, parse_error};
 use crate::utils;
 
+/// In-progress frame on the parser stack. The `text` accumulator is
+/// always the "current target" — what new nodes get pushed onto. When
+/// a frame opens, the outer text is saved into the frame and `text`
+/// is cleared; when the frame closes, the saved outer text becomes
+/// the new accumulator and the just-collected `text` becomes the
+/// frame's children.
+///
+/// `Conflict` is the one variant that collects into *two* children
+/// (`ours`, `theirs`); `mode` tracks which side `text` is currently
+/// filling. OURS/THEIRS directives flip the mode and stash the
+/// accumulated nodes into the appropriate field.
+enum Frame {
+    BeginEnd {
+        keyw: String,
+        outer: TextTree,
+    },
+    Encrypted {
+        keyw: String,
+        outer: TextTree,
+        extfields: BTreeMap<String, String>,
+    },
+    Conflict {
+        keyw: String,
+        outer: TextTree,
+        ours: TextTree,
+        mode: ConflictMode,
+    },
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum ConflictMode {
+    Ours,
+    Theirs,
+}
+
 pub fn parse<R>(buf_in: R, paops: &mut ParseOps) -> Result<TextTree>
 where
     R: BufRead,
@@ -42,7 +77,7 @@ where
 
     let mut text = Vec::new();
     let mut lineno = 0;
-    let mut pstack = Vec::new();
+    let mut pstack: Vec<Frame> = Vec::new();
 
     for line_in in buf_in.lines() {
         let line = line_in?;
@@ -97,29 +132,26 @@ where
             Command::Stored => parse_stored(rest, &line, lineno, paops, &mut text)?,
             Command::Chain => parse_chain(rest, &line, lineno, paops, &mut text)?,
             Command::Include => parse_include(rest, &line, lineno, paops, &mut text)?,
-            // Reserved keyword (TODO 19). Parser support lands in a
-            // follow-up PR.
             Command::Conflict => {
-                return Err(parse_error(
-                    paops,
-                    lineno,
-                    &line,
-                    "CONFLICT directive not yet implemented (reserved keyword)",
-                ));
+                parse_conflict(rest, &line, lineno, paops, &mut pstack, &mut text)?
             }
+            Command::Ours => parse_ours(&line, lineno, paops, &mut pstack, &mut text)?,
+            Command::Theirs => parse_theirs(&line, lineno, paops, &mut pstack, &mut text)?,
         }
     }
 
     if !pstack.is_empty() {
         for top in pstack.into_iter().rev() {
             match top {
-                TextNode::BeginEnd { keyw, .. } => {
+                Frame::BeginEnd { keyw, .. } => {
                     eprintln!("Parse: BEGIN {} without END.", keyw);
                 }
-                TextNode::Encrypted { keyw, .. } => {
+                Frame::Encrypted { keyw, .. } => {
                     eprintln!("Parse: ENCRYPTED {} without END.", keyw);
                 }
-                _ => {}
+                Frame::Conflict { keyw, .. } => {
+                    eprintln!("Parse: CONFLICT {} without END.", keyw);
+                }
             }
         }
         return Err(Error::Parse {
@@ -165,7 +197,7 @@ fn parse_begin(
     line: &str,
     lineno: i32,
     paops: &mut ParseOps,
-    pstack: &mut Vec<TextNode>,
+    pstack: &mut Vec<Frame>,
     text: &mut Vec<TextNode>,
 ) -> Result<()> {
     if cmd.len() != 1 {
@@ -177,11 +209,10 @@ fn parse_begin(
         ));
     }
     paops.runtime.level += 1;
-    pstack.push(TextNode::BeginEnd {
+    pstack.push(Frame::BeginEnd {
         keyw: cmd[0].to_owned(),
-        txt: text.to_vec(),
+        outer: std::mem::take(text),
     });
-    text.clear();
     Ok(())
 }
 
@@ -216,7 +247,7 @@ fn parse_encrypted(
     line: &str,
     lineno: i32,
     paops: &mut ParseOps,
-    pstack: &mut Vec<TextNode>,
+    pstack: &mut Vec<Frame>,
     text: &mut Vec<TextNode>,
 ) -> Result<()> {
     let extfields = parse_encrypted_extfields(cmd, paops, lineno, line)?;
@@ -232,12 +263,11 @@ fn parse_encrypted(
     match param_count {
         1 => {
             paops.runtime.level += 1;
-            pstack.push(TextNode::Encrypted {
+            pstack.push(Frame::Encrypted {
                 keyw: cmd[0].to_owned(),
-                txt: text.to_vec(),
+                outer: std::mem::take(text),
                 extfields,
             });
-            text.clear();
             Ok(())
         }
         2 => {
@@ -272,7 +302,7 @@ fn parse_end(
     line: &str,
     lineno: i32,
     paops: &mut ParseOps,
-    pstack: &mut Vec<TextNode>,
+    pstack: &mut Vec<Frame>,
     text: &mut Vec<TextNode>,
 ) -> Result<()> {
     if cmd.len() > 1 {
@@ -280,7 +310,7 @@ fn parse_end(
     }
 
     match pstack.pop() {
-        Some(TextNode::BeginEnd { keyw, txt }) => {
+        Some(Frame::BeginEnd { keyw, outer }) => {
             if !cmd.is_empty() && keyw != cmd[0] {
                 return Err(parse_error(
                     paops,
@@ -291,16 +321,16 @@ fn parse_end(
             }
             let node = TextNode::BeginEnd {
                 keyw,
-                txt: text.to_vec(),
+                txt: std::mem::take(text),
             };
-            *text = txt;
+            *text = outer;
             text.push(node);
             paops.runtime.level -= 1;
             Ok(())
         }
-        Some(TextNode::Encrypted {
+        Some(Frame::Encrypted {
             keyw,
-            txt,
+            outer,
             extfields,
         }) => {
             if keyw != cmd[0] {
@@ -327,10 +357,10 @@ fn parse_end(
                 TextNode::Data(_) | TextNode::Stored { .. } => {
                     let node = TextNode::Encrypted {
                         keyw,
-                        txt: text.to_vec(),
+                        txt: std::mem::take(text),
                         extfields,
                     };
-                    *text = txt;
+                    *text = outer;
                     text.push(node);
                     paops.runtime.level -= 1;
                     Ok(())
@@ -343,7 +373,34 @@ fn parse_end(
                 )),
             }
         }
-        _ => Err(parse_error(
+        Some(Frame::Conflict {
+            keyw,
+            outer,
+            ours,
+            mode,
+        }) => {
+            if !cmd.is_empty() && keyw != cmd[0] {
+                return Err(parse_error(
+                    paops,
+                    lineno,
+                    line,
+                    format!("END mismatch (expected '{}').", keyw),
+                ));
+            }
+            // Whatever was in `text` belongs to the side currently
+            // in `mode`. The other side was already stashed when the
+            // mode-switch directive fired.
+            let (ours, theirs) = match mode {
+                ConflictMode::Ours => (std::mem::take(text), ours),
+                ConflictMode::Theirs => (ours, std::mem::take(text)),
+            };
+            let node = TextNode::Conflict { keyw, ours, theirs };
+            *text = outer;
+            text.push(node);
+            paops.runtime.level -= 1;
+            Ok(())
+        }
+        None => Err(parse_error(
             paops,
             lineno,
             line,
@@ -423,5 +480,116 @@ fn parse_include(
     text.push(TextNode::Include {
         hash: cmd[0].to_owned(),
     });
+    Ok(())
+}
+
+/// Open a CONFLICT block. Like BEGIN, but the block holds two
+/// labelled sub-trees (`ours`, `theirs`) instead of one. Mode starts
+/// in `Ours`; the OURS directive flips the mode and stashes whatever
+/// has been collected so far.
+fn parse_conflict(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut Vec<Frame>,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 1 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "CONFLICT needs a single keyword.",
+        ));
+    }
+    paops.runtime.level += 1;
+    pstack.push(Frame::Conflict {
+        keyw: cmd[0].to_owned(),
+        outer: std::mem::take(text),
+        ours: Vec::new(),
+        mode: ConflictMode::Ours,
+    });
+    Ok(())
+}
+
+/// `OURS` mode-switch inside a CONFLICT block. Anything collected
+/// before OURS (rare — usually CONFLICT is immediately followed by
+/// OURS) becomes part of the ours side, then the mode flips and
+/// collection continues into `ours`. After THEIRS, OURS is an error.
+fn parse_ours(
+    line: &str,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut [Frame],
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    let Some(last) = pstack.last_mut() else {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "OURS outside of CONFLICT block.",
+        ));
+    };
+    let Frame::Conflict { ours, mode, .. } = last else {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "OURS inside non-CONFLICT block.",
+        ));
+    };
+    if *mode == ConflictMode::Theirs {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "OURS after THEIRS in CONFLICT block.",
+        ));
+    }
+    // Re-attach the accumulated nodes to the ours side, then keep
+    // collecting into ours via `text`. (When THEIRS arrives later it
+    // will stash `text` into ours in turn.)
+    ours.append(text);
+    *mode = ConflictMode::Ours;
+    Ok(())
+}
+
+/// `THEIRS` mode-switch inside a CONFLICT block. Stashes the
+/// accumulated text into `ours` and starts collecting into `theirs`.
+fn parse_theirs(
+    line: &str,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut [Frame],
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    let Some(last) = pstack.last_mut() else {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "THEIRS outside of CONFLICT block.",
+        ));
+    };
+    let Frame::Conflict { ours, mode, .. } = last else {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "THEIRS inside non-CONFLICT block.",
+        ));
+    };
+    if *mode == ConflictMode::Theirs {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "THEIRS after THEIRS in CONFLICT block.",
+        ));
+    }
+    ours.append(text);
+    *mode = ConflictMode::Theirs;
     Ok(())
 }
