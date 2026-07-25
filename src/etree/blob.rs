@@ -40,6 +40,6 @@ pub fn tree_to_blob(text: &TextTree, paops: &mut ParseOps) -> Result<Vec<u8>> {
 }
 
 pub fn blob_to_tree(data: Vec<u8>, path: String, paops: &mut ParseOps) -> Result<TextTree> {
-    paops.fname = path;
+    paops.runtime.fname = path;
     parse(Cursor::new(data), paops)
 }

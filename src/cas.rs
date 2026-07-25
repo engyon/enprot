@@ -33,7 +33,7 @@ use crate::etree::ParseOps;
 pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
     hex::decode(hexhash).map_err(|_| Error::Cas(format!("Not a valid hex token: {}", hexhash)))?;
 
-    let mut path = paops.casdir.clone();
+    let mut path = paops.io.casdir.clone();
     path.push(hexhash);
 
     let mut file_in = File::open(&path)
@@ -43,7 +43,7 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
     let bytes = file_in
         .read_to_end(&mut blob)
         .map_err(|e| Error::Cas(format!("Error reading {}: {}", path.display(), e)))?;
-    if paops.verbose {
+    if paops.io.verbose {
         eprintln!("cas::load(): {} bytes from {}", bytes, path.display());
     }
 
@@ -64,11 +64,11 @@ pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
 
 pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String> {
     let hexhash = crypto::hexdigest("sha3-256", &blob, &*paops.crypto.policy)?;
-    let mut path = paops.casdir.clone();
+    let mut path = paops.io.casdir.clone();
     path.push(&hexhash);
 
     if path.is_file() {
-        if paops.verbose {
+        if paops.io.verbose {
             eprintln!("cas::save(): {} already exists. Exiting.", path.display());
         }
         return Ok(hexhash);
@@ -84,7 +84,7 @@ pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String> {
             e
         ))
     })?;
-    if paops.verbose {
+    if paops.io.verbose {
         eprintln!("cas::save(): {} bytes to {}", bytes, path.display());
     }
 

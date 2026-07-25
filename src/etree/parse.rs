@@ -36,7 +36,7 @@ pub fn parse<R>(buf_in: R, paops: &mut ParseOps) -> Result<TextTree>
 where
     R: BufRead,
 {
-    if paops.max_depth != 0 && paops.level > paops.max_depth {
+    if paops.max_depth != 0 && paops.runtime.level > paops.max_depth {
         return Err(Error::Msg("Maximum recursion depth!".into()));
     }
 
@@ -126,7 +126,7 @@ where
             }
         }
         return Err(Error::Parse {
-            file: paops.fname.clone(),
+            file: paops.runtime.fname.clone(),
             lineno: 0,
             msg: "Unclosed section".into(),
         });
@@ -179,7 +179,7 @@ fn parse_begin(
             "BEGIN needs a single keyword.",
         ));
     }
-    paops.level += 1;
+    paops.runtime.level += 1;
     pstack.push(TextNode::BeginEnd {
         keyw: cmd[0].to_owned(),
         txt: text.to_vec(),
@@ -234,7 +234,7 @@ fn parse_encrypted(
 
     match param_count {
         1 => {
-            paops.level += 1;
+            paops.runtime.level += 1;
             pstack.push(TextNode::Encrypted {
                 keyw: cmd[0].to_owned(),
                 txt: text.to_vec(),
@@ -298,7 +298,7 @@ fn parse_end(
             };
             *text = txt;
             text.push(node);
-            paops.level -= 1;
+            paops.runtime.level -= 1;
             Ok(())
         }
         Some(TextNode::Encrypted {
@@ -335,7 +335,7 @@ fn parse_end(
                     };
                     *text = txt;
                     text.push(node);
-                    paops.level -= 1;
+                    paops.runtime.level -= 1;
                     Ok(())
                 }
                 _ => Err(parse_error(
