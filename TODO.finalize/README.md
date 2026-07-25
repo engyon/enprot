@@ -18,8 +18,8 @@
 | 14 | `14-capability-model.md`      | Foundation | done (PR #103) |
 | 15 | `15-det-aead-default.md`      | Foundation | specified; small default flip |
 | 16 | `16-cas-referenced-default.md`| Foundation | specified; enables merge-friendly encryption |
-| 17 | `17-chain-dag.md`             | Stage 1 | specified; blockchain-in-a-file core |
-| 18 | `18-verify-chain.md`          | Stage 1 | specified; verifier for chain anchors |
+| 17 | `17-chain-dag.md`             | Stage 1 | ledger module done (PR #105); parser + CLI integration pending |
+| 18 | `18-verify-chain.md`          | Stage 1 | specified; depends on parser integration of 17 |
 | 19 | `19-merge-driver.md`          | Distributed | specified; lock-free git workflows |
 | 20 | `20-resolve.md`               | Distributed | specified; conflict resolver UI |
 | 21 | `21-pqc-phase2-ml-dsa.md`     | Stage 2 (PQC) | specified; FIPS 204 signatures |
@@ -33,10 +33,10 @@
 | 29 | `29-source-provenance.md`     | Stage 5c | specified; SLSA-style build provenance |
 | 30 | `30-snapshot-pin.md`          | Stage 5d | specified; external verifiability without a node |
 | 31 | `31-supply-chain-manifest.md` | Stage 5e | specified; vendor → customer manifest flow |
-| 32 | `32-dry-separator-resolution.md` | Refactor | specified; DRY violation today |
-| 33 | `33-eliminate-unreachable.md` | Refactor | specified; eliminate `unreachable!` in production |
-| 34 | `34-typed-directive-names.md` | Refactor | specified; typed `Directive` enum |
-| 35 | `35-parseops-ergonomics.md`   | Refactor | specified; separate 5 concerns |
+| 32 | `32-dry-separator-resolution.md` | Refactor | done (PR #106) |
+| 33 | `33-eliminate-unreachable.md` | Refactor | done (PR #107) |
+| 34 | `34-typed-directive-names.md` | Refactor | done (PR #108) |
+| 35 | `35-parseops-ergonomics.md`   | Refactor | done (PR #109) |
 
 ## Sequencing rationale
 
