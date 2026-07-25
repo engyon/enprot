@@ -503,24 +503,9 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
 
     paops.verbose = common.verbose && !common.quiet;
     paops.max_depth = common.max_depth;
-    // Resolve separators: --lang provides a preset, explicit -l/-r override it.
-    if let Some(ref lang) = common.lang {
-        if let Some((left, right)) = consts::lang_separators(lang) {
-            if common.left_separator == consts::DEFAULT_LEFT_SEP {
-                paops.separators.left = left.to_string();
-            } else {
-                paops.separators.left = common.left_separator;
-            }
-            if common.right_separator == consts::DEFAULT_RIGHT_SEP {
-                paops.separators.right = right.to_string();
-            } else {
-                paops.separators.right = common.right_separator;
-            }
-        }
-    } else {
-        paops.separators.left = common.left_separator;
-        paops.separators.right = common.right_separator;
-    }
+    let (left, right) = resolve_separators(&common);
+    paops.separators.left = left;
+    paops.separators.right = right;
     paops.passwords.extend(common.password);
     if common.pbkdf_disable_cache {
         paops.crypto.pbkdf_cache = None;
@@ -912,6 +897,38 @@ fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> 
     Ok(make_policy(&policy_name))
 }
 
+/// Resolve the final left/right separator strings from CLI args.
+///
+/// `--lang` provides a preset; explicit `-l`/`-r` flags override
+/// the preset's value. The override is detected by comparing against
+/// `consts::DEFAULT_*` — if the user didn't change the default, the
+/// preset is used; if they did, the explicit value wins.
+///
+/// Single source of truth: `run()` and `apply_common()` both call
+/// this. Before this helper existed, the logic was duplicated in
+/// both, risking drift (TODO.finalize/32).
+fn resolve_separators(common: &CommonArgs) -> (String, String) {
+    if let Some(ref lang) = common.lang {
+        if let Some((left, right)) = consts::lang_separators(lang) {
+            let l = if common.left_separator == consts::DEFAULT_LEFT_SEP {
+                left.to_string()
+            } else {
+                common.left_separator.clone()
+            };
+            let r = if common.right_separator == consts::DEFAULT_RIGHT_SEP {
+                right.to_string()
+            } else {
+                common.right_separator.clone()
+            };
+            return (l, r);
+        }
+    }
+    (
+        common.left_separator.clone(),
+        common.right_separator.clone(),
+    )
+}
+
 /// Apply common args to ParseOps (shared by `run` and `verify_files`).
 fn apply_common(common: &CommonArgs, paops: &mut ParseOps) {
     if let Some(dir) = common.casdir.clone() {
@@ -923,23 +940,9 @@ fn apply_common(common: &CommonArgs, paops: &mut ParseOps) {
     }
     paops.verbose = common.verbose && !common.quiet;
     paops.max_depth = common.max_depth;
-    if let Some(ref lang) = common.lang {
-        if let Some((left, right)) = consts::lang_separators(lang) {
-            if common.left_separator == consts::DEFAULT_LEFT_SEP {
-                paops.separators.left = left.to_string();
-            } else {
-                paops.separators.left = common.left_separator.clone();
-            }
-            if common.right_separator == consts::DEFAULT_RIGHT_SEP {
-                paops.separators.right = right.to_string();
-            } else {
-                paops.separators.right = common.right_separator.clone();
-            }
-        }
-    } else {
-        paops.separators.left = common.left_separator.clone();
-        paops.separators.right = common.right_separator.clone();
-    }
+    let (left, right) = resolve_separators(common);
+    paops.separators.left = left;
+    paops.separators.right = right;
     paops.passwords.extend(common.password.clone());
 }
 
