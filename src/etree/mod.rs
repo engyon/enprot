@@ -128,6 +128,11 @@ pub struct IoConfig {
     pub casdir: PathBuf,
     /// Verbose output (caller asked for `-v`).
     pub verbose: bool,
+    /// Force inline `DATA` blocks on encrypt even when CAS is
+    /// available. Restores the pre-42 behavior. Default: false
+    /// (CAS-referenced `STORED ct <hash>` is the merge-friendly
+    /// default whenever CAS exists). See TODO.roadmap/42.
+    pub inline_data: bool,
 }
 
 pub struct ParseOps {
@@ -176,6 +181,7 @@ impl ParseOps {
             io: IoConfig {
                 casdir: Path::new("").to_path_buf(),
                 verbose: false,
+                inline_data: false,
             },
             anchor: crate::AnchorConfig::disabled(),
         })
@@ -327,6 +333,7 @@ mod tests {
             io: IoConfig {
                 casdir: casdir.path().to_path_buf(),
                 verbose: false,
+                inline_data: false,
             },
             ..ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap()
         };
