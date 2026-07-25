@@ -119,6 +119,19 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                     )?;
                 }
             }
+            TextNode::Chain { extfields } => {
+                // Single-line: CHAIN followed by space-separated key:value pairs.
+                write!(
+                    outw,
+                    "{} {}",
+                    paops.separators.left,
+                    Directive::Chain.keyword()
+                )?;
+                for (key, value) in extfields.iter() {
+                    write!(outw, " {}:{}", key, value)?;
+                }
+                writeln!(outw, " {}", paops.separators.right)?;
+            }
         }
     }
     Ok(())

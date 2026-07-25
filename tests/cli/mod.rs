@@ -1,4 +1,5 @@
 mod capabilities;
+mod chain_directive;
 mod cipher;
 mod deterministic;
 mod encrypt_decrypt;

@@ -287,6 +287,12 @@ pub fn required_for(node: &TextNode) -> CapabilitySet {
         TextNode::Encrypted { keyw, .. } => {
             s.insert(Capability::Decryptor(WordId::new(keyw)));
         }
+        // Chain anchors require Verifier(pubkey-of-signer) to check
+        // signatures, but we don't know the pubkey at this layer
+        // (the `signer:` extfield would need parsing). Return Viewer
+        // for now — verify-chain (TODO.finalize/18) does the proper
+        // capability check with the resolved key.
+        TextNode::Chain { .. } => {}
     }
     s
 }
