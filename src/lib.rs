@@ -46,6 +46,7 @@ mod pbkdf;
 pub mod pki;
 mod policy;
 pub mod prot;
+pub mod provider;
 pub mod utils;
 
 pub use error::{Error, Result};
