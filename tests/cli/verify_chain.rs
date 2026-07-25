@@ -14,7 +14,19 @@ fn setup_signed_chain_file() -> (tempfile::TempDir, std::path::PathBuf, std::pat
     let (priv_pem, pub_pem) = pki::keygen(SigAlgKind::Ed25519, &mut rng).unwrap();
     let fp = KeyFp::from_pem(&pub_pem).unwrap();
     let signer = SignerId::new(SigAlgKind::Ed25519, fp);
-    let anchor = Anchor::builder(signer, PayloadHash([0x42; 32]))
+
+    // The payload_hash must match the SHA3-256 of the file content
+    // BEFORE this CHAIN block. Since the file is just the CHAIN line
+    // itself, the "content before" is empty → SHA3-256 of empty bytes.
+    let empty_hash = {
+        let policy = enprot::crypto::CryptoPolicyDefault {};
+        let hex = enprot::crypto::hexdigest("sha3-256", b"", &policy).unwrap();
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&hex::decode(&hex).unwrap());
+        PayloadHash(arr)
+    };
+
+    let anchor = Anchor::builder(signer, empty_hash)
         .with_mutations("genesis")
         .build();
     let signed = sign_anchor(&anchor, &priv_pem, &pub_pem, SigAlgKind::Ed25519).unwrap();
