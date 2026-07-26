@@ -1,10 +1,13 @@
 # Finalize batch — features and polish
 
-All 46 items have been implemented. Items marked "consolidated" were
+All 50 items have been implemented. Items marked "consolidated" were
 moved into `TODO.roadmap/` with new numbering; the original spec
 files remain here for historical context. Items 36-46 were added in
 a later session to track feature-gated library extraction, secrets
 hygiene, parser perf, error ergonomics, and typed extfield access.
+Items 47-50 came out of an architecture audit: dispatch consolidation,
+inspect test coverage, production unwrap removal, and docs format
+consistency.
 
 | # | File | Status | Consolidated into |
 |---|------|--------|-------------------|
@@ -54,3 +57,7 @@ hygiene, parser perf, error ergonomics, and typed extfield access.
 | 44 | `44-progress-indicators.md`   | done          | — |
 | 45 | `45-transform-context-trait.md` | done        | — |
 | 46 | `46-typed-extfield-schema.md` | done          | — |
+| 47 | `47-dispatch-consolidation.md` | done        | — |
+| 48 | `48-inspect-tests.md`          | done          | — |
+| 49 | `49-no-unwrap-in-prod.md`      | done          | — |
+| 50 | `50-docs-markdown-migration.md`| done (adoc deletion pending user OK) | — |

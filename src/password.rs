@@ -30,6 +30,7 @@
 //! with stdin/stdout, and the repeat-verification prompt is skipped
 //! when stdin isn't a TTY (a script already trusts its input).
 
+use crate::error::{Error, Result};
 use std::io::IsTerminal;
 
 /// Prompt the user for a password.
@@ -38,34 +39,36 @@ use std::io::IsTerminal;
 /// the two values must match (with retry on mismatch). When stdin is
 /// not a TTY, repetition is skipped — piped input is trusted by the
 /// caller.
-pub fn get_password(name: &str, rep: bool) -> String {
+pub fn get_password(name: &str, rep: bool) -> Result<String> {
     let prompt = format!("Password for {}: ", name);
-    let pass = read_password(&prompt).expect("password read failure");
+    let pass = read_password(&prompt)?;
     if rep && std::io::stdin().is_terminal() {
         let again_prompt = format!("Repeat password for {}: ", name);
-        let again = read_password(&again_prompt).expect("password read failure");
+        let again = read_password(&again_prompt)?;
         if pass != again {
             eprintln!("Password mismatch. Try again.");
             return get_password(name, rep);
         }
     }
-    pass
+    Ok(pass)
 }
 
 /// If stdin is a TTY, use rpassword's TTY-backed prompt (echo
 /// suppression, reads from `/dev/tty`). Otherwise read from stdin so
 /// callers can pipe passwords in scripts and tests.
-fn read_password(prompt: &str) -> std::io::Result<String> {
+fn read_password(prompt: &str) -> Result<String> {
     use rpassword::ConfigBuilder;
     use std::io::{stdin, stdout};
     let pass = if stdin().is_terminal() {
-        rpassword::prompt_password(prompt)?
+        rpassword::prompt_password(prompt)
+            .map_err(|e| Error::msg(format!("password prompt failed: {e}")))?
     } else {
         let config = ConfigBuilder::new()
             .input_reader(stdin())
             .output_writer(stdout())
             .build();
-        rpassword::prompt_password_with_config(prompt, config)?
+        rpassword::prompt_password_with_config(prompt, config)
+            .map_err(|e| Error::msg(format!("password read failed: {e}")))?
     };
     // Strip a trailing CR so CRLF-terminated piped input (e.g. from
     // Windows or some terminals) is treated identically to

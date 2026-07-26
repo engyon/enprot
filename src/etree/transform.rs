@@ -91,7 +91,7 @@ fn transform_begin_end(
             )?
         } else {
             // Password mode (default).
-            let pass = ensure_password(keyw, paops, true);
+            let pass = ensure_password(keyw, paops, true)?;
             prot::encrypt(
                 pt,
                 &pass,
@@ -174,7 +174,7 @@ fn transform_encrypted(
             crate::kemenc::decrypt(&ct, priv_pem, extfields)?
         } else {
             // Password mode (default).
-            let pass = ensure_password(keyw, paops, false);
+            let pass = ensure_password(keyw, paops, false)?;
             match prot::decrypt(
                 ct,
                 &pass,
@@ -258,13 +258,13 @@ fn transform_stored(keyw: &str, cas: &str, paops: &mut crate::etree::ParseOps) -
     })
 }
 
-fn ensure_password(keyw: &str, paops: &mut crate::etree::ParseOps, repeat: bool) -> String {
+fn ensure_password(keyw: &str, paops: &mut crate::etree::ParseOps, repeat: bool) -> Result<String> {
     if let Some(p) = paops.passwords.get(keyw) {
-        return p.clone();
+        return Ok(p.clone());
     }
-    let p = password::get_password(keyw, repeat);
+    let p = password::get_password(keyw, repeat)?;
     paops.passwords.insert(keyw.to_string(), p.clone());
-    p
+    Ok(p)
 }
 
 /// True when CAS-referenced output should be produced for newly

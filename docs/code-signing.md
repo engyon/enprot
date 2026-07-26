@@ -1,0 +1,106 @@
+<!-- Copyright (c) 2018-2026 [Ribose Inc](https://www.ribose.com). -->
+<!--
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions
+// are met:
+// 1. Redistributions of source code must retain the above copyright
+//    notice, this list of conditions and the following disclaimer.
+// 2. Redistributions in binary form must reproduce the above copyright
+//    notice, this list of conditions and the following disclaimer in the
+//    documentation and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+
+# Code-signing certificate support (issue #40, deferred)
+
+Issue #40 asks for "support usage with code-signing certificates"
+issued by DigiCert. The use case is under-specified. This document
+captures the four plausible interpretations and what each would mean
+for enprot's design, so any future initiative has a starting point.
+
+## The four interpretations
+
+### 1. Sign the enprot binary itself
+
+Authenticode on Windows, `codesign` on macOS, GPG elsewhere. This is
+purely a release-engineering concern: the `deploy.yml` workflow would
+add signing steps that consume a signing key (from a secrets store, an
+HSM, or a hardware token) and produce signed artifacts. No Rust code
+in enprot itself.
+
+Scope: small. Release engineering only.
+
+### 2. Sign the output files enprot produces
+
+So downstream consumers can verify provenance. Open questions:
+
+- **What signature format?** CMS (PKCS#7), JWS, PGP, or a custom
+  "openpgp-like" container.
+- **Where does the signature live?** A sidecar `.sig` file? An additional
+  EPT directive like `<( SIGNED BY ... )>`? An HTTP `Signature:` header
+  (when EPT is transmitted over HTTP)?
+- **What's signed?** The whole output file, or each `BEGIN..END` segment
+  separately?
+
+Scope: medium. Needs a signature-format decision and integration with
+the EPT markup model.
+
+### 3. Cert private key as the encryption key
+
+Replaces the password with the cert's private key (or PBKDF-derived
+key from a value the cert attests to). This bridges enprot's
+password-centric model to a PKI one. Probably surfaced as a new KDF
+"alg" (e.g. `x509-cert`) that pulls the key from a cert handle (file,
+keychain, PIV token).
+
+Scope: medium-large. Depends on cert-source abstraction (file vs
+keychain vs PKCS#11), which is platform-specific.
+
+### 4. Encrypt-to-certificate (PKI envelope)
+
+Like CMS / S/MIME: encrypt segments *to* a certificate's public key
+instead of a password-derived symmetric key. The biggest of the four
+because it pulls in X.509 parsing, ASN.1, key transport, and a new
+markup shape.
+
+Scope: large. Botan has the primitives; the design work is in the wire
+format and UX.
+
+## What enprot has today
+
+- The `pbkdf:` and `cipher:` extfield wire format is symmetric-only.
+- The `CryptoPolicy` trait + `SymmetricCipher` trait are the obvious
+  extension points for any of (2), (3), or (4).
+- No code in `src/` touches certificates or signing today.
+
+## Why this is deferred
+
+Each of the four interpretations is a meaningfully different feature.
+Picking one without the issue's reporter confirming cuts off the
+others. A scope discussion with the original reporter (or product
+owner) is the right next step.
+
+If you're driving this initiative:
+
+1. Pick one of the four interpretations above.
+2. Write a design doc (`docs/<chosen-interpretation>-design.md`)
+   describing the wire format, cert source, and CLI surface.
+3. Add a new `src/pki.rs` (or similar) module that doesn't disturb the
+   existing symmetric path. The `SymmetricCipher` trait is the wrong
+   abstraction for signing — add a parallel trait.
+
+## Close-the-issue criteria
+
+This issue should stay open (or be re-opened) until a specific
+interpretation is chosen and has a tracking issue with a clear scope.

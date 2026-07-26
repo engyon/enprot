@@ -159,12 +159,16 @@ pub fn derive_key(
         return Ok((pbkdf_legacy(password, key_len, policy)?, None));
     }
 
-    let mut salt = opts.salt.clone().unwrap_or_else(|| {
-        rng.as_mut()
-            .unwrap()
-            .read(opts.saltlen)
-            .expect("RNG failure")
-    });
+    let mut salt = match opts.salt.clone() {
+        Some(s) => s,
+        None => {
+            let r = rng
+                .as_mut()
+                .ok_or_else(|| Error::Pbkdf("PBKDF requires an RNG to generate salt".into()))?;
+            r.read(opts.saltlen)
+                .map_err(|e| Error::Pbkdf(format!("RNG failure during salt generation: {e}")))?
+        }
+    };
 
     let botan_param_order = BOTAN_PBKDF_PARAM_MAP
         .get(opts.alg.as_str())
@@ -185,7 +189,7 @@ pub fn derive_key(
                 botan_param_order,
                 password,
                 &salt,
-                opts.params.clone().unwrap(),
+                params.clone(),
                 key_len,
                 policy,
             )?;
@@ -201,10 +205,7 @@ pub fn derive_key(
             }
             k
         };
-        return Ok((
-            key,
-            Some(format_phc(&opts.alg, opts.params.as_ref().unwrap(), &salt)?),
-        ));
+        return Ok((key, Some(format_phc(&opts.alg, params, &salt)?)));
     }
 
     let msec = opts

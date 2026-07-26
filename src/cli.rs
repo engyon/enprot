@@ -841,103 +841,89 @@ where
     // <( END AUTHOR )>
 
     let cli = Cli::parse_from(args);
-    // `init` is the one subcommand that does NOT load config — it
-    // writes a fresh template, so applying existing config would be
-    // noise. Dispatch it before the layered-load step below.
-    if let Command::Init(a) = cli.command {
-        return init_config(a);
-    }
-    // `merge-driver` is invoked by git with a fixed argv shape and
-    // doesn't take enprot flags. Dispatch it directly.
-    if let Command::MergeDriver(a) = cli.command {
-        return run_merge_driver(a);
-    }
-    // `resolve` needs to read the file but doesn't load config —
-    // dispatch directly so a malformed config doesn't block cleanup.
-    if let Command::Resolve(a) = cli.command {
-        return run_resolve(a);
-    }
-    if let Command::Conflicts(a) = cli.command {
-        return run_conflicts(a);
-    }
-    if let Command::Inspect(a) = cli.command {
-        return run_inspect(a, cli.common.clone());
-    }
-    // `clean` / `smudge` / `textconv` are stdin→stdout pipes
-    // invoked by git filter machinery; they don't take the full
-    // CommonArgs shape and bypass config layering.
-    if let Command::Clean(a) = cli.command {
-        return run_smudge_clean(SmudgeMode::Clean, a, cli.common);
-    }
-    if let Command::Smudge(a) = cli.command {
-        return run_smudge_clean(SmudgeMode::Smudge, a, cli.common);
-    }
-    if let Command::Textconv(a) = cli.command {
-        return run_smudge_clean(SmudgeMode::Smudge, a, cli.common);
-    }
-    if let Command::Manifest(a) = cli.command {
-        return run_manifest(a);
-    }
-    if let Command::Attest(a) = cli.command {
-        return run_attest(a);
-    }
-    if let Command::Scm(a) = cli.command {
-        return run_scm(a);
-    }
-    let mut common = cli.common;
-    common = apply_config(common)?;
+    // Single dispatch site. Bypass arms (subcommands that don't need
+    // config layering) call their handler directly. Config-needing
+    // arms wrap their handler in `with_config`, which loads the
+    // layered TOML config and merges it into `common` before invoking
+    // the closure. Adding a new variant is a single new match arm —
+    // the compiler enforces exhaustiveness, no `unreachable!` arms.
     match cli.command {
-        Command::Encrypt(a) => run(
-            common,
-            a.output,
-            Some((a.encrypt, Operation::Encrypt)),
-            load_pems(&a.recipients)?,
-            Vec::new(),
-        ),
-        Command::Decrypt(a) => run(
-            common,
-            a.output,
-            Some((EncryptOpts::default(), Operation::Decrypt)),
-            Vec::new(),
-            load_privkey_pems(&a.key_files)?,
-        ),
-        Command::Store(a) => run(
-            common,
-            a.output,
-            Some((EncryptOpts::default(), Operation::Store)),
-            Vec::new(),
-            Vec::new(),
-        ),
-        Command::Fetch(a) => run(
-            common,
-            a.output,
-            Some((EncryptOpts::default(), Operation::Fetch)),
-            Vec::new(),
-            Vec::new(),
-        ),
-        Command::EncryptStore(a) => run(
-            common,
-            a.output,
-            Some((a.encrypt, Operation::EncryptStore)),
-            load_pems(&a.recipients)?,
-            Vec::new(),
-        ),
-        Command::Passthrough(a) => run(common, a.output, None, Vec::new(), Vec::new()),
-        Command::Verify(a) => verify_files(common, a.output),
-        Command::List(a) => list_files(common, a.output),
+        // Bypass config layering.
+        Command::Init(a) => init_config(a),
+        Command::MergeDriver(a) => run_merge_driver(a),
+        Command::Resolve(a) => run_resolve(a),
+        Command::Conflicts(a) => run_conflicts(a),
+        Command::Inspect(a) => run_inspect(a, cli.common),
+        Command::Clean(a) => run_smudge_clean(SmudgeMode::Clean, a, cli.common),
+        Command::Smudge(a) => run_smudge_clean(SmudgeMode::Smudge, a, cli.common),
+        Command::Textconv(a) => run_smudge_clean(SmudgeMode::Smudge, a, cli.common),
+        Command::Manifest(a) => run_manifest(a),
+        Command::Attest(a) => run_attest(a),
+        Command::Scm(a) => run_scm(a),
+        // Config-needing: load config then dispatch.
+        Command::Encrypt(a) => with_config(cli.common, |common| {
+            run(
+                common,
+                a.output,
+                Some((a.encrypt, Operation::Encrypt)),
+                load_pems(&a.recipients)?,
+                Vec::new(),
+            )
+        }),
+        Command::Decrypt(a) => with_config(cli.common, |common| {
+            run(
+                common,
+                a.output,
+                Some((EncryptOpts::default(), Operation::Decrypt)),
+                Vec::new(),
+                load_privkey_pems(&a.key_files)?,
+            )
+        }),
+        Command::Store(a) => with_config(cli.common, |common| {
+            run(
+                common,
+                a.output,
+                Some((EncryptOpts::default(), Operation::Store)),
+                Vec::new(),
+                Vec::new(),
+            )
+        }),
+        Command::Fetch(a) => with_config(cli.common, |common| {
+            run(
+                common,
+                a.output,
+                Some((EncryptOpts::default(), Operation::Fetch)),
+                Vec::new(),
+                Vec::new(),
+            )
+        }),
+        Command::EncryptStore(a) => with_config(cli.common, |common| {
+            run(
+                common,
+                a.output,
+                Some((a.encrypt, Operation::EncryptStore)),
+                load_pems(&a.recipients)?,
+                Vec::new(),
+            )
+        }),
+        Command::Passthrough(a) => with_config(cli.common, |common| {
+            run(common, a.output, None, Vec::new(), Vec::new())
+        }),
+        Command::Verify(a) => with_config(cli.common, |common| verify_files(common, a.output)),
+        Command::List(a) => with_config(cli.common, |common| list_files(common, a.output)),
         Command::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "enprot", &mut std::io::stdout());
             Ok(())
         }
-        Command::Keygen(a) => pki_keygen(common, a),
-        Command::Sign(a) => pki_sign(common, a),
-        Command::VerifySig(a) => pki_verify_sig(common, a),
+        Command::Keygen(a) => with_config(cli.common, |common| pki_keygen(common, a)),
+        Command::Sign(a) => with_config(cli.common, |common| pki_sign(common, a)),
+        Command::VerifySig(a) => with_config(cli.common, |common| pki_verify_sig(common, a)),
         Command::Fingerprint(a) => pki_fingerprint(a),
-        Command::VerifyChain(a) => verify_chain_files(common, a),
-        Command::AuditLog(a) => audit_log_stream(common, a),
+        Command::VerifyChain(a) => with_config(cli.common, |common| verify_chain_files(common, a)),
+        Command::AuditLog(a) => with_config(cli.common, |common| audit_log_stream(common, a)),
         Command::Snapshot(a) => snapshot_file(a),
         Command::Pin(a) => pin_file(a),
-        Command::Capabilities => {
+        Command::Capabilities => with_config(cli.common, |common| {
             let policy = resolve_policy(&common)?;
             let mut paops = ParseOps::new(policy)?;
             apply_common(&common, &mut paops);
@@ -961,26 +947,24 @@ where
                 }
             }
             Ok(())
-        }
-        // Init is dispatched at the top of app_main so it skips config
-        // loading entirely. The wildcard here keeps the match exhaustive.
-        Command::Init(_) => unreachable!("dispatched at top of app_main"),
-        Command::MergeDriver(_) => unreachable!("dispatched at top of app_main"),
-        Command::Resolve(_) => unreachable!("dispatched at top of app_main"),
-        Command::Conflicts(_) => unreachable!("dispatched at top of app_main"),
-        Command::Inspect(_) => unreachable!("dispatched at top of app_main"),
-        Command::Clean(_) | Command::Smudge(_) | Command::Textconv(_) => {
-            unreachable!("dispatched at top of app_main")
-        }
-        Command::Manifest(_) | Command::Attest(_) => {
-            unreachable!("dispatched at top of app_main")
-        }
-        Command::Scm(_) => unreachable!("dispatched at top of app_main"),
+        }),
     }
 }
 
 /// Load layered TOML config and fill in `Option<T>` fields on `common`
 /// where the user did not pass an explicit CLI flag. Built-in defaults
+/// Load the layered TOML config and merge it into `common`, then
+/// invoke the closure with the resolved `CommonArgs`. Used by the
+/// `app_main` dispatch for subcommands that need config (the bypass
+/// subcommands call their handlers directly, without this wrapper).
+fn with_config<F>(common: CommonArgs, f: F) -> Result<()>
+where
+    F: FnOnce(CommonArgs) -> Result<()>,
+{
+    let common = apply_config(common)?;
+    f(common)
+}
+
 /// (clap `default_value_t`) are treated as "not explicitly set" — they
 /// defer to config when present.
 fn apply_config(mut common: CommonArgs) -> Result<CommonArgs> {
