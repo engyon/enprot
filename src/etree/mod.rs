@@ -352,7 +352,6 @@ pub(crate) fn parse_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::CryptoPolicyDefault;
     use std::fs::File;
     use std::io::BufReader;
     use tempfile::tempdir;
@@ -369,7 +368,7 @@ mod tests {
                 verbose: false,
                 inline_data: false,
             },
-            ..ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap()
+            ..ParseOps::new(crate::crypto::default_policy()).unwrap()
         };
         let tree = parse(BufReader::new(File::open(ept_file).unwrap()), &mut paops).unwrap();
         (tree, paops, casdir)
@@ -471,7 +470,7 @@ mod tests {
 
     #[test]
     fn empty_command_line_is_skipped() {
-        let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap();
+        let mut paops = ParseOps::new(crate::crypto::default_policy()).unwrap();
         paops.runtime.fname = "<test>".into();
         let input = "// <( )>\n";
         let tree = parse(BufReader::new(input.as_bytes()), &mut paops).unwrap();

@@ -2841,6 +2841,16 @@ fn write_key_or_stdout(path: Option<&Path>, data: &[u8]) -> Result<()> {
     match path {
         Some(p) if p != Path::new("-") => {
             fs::write(p, data)?;
+            // Private keys should be owner-read-only on Unix.
+            // We can't tell from the data whether this is a priv
+            // or pub key, so set 0600 unconditionally — pubkeys
+            // don't need to be world-readable (the caller usually
+            // distributes them via other channels).
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(p, fs::Permissions::from_mode(0o600))?;
+            }
         }
         _ => {
             std::io::stdout().write_all(data)?;

@@ -39,7 +39,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::cas;
-use crate::crypto::{self, CryptoPolicy, CryptoPolicyDefault};
+use crate::crypto;
 use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps, TextNode, TextTree};
 
@@ -52,7 +52,7 @@ pub fn build_manifest(dir: &Path, casdir: &Path) -> Result<TextTree> {
     if !dir.is_dir() {
         return Err(Error::msg(format!("{} is not a directory", dir.display())));
     }
-    let policy = Box::new(CryptoPolicyDefault {}) as Box<dyn CryptoPolicy>;
+    let policy = crate::crypto::default_policy();
     let mut paops = ParseOps::new(policy)?;
     paops.io.casdir = casdir.to_path_buf();
     paops.runtime.fname = dir.display().to_string();
@@ -129,7 +129,7 @@ pub fn attest(
     use crate::ledger;
     use crate::pki::SigAlgKind;
 
-    let policy = Box::new(CryptoPolicyDefault {}) as Box<dyn CryptoPolicy>;
+    let policy = crate::crypto::default_policy();
     let mut paops = ParseOps::new(policy)?;
     paops.io.casdir = casdir.to_path_buf();
     paops.runtime.fname = "<provenance-attest>".into();
