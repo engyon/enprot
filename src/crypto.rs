@@ -30,6 +30,13 @@ pub use crate::policy::nist::CryptoPolicyNIST;
 
 use crate::error::{Error, Result};
 
+/// Factory for the default crypto policy. Eliminates the 35-site
+/// `Box::new(CryptoPolicyDefault {})` duplication across cli.rs,
+/// kemenc.rs, provenance, scm, merge, resolve, etc. (TODO.roadmap/61.)
+pub fn default_policy() -> Box<dyn CryptoPolicy> {
+    Box::new(CryptoPolicyDefault {})
+}
+
 pub static BOTAN_HASH_ALG_MAP: phf::Map<&'static str, &'static str> = phf_map! {
     "sha256" => "SHA-256",
     "sha512" => "SHA-512",

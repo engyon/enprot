@@ -412,23 +412,21 @@ pub fn merge_paths(
 }
 
 fn read_tree(path: &std::path::Path) -> Result<TextTree> {
-    use crate::crypto::CryptoPolicyDefault;
     use crate::etree::ParseOps;
     use std::fs::File;
     use std::io::BufReader;
     let f = File::open(path)?;
-    let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {}))?;
+    let mut paops = ParseOps::new(crate::crypto::default_policy())?;
     paops.runtime.fname = path.display().to_string();
     etree_parse(BufReader::new(f), &mut paops)
 }
 
 fn write_tree(path: &std::path::Path, tree: &TextTree) -> Result<()> {
-    use crate::crypto::CryptoPolicyDefault;
     use crate::etree::{ParseOps, tree_write};
     use std::fs::File;
     use std::io::BufWriter;
     let f = File::create(path)?;
-    let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {}))?;
+    let mut paops = ParseOps::new(crate::crypto::default_policy())?;
     paops.runtime.fname = path.display().to_string();
     let mut w = BufWriter::new(f);
     tree_write(&mut w, tree, &mut paops)
@@ -448,12 +446,11 @@ use etree_parse_mod::parse as etree_parse;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::CryptoPolicyDefault;
     use crate::etree::{Directive, ParseOps};
     use std::io::Cursor;
 
     fn parse_str(s: &str) -> TextTree {
-        let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap();
+        let mut paops = ParseOps::new(crate::crypto::default_policy()).unwrap();
         crate::etree::parse(Cursor::new(s.as_bytes()), &mut paops).unwrap()
     }
 
@@ -556,7 +553,7 @@ mod tests {
 
     fn serialize(tree: &TextTree) -> String {
         let mut buf: Vec<u8> = Vec::new();
-        let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap();
+        let mut paops = ParseOps::new(crate::crypto::default_policy()).unwrap();
         crate::etree::tree_write(&mut buf, tree, &mut paops).unwrap();
         String::from_utf8(buf).unwrap()
     }
