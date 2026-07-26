@@ -52,7 +52,9 @@ mkdir -p "$PREFIX"
 PREFIX="$(cd "$PREFIX" && pwd)"
 
 # Idempotent: if the clang binary exists, assume setup completed.
-NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${RUST_TARGET//-/_}-clang++"
+# NDK binaries use hyphens throughout (aarch64-unknown-linux-ohos-clang++),
+# NOT underscores like typical cross-toolchain naming.
+NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${RUST_TARGET}-clang++"
 if [ -x "$NDK_CLANGXX" ]; then
   echo "OHOS NDK already set up at $PREFIX"
   exit 0

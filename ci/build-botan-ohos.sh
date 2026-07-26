@@ -42,9 +42,8 @@ PREFIX="$(cd "$PREFIX" && pwd)"
 # at ohos-sdk/linux/native/sysroot is wrong for direct clang invocation
 # (it's only useful via ohos.toolchain.cmake, which we don't use).
 SYSROOT="$PREFIX/llvm-19/sysroot/$NDK_TRIPLE"
-# NDK clang binaries are named after the Rust target triple
-# (e.g. aarch64-unknown-linux-ohos-clang++).
-NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${RUST_TARGET//-/_}-clang++"
+# NDK clang binaries use hyphens throughout (e.g. aarch64-unknown-linux-ohos-clang++).
+NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${RUST_TARGET}-clang++"
 
 for f in "$SYSROOT" "$NDK_CLANGXX"; do
   [ -e "$f" ] || { echo "missing NDK piece: $f" >&2; exit 1; }
