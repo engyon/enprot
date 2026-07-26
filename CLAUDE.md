@@ -131,6 +131,17 @@ Same `(password, plaintext)` → same ciphertext → CAS dedup works for encrypt
 
 Releases are tag-driven. Pushing a tag matching `[0-9]+\.[0-9]+\.[0-9]+` triggers `.github/workflows/deploy.yml`, which **fails if `Cargo.toml`'s `version` doesn't match the tag** — bump the version first. The workflow cross-compiles, uploads archives, publishes to GitHub Releases + crates.io + Snap Store. Dependabot keeps cargo + GHA deps current.
 
+## OHOS (OpenHarmony) cross-compile
+
+`.github/workflows/ohos.yml` builds enprot for `aarch64-linux-ohos`. The pipeline:
+
+1. `ci/setup-ohos-ndk.sh` — downloads `ohos-sdk-public` + `LLVM-19` from the OpenHarmony daily_build API, extracts both, replaces the SDK's MULTIARCH sysroot with a relative symlink to the LLVM-19 PER-ARCH sysroot (the two-sysroots problem; see `docs/ohos-porting-guide.md`).
+2. `ci/build-botan-ohos.sh` — cross-compiles Botan 3 statically via `configure.py` with `--cc-bin=$NDK/llvm/bin/aarch64-unknown-linux-ohos-clang++` + `--cc-abi-flags="--target=aarch64-linux-ohos --sysroot=..."`. Static build avoids `.so` code-signing.
+3. `cargo build --target aarch64-linux-ohos --release` — sets `PKG_CONFIG_PATH`, `PKG_CONFIG_ALLOW_CROSS=1`, `PKG_CONFIG_SYSROOT_DIR`, and `CARGO_TARGET_AARCH64_LINUX_OHOS_*` for the linker.
+4. Verification in `ghcr.io/hqzing/dockerharmony:latest` (real OHOS userland via qemu binfmt) using `ci/ohos-smoke.c` (Botan hash + AEAD round-trip via the C FFI).
+
+The NDK (~4 GB) is cached across CI runs via `actions/cache@v4` keyed on the setup script's hash. The workflow is `continue-on-error: true` until the cross-compilation is verified green; drop the flag and add `ohos` to required status checks once stable.
+
 ## Upgrade history
 
 The codebase went through Botan 2 → Botan 3 (PR #57), clap 2 → clap 4 subcommands (PR #62), and an architecture audit (PRs #67-#82) that decomposed `ParseOps`, split `etree.rs` into a module, extracted the password module, typed the cipher wire format, added property-based tests, and moved `app_main` to return `Result`. Plans in `TODO.upgrade/` and `TODO.audit/`.

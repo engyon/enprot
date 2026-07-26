@@ -1,0 +1,127 @@
+name: ohos
+
+# Cross-compile enprot + Botan for aarch64-linux-ohos (OpenHarmony).
+# See TODO.finalize/51-ohos-build-target.md for the design.
+#
+# Until the cross-compilation is verified green on CI, this workflow
+# is non-blocking (continue-on-error). Once stable, drop the
+# continue-on-error flag and add `ohos` to required status checks.
+#
+# Reference impl: https://gist.github.com/ronaldtse/78b6b610cfa00ead8fb3b8f935afaa3b
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: full
+  BOTAN_VERSION: "3.7.0"
+  OHOS_TRIPLE: aarch64-linux-ohos
+  NDK_PREFIX: ext/ohos
+
+jobs:
+  build-aarch64-linux-ohos:
+    name: Build aarch64-linux-ohos
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build zlib1g-dev \
+            curl jq unzip python3 git g++ make
+
+      - name: Install Rust target
+        run: |
+          rustup target add ${{ env.OHOS_TRIPLE }}
+          rustup toolchain list
+
+      - name: Cache OHOS NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NDK_PREFIX }}
+          key: ohos-ndk-${{ env.OHOS_TRIPLE }}-${{ hashFiles('ci/setup-ohos-ndk.sh') }}
+
+      - name: Setup OHOS NDK
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          sh ci/setup-ohos-ndk.sh --prefix ${{ env.NDK_PREFIX }}
+
+      - name: Cache Botan build
+        id: cache-botan
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.NDK_PREFIX }}/ohos-aarch64
+            ${{ env.NDK_PREFIX }}/botan-build
+          key: ohos-botan-${{ env.BOTAN_VERSION }}-${{ env.OHOS_TRIPLE }}-${{ hashFiles('ci/build-botan-ohos.sh', 'ci/botan-modules') }}
+
+      - name: Cross-compile Botan 3 (static)
+        if: steps.cache-botan.outputs.cache-hit != 'true'
+        run: |
+          sh ci/build-botan-ohos.sh \
+            --prefix ${{ env.NDK_PREFIX }} \
+            --botan-version ${{ env.BOTAN_VERSION }}
+
+      - name: Build enprot
+        run: |
+          SYSROOT=${{ env.NDK_PREFIX }}/ohos-sdk/linux/native/sysroot
+          export PKG_CONFIG_PATH=${{ env.NDK_PREFIX }}/ohos-aarch64/lib/pkgconfig
+          export PKG_CONFIG_ALLOW_CROSS=1
+          export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+          # Pure-Rust deps + the cross-compiled Botan static lib.
+          export CARGO_TARGET_AARCH64_LINUX_OHOS_LINKER=${{ env.NDK_PREFIX }}/llvm-19/llvm/bin/aarch64_unknown_linux_ohos-clang
+          export CARGO_TARGET_AARCH64_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=${{ env.OHOS_TRIPLE }} -C link-arg=--sysroot=$SYSROOT"
+          cargo build --target ${{ env.OHOS_TRIPLE }} --release
+
+      - name: Build smoke test
+        run: |
+          CLANG=${{ env.NDK_PREFIX }}/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang
+          BOTAN_LIB=${{ env.NDK_PREFIX }}/ohos-aarch64/lib/libbotan-3.a
+          BOTAN_INC=${{ env.NDK_PREFIX }}/ohos-aarch64/include/botan-3
+          SYSROOT=${{ env.NDK_PREFIX }}/ohos-sdk/linux/native/sysroot
+          mkdir -p ohos-verify
+          "$CLANG" \
+            --target=${{ env.OHOS_TRIPLE }} --sysroot="$SYSROOT" \
+            -O2 -I"$BOTAN_INC" \
+            ci/ohos-smoke.c "$BOTAN_LIB" \
+            -lpthread -ldl -lstdc++ \
+            -o ohos-verify/ohos-smoke
+
+      - name: Copy binary for verification
+        run: |
+          cp target/${{ env.OHOS_TRIPLE }}/release/enprot ohos-verify/enprot
+
+      - name: Verify in dockerharmony
+        uses: addnab/docker-run-action@v3
+        with:
+          image: ghcr.io/hqzing/dockerharmony:latest
+          options: -v ${{ github.workspace }}/ohos-verify:/work -w /work
+          run: |
+            echo "--- enprot --version ---"
+            chmod +x ./enprot && ./enprot --version || true
+            echo "--- smoke test ---"
+            chmod +x ./ohos-smoke && ./ohos-smoke
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enprot-aarch64-linux-ohos
+          path: |
+            target/${{ env.OHOS_TRIPLE }}/release/enprot
+            ohos-verify/
