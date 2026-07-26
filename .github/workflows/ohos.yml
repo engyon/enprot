@@ -85,15 +85,24 @@ jobs:
 
       - name: Build enprot
         run: |
-          SYSROOT=${{ env.NDK_PREFIX }}/llvm-19/sysroot/${{ env.NDK_TRIPLE }}
+          # Resolve everything to absolute paths — pkg-config requires
+          # absolute PKG_CONFIG_PATH.
+          ROOT="$GITHUB_WORKSPACE"
+          PREFIX="$ROOT/${{ env.NDK_PREFIX }}"
+          SYSROOT="$PREFIX/llvm-19/sysroot/${{ env.NDK_TRIPLE }}"
           # NDK ships clang binaries as aarch64-unknown-linux-ohos-clang++.
-          NDK_CLANGXX=${{ env.NDK_PREFIX }}/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++
-          export PKG_CONFIG_PATH=${{ env.NDK_PREFIX }}/ohos-aarch64/lib/pkgconfig
+          NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++"
+          export PKG_CONFIG_PATH="$PREFIX/ohos-aarch64/lib/pkgconfig"
           export PKG_CONFIG_ALLOW_CROSS=1
           export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+          # botan-sys reads BOTAN_STATIC=1 to force static linking against
+          # the .a we cross-compiled; otherwise it tries to link libbotan-3.so.
+          export BOTAN_STATIC=1
           # Cargo env var name is uppercased RUST_TARGET with _ for -.
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$NDK_CLANGXX"
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=${{ env.NDK_TRIPLE }} -C link-arg=--sysroot=$SYSROOT"
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+          ls -la "$PKG_CONFIG_PATH" || true
           cargo build --target ${{ env.RUST_TARGET }} --release
 
       - name: Build smoke test
