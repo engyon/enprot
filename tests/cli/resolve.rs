@@ -153,3 +153,31 @@ fn resolved_file_is_reparseable_ept() {
         .assert()
         .success();
 }
+
+#[test]
+fn resolve_per_word_override_wins_over_global_mode() {
+    // TODO.roadmap/56: --word WORD:MODE overrides --mode for that
+    // specific WORD.
+    let dir = tempdir().unwrap();
+    let ept = dir.path().join("file.ept");
+    // Two conflicts: X (override to ours) and Y (fallback to theirs).
+    fs::write(
+        &ept,
+        "// <( CONFLICT X )>\n// <( OURS )>\n// <( BEGIN X )>\nhi-our\n// <( END X )>\n// <( THEIRS )>\n// <( BEGIN X )>\nhi-their\n// <( END X )>\n// <( END X )>\n// <( CONFLICT Y )>\n// <( OURS )>\n// <( BEGIN Y )>\nyo-our\n// <( END Y )>\n// <( THEIRS )>\n// <( BEGIN Y )>\nyo-their\n// <( END Y )>\n// <( END Y )>\n",
+    )
+    .unwrap();
+
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["resolve", "--mode", "theirs", "--word", "X:ours"])
+        .arg(&ept)
+        .assert()
+        .success();
+
+    let s = fs::read_to_string(&ept).unwrap();
+    assert!(s.contains("hi-our"), "X override to ours: {s}");
+    assert!(!s.contains("hi-their"), "no theirs for X: {s}");
+    assert!(s.contains("yo-their"), "Y falls back to theirs: {s}");
+    assert!(!s.contains("yo-our"), "no ours for Y: {s}");
+}

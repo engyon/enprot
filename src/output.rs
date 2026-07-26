@@ -144,6 +144,21 @@ pub struct VerifyChainOutput {
     pub files: Vec<VerifyChainFileReport>,
 }
 
+/// One unresolved CONFLICT block. `ours_nodes` / `theirs_nodes`
+/// are node counts; the contents are intentionally not serialized
+/// — they may contain ciphertext and shouldn't leak through JSON.
+#[derive(Serialize)]
+pub struct ConflictEntry {
+    pub word: String,
+    pub ours_nodes: usize,
+    pub theirs_nodes: usize,
+}
+
+#[derive(Serialize)]
+pub struct ConflictsOutput {
+    pub conflicts: Vec<ConflictEntry>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
