@@ -7,43 +7,58 @@
 # Reference impl: https://gist.github.com/ronaldtse/78b6b610cfa00ead8fb3b8f935afaa3b
 #
 # Usage:
-#   ci/setup-ohos-ndk.sh --prefix ext/ohos [--arch aarch64]
+#   ci/setup-ohos-ndk.sh --prefix ext/ohos [--ndk-triple aarch64-linux-ohos]
 #
 # Outputs (under $PREFIX):
 #   ohos-sdk/linux/native/llvm/bin/clang          # NDK clang (x86_64 ELF)
 #   ohos-sdk/linux/native/build/cmake/ohos.toolchain.cmake
 #   ohos-sdk/linux/native/sysroot                 # symlink → llvm-19 sysroot
 #   ohos-sdk/linux/toolchains/lib/binary-sign-tool
-#   llvm-19/sysroot/aarch64-linux-ohos/           # per-arch sysroot
-#   llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++
+#   llvm-19/sysroot/<ndk-triple>/                 # per-arch sysroot
+#   llvm-19/llvm/bin/<rust-triple>-clang++        # e.g. aarch64-unknown-linux-ohos-clang++
 #
 # Environment:
-#   OHOS_ARCH   arm64-v8a (default) | armv7-v8a | x86_64-v8a
-#   OHOS_TRIPLE aarch64-linux-ohos (default) | armv7-linux-ohos | x86_64-linux-ohos
+#   OHOS_ARCH     arm64-v8a (default) | armv7-v8a | x86_64-v8a
+#   NDK_TRIPLE    aarch64-linux-ohos (default) | armv7-linux-ohos | x86_64-linux-ohos
+#                 (used for sysroot path + --target= flag)
+#   RUST_TARGET   aarch64-unknown-linux-ohos (default) | armv7-unknown-linux-ohos | ...
+#                 (used for rustup target add + cargo --target; includes "unknown" vendor)
 
 set -euo pipefail
 
 PREFIX=""
 ARCH="${OHOS_ARCH:-arm64-v8a}"
-TRIPLE="${OHOS_TRIPLE:-aarch64-linux-ohos}"
+NDK_TRIPLE="${NDK_TRIPLE:-aarch64-linux-ohos}"
+RUST_TARGET="${RUST_TARGET:-aarch64-unknown-linux-ohos}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --prefix) PREFIX="$2"; shift 2;;
-    --arch)   ARCH="$2"; TRIPLE=$(arch_to_triple "$2"); shift 2;;
-    --triple) TRIPLE="$2"; shift 2;;
+    --prefix)      PREFIX="$2"; shift 2;;
+    --arch)        ARCH="$2"; NDK_TRIPLE=$(arch_to_ndk_triple "$2"); RUST_TARGET=$(ndk_to_rust_triple "$NDK_TRIPLE"); shift 2;;
+    --ndk-triple)  NDK_TRIPLE="$2"; RUST_TARGET=$(ndk_to_rust_triple "$2"); shift 2;;
+    --rust-target) RUST_TARGET="$2"; shift 2;;
     -h|--help)
       sed -n '2,30p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 1;;
   esac
 done
 
-arch_to_triple() {
+arch_to_ndk_triple() {
   case "$1" in
     arm64-v8a)   echo "aarch64-linux-ohos";;
     armeabi-v7a) echo "armv7-linux-ohos";;
     x86-64)      echo "x86_64-linux-ohos";;
     *) echo "unknown OHOS_ARCH: $1" >&2; exit 1;;
+  esac
+}
+
+# Rust target triples include the "unknown" vendor field; NDK triples don't.
+ndk_to_rust_triple() {
+  case "$1" in
+    aarch64-linux-ohos) echo "aarch64-unknown-linux-ohos";;
+    armv7-linux-ohos)   echo "armv7-unknown-linux-ohos";;
+    x86_64-linux-ohos)  echo "x86_64-unknown-linux-ohos";;
+    *) echo "unknown NDK triple: $1" >&2; exit 1;;
   esac
 }
 
@@ -125,9 +140,9 @@ rm -f llvm-19.tar.gz
 # SDK ships a MULTIARCH sysroot at ohos-sdk/linux/native/sysroot/.
 # Toolchain expects a PER-ARCH sysroot. Replace with a RELATIVE
 # symlink to llvm-19/sysroot/<triple>.
-LLVM_SYSROOT="$PREFIX/llvm-19/sysroot/$TRIPLE"
+LLVM_SYSROOT="$PREFIX/llvm-19/sysroot/$NDK_TRIPLE"
 if [ ! -d "$LLVM_SYSROOT" ]; then
-  echo "LLVM-19 sysroot for $TRIPLE not found at $LLVM_SYSROOT" >&2
+  echo "LLVM-19 sysroot for $NDK_TRIPLE not found at $LLVM_SYSROOT" >&2
   echo "available:" >&2
   ls "$PREFIX/llvm-19/sysroot/" >&2 || true
   exit 1
@@ -137,12 +152,25 @@ cd "$PREFIX/ohos-sdk/linux/native"
 rm -rf sysroot
 # Relative target: resolves correctly inside docker containers that
 # mount the repo at a different absolute path.
-ln -s "../../../llvm-19/sysroot/$TRIPLE" sysroot
+ln -s "../../../llvm-19/sysroot/$NDK_TRIPLE" sysroot
+
+# The NDK clang binaries are named after the RUST target triple
+# (with "unknown" vendor), e.g. aarch64-unknown-linux-ohos-clang++.
+# Underscores separate components in the filename.
+NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${RUST_TARGET//-/_}-clang++"
+if [ ! -x "$NDK_CLANGXX" ]; then
+  echo "NDK clang++ not found at $NDK_CLANGXX" >&2
+  echo "available in llvm-19/llvm/bin/:" >&2
+  ls "$PREFIX/llvm-19/llvm/bin/" | grep -E 'clang$|clang\+\+$' >&2 || true
+  exit 1
+fi
 
 echo
 echo "OHOS NDK ready at $PREFIX"
+echo "  rust target:     $RUST_TARGET"
+echo "  ndk triple:      $NDK_TRIPLE"
 echo "  toolchain cmake: $PREFIX/ohos-sdk/linux/native/build/cmake/ohos.toolchain.cmake"
 echo "  clang:           $PREFIX/ohos-sdk/linux/native/llvm/bin/clang"
-echo "  clang++ (NDK):   $PREFIX/llvm-19/llvm/bin/${TRIPLE//-/_}-clang++"
+echo "  clang++ (NDK):   $NDK_CLANGXX"
 echo "  sysroot →        $PREFIX/ohos-sdk/linux/native/sysroot"
 echo "  sign tool:       $PREFIX/ohos-sdk/linux/toolchains/lib/binary-sign-tool"

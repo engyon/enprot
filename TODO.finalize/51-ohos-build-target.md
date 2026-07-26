@@ -6,8 +6,21 @@
 ## Problem
 
 OHOS (OpenHarmony / Huawei HarmonyOS) is a musl-based arm64 Linux
-target with triple `aarch64-linux-ohos`. Adding it as a build target
-unlocks enprot for HarmonyOS devices (phones, tablets, IoT).
+target. Two related triples are in play:
+
+- **Rust target**: `aarch64-unknown-linux-ohos` (with `unknown`
+  vendor field — Rust requires it). Tier 2 with host tools since
+  Rust 1.71. enprot's MSRV 1.85, so it's available.
+- **NDK triple**: `aarch64-linux-ohos` (no vendor field). Used for
+  the sysroot path (`llvm-19/sysroot/aarch64-linux-ohos/`), the
+  `--target=` flag passed to clang, and the install-prefix name.
+
+The NDK clang binaries are named after the **Rust** triple
+(`aarch64-unknown-linux-ohos-clang++`) — clang normalizes the two
+forms internally so `--target=aarch64-linux-ohos` works.
+
+Adding OHOS as a build target unlocks enprot for HarmonyOS devices
+(phones, tablets, IoT).
 
 enprot depends on:
 
@@ -16,8 +29,6 @@ enprot depends on:
   for app distribution; enprot is a CLI, not a loaded library).
 - **aes-gcm-siv** (pure Rust): no system deps; works with the right
   target triple out of the box.
-- **Rust target `aarch64-linux-ohos`**: Tier 2 with host tools since
-  Rust 1.71. enprot's MSRV is 1.85, so it's available.
 
 ## Architecture
 
@@ -71,11 +82,18 @@ Static build (`--build-targets=static`) sidesteps `.so` code-signing.
 ### Rust build
 
 ```sh
-rustup target add aarch64-linux-ohos
+# Rust target uses "unknown" vendor field; NDK triple doesn't.
+RUST_TARGET=aarch64-unknown-linux-ohos
+NDK_TRIPLE=aarch64-linux-ohos
+
+rustup target add $RUST_TARGET
 export PKG_CONFIG_PATH=$PREFIX/ohos-aarch64/lib/pkgconfig
 export PKG_CONFIG_ALLOW_CROSS=1
-export PKG_CONFIG_SYSROOT_DIR=$SYSROOT
-cargo build --target aarch64-linux-ohos --release
+export PKG_CONFIG_SYSROOT_DIR=$PREFIX/ohos-sdk/linux/native/sysroot
+# Cargo env var name is uppercased RUST_TARGET with _ for -.
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER=$PREFIX/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=$NDK_TRIPLE -C link-arg=--sysroot=$PREFIX/ohos-sdk/linux/native/sysroot"
+cargo build --target $RUST_TARGET --release
 ```
 
 ## CI topology
@@ -108,11 +126,13 @@ Per the gist, the OHOS NDK binaries are x86_64 ELF. Run on
 ## Acceptance criteria
 
 - [ ] `ci/setup-ohos-ndk.sh` downloads NDK + LLVM-19, sets up
-      relative sysroot symlink, idempotent + cached.
+      relative sysroot symlink, idempotent + cached. Accepts both
+      `--ndk-triple` (sysroot path + clang `--target=` flag) and
+      `--rust-target` (rustup + cargo `--target`).
 - [ ] `ci/build-botan-ohos.sh` produces a static `libbotan-3.a`
-      for `aarch64-linux-ohos`.
-- [ ] `cargo build --target aarch64-linux-ohos --release` produces
-      an `enprot` binary.
+      for the OHOS arm64 target.
+- [ ] `cargo build --target aarch64-unknown-linux-ohos --release`
+      produces an `enprot` binary.
 - [ ] `.github/workflows/ohos.yml` runs end-to-end on CI.
 - [ ] dockerharmony smoke test links Botan static + runs a hash/AEAD
       round-trip, exits 0.
