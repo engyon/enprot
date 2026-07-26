@@ -119,6 +119,24 @@ pub struct RuntimeState {
     pub fname: String,
 }
 
+/// Chain-anchor production config (TODO.finalize/17). Populated by
+/// the CLI layer when `--anchor --signer <priv>` are both supplied.
+/// Lives on `ParseOps` so the per-file pipeline can append anchors
+/// as it writes outputs.
+#[derive(Clone, Debug, Default)]
+pub struct AnchorConfig {
+    pub enabled: bool,
+    pub operation: String,
+    pub words: Vec<String>,
+    pub signer_priv_pem: Option<String>,
+}
+
+impl AnchorConfig {
+    pub fn disabled() -> Self {
+        AnchorConfig::default()
+    }
+}
+
 /// IO and observability configuration. Extracted from `ParseOps`
 /// alongside `RuntimeState` so the configuration/runtime split is
 /// clean: `RuntimeState` mutates per-file, `IoConfig` is set once
@@ -146,7 +164,7 @@ pub struct ParseOps {
     /// Chain-anchor production config. Default-disabled; populated
     /// by `run()` when the caller passes `--anchor --signer <priv>`.
     /// See TODO.finalize/17.
-    pub anchor: crate::AnchorConfig,
+    pub anchor: AnchorConfig,
 }
 
 impl ParseOps {
@@ -183,7 +201,7 @@ impl ParseOps {
                 verbose: false,
                 inline_data: false,
             },
-            anchor: crate::AnchorConfig::disabled(),
+            anchor: AnchorConfig::disabled(),
         })
     }
 }
