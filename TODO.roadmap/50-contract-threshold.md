@@ -1,49 +1,54 @@
-# 50 — Contract mode via threshold signing
+# 50 — Contract threshold (multi-signer chain anchors; local-first)
 
-**Priority**: P2
-**Status**: specified (supersedes TODO.finalize/28)
+**Priority**: P1
+**Status**: reframed (was: blocked on Confium)
 
-## Problem
+## Reframe
 
-Two-party agreements need both parties' signatures to advance. The old
-multi-sig approach (N signatures in one CHAIN block) is complex and
-weaker than threshold.
+A "contract" anchor carries multiple signatures — the file
+attestation requires N signers' agreement to be valid. The
+local-files flow supports `t = n` today (every signer signs in
+turn); `t < n` requires Confium for the coordination step but
+produces the same wire format.
 
-## Solution
+## Local variant (works today after TODO.roadmap/57 lands)
 
-Use Confium threshold signing (roadmap 20). Both parties' keys are
-shares of one threshold group. Signing requires K-of-N:
+`enprot audit-log --signer priv1.pem --signer priv2.pem FILE`
+appends each new chain anchor with signatures from every signer.
+The anchor's wire format gains two fields:
 
-```sh
-# Setup: DKG generates group key (no party sees full key)
-confium dkg init --session contract-2of3 --parties 2 --quorum 2 --alg ed25519
+- `signers: <alg1>:<fp1>,<alg2>:<fp2>,...` (comma-separated)
+- `sigs: <hex1>,<hex2>,...` (same order)
 
-# Either party can initiate an anchored operation
-enprot encrypt --anchor --signer "confium://contract-2of3" file.ept
-# → Confium coordinates FROST with the other party
-# → Both must participate for the anchor to be produced
+Verify walks each pair and checks every signature against the
+payload hash. The single-signer format (current) is preserved
+backwards-compatibly: when only one signer is supplied, the
+existing `signer:` / `sig:` fields are emitted.
 
-# Verification (by either party or third party)
-enprot verify-chain --trust-root <group-pubkey> file.ept
-```
+## Confium variant (future; same wire format)
 
-## Benefits over multi-sig
-
-- Simpler wire format (one sig, not N)
-- Key never assembled (DKG; no cold-boot attack window)
-- Resharing (rotate committee without key exposure)
-- Verification is standard single-sig check
+`--signer confium://session-id` triggers FROST threshold signing
+via the daemon. The result is a single signature (for threshold)
+or N signatures (for all-participants); the wire format is
+identical.
 
 ## Policy enforcement
 
 ```toml
 [chain]
-trust_roots = ["ed25519:<group-fp>"]
-required_signers = 1  # one threshold sig = quorum met
+trust_roots = ["ed25519:9f3a7b...", "ed25519:1c8d2e..."]
+required_signers = 2  # both must sign (local variant)
 ```
 
-## Acceptance criteria
+For the Confium variant, the policy lists the group pubkey and
+`required_signers = 1` (one threshold sig = quorum met).
 
-- [ ] Threshold-signed anchor verifies with group pubkey
-- [ ] Policy file with trust_roots enforces the group
-- [ ] Docs: two-party contract walkthrough
+## Acceptance criteria (local variant)
+
+- [ ] `enprot audit-log` and `--anchor` accept repeatable `--signer`
+- [ ] Chain anchors carry multi-sig fields when N > 1
+- [ ] Single-signer anchors emit the legacy single-sig fields (backwards compat)
+- [ ] `verify-chain` requires every signature to validate
+- [ ] Tests cover 1-signer, 2-signer, and mixed-algorithm cases
+
+See TODO.roadmap/57 for the concrete implementation tracker.
