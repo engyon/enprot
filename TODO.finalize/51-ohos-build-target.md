@@ -89,10 +89,10 @@ NDK_TRIPLE=aarch64-linux-ohos
 rustup target add $RUST_TARGET
 export PKG_CONFIG_PATH=$PREFIX/ohos-aarch64/lib/pkgconfig
 export PKG_CONFIG_ALLOW_CROSS=1
-export PKG_CONFIG_SYSROOT_DIR=$PREFIX/ohos-sdk/linux/native/sysroot
+export PKG_CONFIG_SYSROOT_DIR=$PREFIX/llvm-19/sysroot/$NDK_TRIPLE
 # Cargo env var name is uppercased RUST_TARGET with _ for -.
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER=$PREFIX/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++
-export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=$NDK_TRIPLE -C link-arg=--sysroot=$PREFIX/ohos-sdk/linux/native/sysroot"
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=$NDK_TRIPLE -C link-arg=--sysroot=$PREFIX/llvm-19/sysroot/$NDK_TRIPLE"
 cargo build --target $RUST_TARGET --release
 ```
 

@@ -38,13 +38,15 @@ done
 [ -n "$PREFIX" ] || { echo "usage: $0 --prefix <dir>" >&2; exit 1; }
 PREFIX="$(cd "$PREFIX" && pwd)"
 
-SYSROOT="$PREFIX/ohos-sdk/linux/native/sysroot"
-TOOLCHAIN_CMAKE="$PREFIX/ohos-sdk/linux/native/build/cmake/ohos.toolchain.cmake"
+# Sysroot is in LLVM-19 (per-arch layout). The SDK's multiarch sysroot
+# at ohos-sdk/linux/native/sysroot is wrong for direct clang invocation
+# (it's only useful via ohos.toolchain.cmake, which we don't use).
+SYSROOT="$PREFIX/llvm-19/sysroot/$NDK_TRIPLE"
 # NDK clang binaries are named after the Rust target triple
 # (e.g. aarch64-unknown-linux-ohos-clang++).
 NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${RUST_TARGET//-/_}-clang++"
 
-for f in "$SYSROOT" "$TOOLCHAIN_CMAKE" "$NDK_CLANGXX"; do
+for f in "$SYSROOT" "$NDK_CLANGXX"; do
   [ -e "$f" ] || { echo "missing NDK piece: $f" >&2; exit 1; }
 done
 
