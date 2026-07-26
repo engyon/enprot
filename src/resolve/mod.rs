@@ -75,14 +75,65 @@ impl ResolveMode {
 /// Resolve every Conflict in `tree` according to `mode`. Returns the
 /// cleaned tree and the number of conflicts that were resolved.
 pub fn resolve_tree(tree: &TextTree, mode: ResolveMode) -> Result<(TextTree, usize)> {
+    resolve_tree_with_overrides(tree, mode, &WordOverride::default())
+}
+
+/// Per-WORD override map for [`resolve_tree`]. Words not in the map
+/// fall back to the global mode. (TODO.roadmap/56.)
+#[derive(Default, Clone, Debug)]
+pub struct WordOverride {
+    overrides: std::collections::HashMap<String, ResolveMode>,
+}
+
+impl WordOverride {
+    /// Parse `WORD:MODE` strings into an override map. Malformed
+    /// entries surface as `Err`. Unknown mode values surface as
+    /// `Err`. Repeated WORDs overwrite (last wins).
+    pub fn from_cli_flags(flags: &[String]) -> Result<Self> {
+        let mut overrides = std::collections::HashMap::new();
+        for f in flags {
+            let (word, mode_str) = f
+                .split_once(':')
+                .ok_or_else(|| Error::msg(format!("--word value must be WORD:MODE, got '{f}'")))?;
+            if word.is_empty() {
+                return Err(Error::msg(format!("--word value '{f}' has empty WORD")));
+            }
+            let mode = ResolveMode::from_cli_flag(mode_str)?;
+            if matches!(mode, ResolveMode::Interactive) {
+                return Err(Error::msg(format!(
+                    "--word {word}:interactive not supported (interactive prompts only via --mode)"
+                )));
+            }
+            overrides.insert(word.to_string(), mode);
+        }
+        Ok(WordOverride { overrides })
+    }
+
+    /// Look up the override for `word`, if any.
+    pub fn get(&self, word: &str) -> Option<ResolveMode> {
+        self.overrides.get(word).copied()
+    }
+}
+
+/// Resolve every Conflict with a global mode plus per-WORD overrides.
+/// The override wins when present; otherwise the global mode applies.
+pub fn resolve_tree_with_overrides(
+    tree: &TextTree,
+    mode: ResolveMode,
+    overrides: &WordOverride,
+) -> Result<(TextTree, usize)> {
     let mut count = 0;
     let mut out = Vec::with_capacity(tree.len());
     for node in tree {
         match node {
             TextNode::Conflict { keyw, ours, theirs } => {
-                let pick = match mode {
-                    ResolveMode::Interactive => prompt_one(keyw, ours, theirs)?,
-                    other => other,
+                let pick = if let Some(ov) = overrides.get(keyw) {
+                    ov
+                } else {
+                    match mode {
+                        ResolveMode::Interactive => prompt_one(keyw, ours, theirs)?,
+                        other => other,
+                    }
                 };
                 count += 1;
                 emit_resolution(&mut out, keyw, ours, theirs, pick);
@@ -262,5 +313,50 @@ mod tests {
             ResolveMode::Theirs
         );
         assert!(ResolveMode::from_cli_flag("garbage").is_err());
+    }
+
+    #[test]
+    fn word_override_parses_valid_flags() {
+        let ov = WordOverride::from_cli_flags(&[
+            "Agent_007:ours".into(),
+            "GEHEIM:theirs".into(),
+            "PUBLIC:both".into(),
+        ])
+        .unwrap();
+        assert_eq!(ov.get("Agent_007"), Some(ResolveMode::Ours));
+        assert_eq!(ov.get("GEHEIM"), Some(ResolveMode::Theirs));
+        assert_eq!(ov.get("PUBLIC"), Some(ResolveMode::Both));
+        assert_eq!(ov.get("UNLISTED"), None);
+    }
+
+    #[test]
+    fn word_override_rejects_malformed_flags() {
+        assert!(WordOverride::from_cli_flags(&["no-colon".into()]).is_err());
+        assert!(WordOverride::from_cli_flags(&[":ours".into()]).is_err());
+        assert!(WordOverride::from_cli_flags(&["X:bogus".into()]).is_err());
+        // Interactive isn't allowed as a per-WORD override — the
+        // prompt path only fires via --mode.
+        assert!(WordOverride::from_cli_flags(&["X:interactive".into()]).is_err());
+    }
+
+    #[test]
+    fn resolve_per_word_override_wins_over_global_mode() {
+        let t = parse_str(
+            "// <( CONFLICT X )>\n// <( OURS )>\n// <( BEGIN X )>\nhi-our\n// <( END X )>\n// <( THEIRS )>\n// <( BEGIN X )>\nhi-their\n// <( END X )>\n// <( END X )>\n// <( CONFLICT Y )>\n// <( OURS )>\n// <( BEGIN Y )>\nyo-our\n// <( END Y )>\n// <( THEIRS )>\n// <( BEGIN Y )>\nyo-their\n// <( END Y )>\n// <( END Y )>\n",
+        );
+        let ov = WordOverride::from_cli_flags(&["X:ours".into()]).unwrap();
+        let (resolved, _) = resolve_tree_with_overrides(&t, ResolveMode::Theirs, &ov).unwrap();
+        // X takes ours (override wins).
+        let body = serialize(&resolved);
+        assert!(body.contains("hi-our") && !body.contains("hi-their"));
+        // Y falls back to global mode (theirs).
+        assert!(body.contains("yo-their") && !body.contains("yo-our"));
+    }
+
+    fn serialize(tree: &TextTree) -> String {
+        let mut buf: Vec<u8> = Vec::new();
+        let mut paops = ParseOps::new(Box::new(CryptoPolicyDefault {})).unwrap();
+        crate::etree::tree_write(&mut buf, tree, &mut paops).unwrap();
+        String::from_utf8(buf).unwrap()
     }
 }

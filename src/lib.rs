@@ -210,6 +210,10 @@ pub enum Command {
     /// `--interactive`; pass `--ours`/`--theirs`/`--both`/`--skip`
     /// for non-interactive runs (e.g., CI).
     Resolve(ResolveSubcmd),
+    /// Walk CONFLICT blocks in FILE and print one summary line per
+    /// conflict (TODO.roadmap/49). Exit non-zero if any conflicts
+    /// remain — CI-friendly as a gate after a merge-driver step.
+    Conflicts(ConflictsSubcmd),
     /// Git `clean` filter (TODO.roadmap/45): read plaintext from
     /// stdin, write ciphertext to stdout. Used by `.gitattributes`
     /// `filter=enprot`. Defaults to `aes-256-gcm-siv-det` so the
@@ -281,15 +285,40 @@ pub struct MergeDriverSubcmd {
 
 /// `resolve` subcommand: clear CONFLICT markers by replacing each one
 /// with the chosen side. Modes: `--ours`, `--theirs`, `--both`,
-/// `--skip`, or `--interactive` (default).
+/// `--skip`, or `--interactive` (default). Per-WORD overrides via
+/// `--word WORD:MODE` (TODO.roadmap/56).
 #[derive(Args)]
 pub struct ResolveSubcmd {
     /// Resolution mode. One of: ours, theirs, both, skip, interactive.
-    /// Default: interactive.
+    /// Default: interactive. Used for any CONFLICT not covered by an
+    /// explicit `--word` override.
     #[arg(long, short = 'm', value_name = "MODE", default_value = "interactive")]
     pub mode: String,
 
+    /// Per-WORD resolution override. Repeatable. Format: `WORD:MODE`
+    /// where MODE is one of ours/theirs/both/skip. Takes precedence
+    /// over `--mode` for the named WORD. Unknown WORDs are silently
+    /// skipped (the file may have changed between listing conflicts
+    /// and resolving them).
+    #[arg(long = "word", value_name = "WORD:MODE", value_delimiter = ',')]
+    pub word: Vec<String>,
+
     /// Input file. Resolved output is written back here in-place.
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+}
+
+/// `conflicts` subcommand (TODO.roadmap/49): walk CONFLICT blocks
+/// in FILE and print one summary per conflict. Exits non-zero if
+/// any conflicts remain.
+#[derive(Args)]
+pub struct ConflictsSubcmd {
+    /// Output format: text (default) or json (enveloped versioned
+    /// schema, same shape as `capabilities --format json`).
+    #[arg(long, value_enum, default_value_t = output::OutputFormat::Text)]
+    pub format: output::OutputFormat,
+
+    /// Input file.
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
 }
@@ -653,6 +682,36 @@ pub struct CommonArgs {
     pub policy_file: Option<PathBuf>,
 }
 
+impl CommonArgs {
+    /// Construct a CommonArgs with only the filter-context fields
+    /// populated. Used by subcommands that don't take the full CLI
+    /// surface (e.g., `scm verify`, which delegates to
+    /// `verify_chain_files`). Producing this in one place keeps the
+    /// filter-dispatch paths DRY: any new CommonArgs field added
+    /// downstream doesn't need to be wired through every call site.
+    pub fn for_filter(casdir: Option<PathBuf>) -> Self {
+        CommonArgs {
+            verbose: false,
+            quiet: false,
+            max_depth: consts::DEFAULT_MAX_DEPTH,
+            left_separator: consts::DEFAULT_LEFT_SEP.to_string(),
+            right_separator: consts::DEFAULT_RIGHT_SEP.to_string(),
+            password: Vec::new(),
+            casdir,
+            policy: None,
+            defaults: None,
+            fips: false,
+            lang: None,
+            pbkdf_disable_cache: false,
+            anchor: false,
+            signer: None,
+            format: output::OutputFormat::Text,
+            inline: false,
+            policy_file: None,
+        }
+    }
+}
+
 /// Encrypt-specific cryptographic knobs.
 #[derive(Args, Default)]
 pub struct EncryptOpts {
@@ -798,6 +857,9 @@ where
     if let Command::Resolve(a) = cli.command {
         return run_resolve(a);
     }
+    if let Command::Conflicts(a) = cli.command {
+        return run_conflicts(a);
+    }
     // `clean` / `smudge` / `textconv` are stdin→stdout pipes
     // invoked by git filter machinery; they don't take the full
     // CommonArgs shape and bypass config layering.
@@ -886,6 +948,7 @@ where
         Command::Init(_) => unreachable!("dispatched at top of app_main"),
         Command::MergeDriver(_) => unreachable!("dispatched at top of app_main"),
         Command::Resolve(_) => unreachable!("dispatched at top of app_main"),
+        Command::Conflicts(_) => unreachable!("dispatched at top of app_main"),
         Command::Clean(_) | Command::Smudge(_) | Command::Textconv(_) => {
             unreachable!("dispatched at top of app_main")
         }
@@ -1006,21 +1069,70 @@ fn run_merge_driver(a: MergeDriverSubcmd) -> Result<()> {
 fn run_resolve(a: ResolveSubcmd) -> Result<()> {
     use std::io::{BufReader, BufWriter, IsTerminal};
     let mode = resolve::ResolveMode::from_cli_flag(&a.mode)?;
+    let overrides = resolve::WordOverride::from_cli_flags(&a.word)?;
     if matches!(mode, resolve::ResolveMode::Interactive) && !std::io::stdin().is_terminal() {
         return Err(Error::msg(
             "resolve --interactive requires a TTY (pass --mode ours/theirs/both/skip for non-interactive runs)",
         ));
-    }
+    };
 
     let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
     let mut paops = ParseOps::new(policy)?;
     paops.runtime.fname = a.file.display().to_string();
     let f = File::open(&a.file)?;
     let tree = etree::parse(BufReader::new(f), &mut paops)?;
-    let (resolved, n) = resolve::resolve_tree(&tree, mode)?;
+    let (resolved, n) = resolve::resolve_tree_with_overrides(&tree, mode, &overrides)?;
     let out = File::create(&a.file)?;
     etree::tree_write(&mut BufWriter::new(out), &resolved, &mut paops)?;
     eprintln!("resolve: cleared {} conflict(s) in {}", n, a.file.display());
+    Ok(())
+}
+
+/// `conflicts` entry point: walk FILE and report unresolved
+/// CONFLICT blocks. Exits non-zero if any are present.
+fn run_conflicts(a: ConflictsSubcmd) -> Result<()> {
+    use std::io::BufReader;
+    let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
+    let mut paops = ParseOps::new(policy)?;
+    paops.runtime.fname = a.file.display().to_string();
+    let f = File::open(&a.file)?;
+    let tree = etree::parse(BufReader::new(f), &mut paops)?;
+
+    let entries: Vec<output::ConflictEntry> = tree
+        .iter()
+        .filter_map(|n| match n {
+            etree::TextNode::Conflict { keyw, ours, theirs } => Some(output::ConflictEntry {
+                word: keyw.clone(),
+                ours_nodes: ours.len(),
+                theirs_nodes: theirs.len(),
+            }),
+            _ => None,
+        })
+        .collect();
+
+    let count = entries.len();
+    match a.format {
+        output::OutputFormat::Text => {
+            if entries.is_empty() {
+                println!("no conflicts in {}", a.file.display());
+            } else {
+                for e in &entries {
+                    println!(
+                        "{:<16} {} nodes ours / {} nodes theirs",
+                        e.word, e.ours_nodes, e.theirs_nodes
+                    );
+                }
+            }
+        }
+        output::OutputFormat::Json => {
+            let payload = output::ConflictsOutput { conflicts: entries };
+            println!("{}", output::to_json(&payload)?);
+        }
+    }
+
+    if count > 0 {
+        std::process::exit(1);
+    }
     Ok(())
 }
 
@@ -1145,30 +1257,12 @@ fn run_scm(a: ScmSubcmd) -> Result<()> {
             trust_root,
             manifest,
         } => {
-            // Delegate to the existing verify-chain implementation by
-            // reconstructing the subcommand args. We use the same
-            // code path so customers get identical semantics to
-            // `enprot verify-chain --trust-root X FILE`.
+            // Delegate to the existing verify-chain implementation so
+            // customers get identical semantics to `enprot verify-
+            // chain --trust-root X FILE`. CommonArgs is constructed
+            // with the filter-context defaults via the helper.
             verify_chain_files(
-                CommonArgs {
-                    verbose: false,
-                    quiet: false,
-                    max_depth: consts::DEFAULT_MAX_DEPTH,
-                    left_separator: consts::DEFAULT_LEFT_SEP.to_string(),
-                    right_separator: consts::DEFAULT_RIGHT_SEP.to_string(),
-                    password: Vec::new(),
-                    casdir: Some(casdir.clone()),
-                    policy: None,
-                    defaults: None,
-                    fips: false,
-                    lang: None,
-                    pbkdf_disable_cache: false,
-                    anchor: false,
-                    signer: None,
-                    format: output::OutputFormat::Text,
-                    inline: false,
-                    policy_file: None,
-                },
+                CommonArgs::for_filter(Some(casdir.clone())),
                 VerifyChainSubcmd {
                     trust_roots: vec![trust_root],
                     files: vec![manifest.to_string_lossy().into_owned()],
