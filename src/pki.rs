@@ -410,6 +410,125 @@ mod tests {
     }
 }
 
+// ===== Multi-signature bundle =====
+// TODO.roadmap/59 — local-files variant of threshold signing
+// (TODO.roadmap/20). N independent signatures over the same
+// payload, stored in one file so consumers can verify all of them
+// without N round-trips.
+
+/// One signature entry in a [`SigBundle`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SigEntry {
+    pub alg: SigAlgKind,
+    pub fp: String,
+    pub sig: Vec<u8>,
+}
+
+/// A versioned multi-signature bundle. The wire format is
+/// line-oriented text so it diffs cleanly and survives
+/// copy-paste:
+///
+/// ```text
+/// enprot-sig/1
+///
+/// alg: ed25519
+/// fp: 9f3a7b...
+/// sig: <hex>
+///
+/// alg: ed25519
+/// fp: 1c8d2e...
+/// sig: <hex>
+/// ```
+///
+/// The header `enprot-sig/<version>` pins the format version.
+/// Unknown versions are rejected by the parser so a future v2
+/// format can land without breaking v1 consumers.
+pub struct SigBundle {
+    pub entries: Vec<SigEntry>,
+}
+
+impl SigBundle {
+    pub const HEADER: &'static str = "enprot-sig/1";
+
+    pub fn serialize(&self) -> String {
+        let mut out = String::new();
+        out.push_str(Self::HEADER);
+        out.push_str("\n\n");
+        for (i, e) in self.entries.iter().enumerate() {
+            if i > 0 {
+                out.push('\n');
+            }
+            out.push_str(&format!(
+                "alg: {}\nfp: {}\nsig: {}\n",
+                e.alg.name(),
+                e.fp,
+                hex::encode(&e.sig)
+            ));
+        }
+        out
+    }
+
+    pub fn parse(s: &str) -> Result<Self> {
+        let mut lines = s.lines();
+        let header = lines
+            .next()
+            .ok_or_else(|| Error::msg("empty signature bundle"))?
+            .trim();
+        if header != Self::HEADER {
+            return Err(Error::msg(format!(
+                "unknown signature bundle header '{}' (expected '{}')",
+                header,
+                Self::HEADER
+            )));
+        }
+        let mut entries = Vec::new();
+        let mut alg: Option<SigAlgKind> = None;
+        let mut fp: Option<String> = None;
+        let mut sig: Option<Vec<u8>> = None;
+        for line in lines {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                // Blank line terminates the current entry.
+                if let (Some(a), Some(f), Some(s)) = (alg.take(), fp.take(), sig.take()) {
+                    entries.push(SigEntry {
+                        alg: a,
+                        fp: f,
+                        sig: s,
+                    });
+                }
+                continue;
+            }
+            let (k, v) = trimmed
+                .split_once(':')
+                .ok_or_else(|| Error::msg(format!("malformed bundle line '{}'", trimmed)))?;
+            let v = v.trim();
+            match k {
+                "alg" => alg = Some(v.parse()?),
+                "fp" => fp = Some(v.to_string()),
+                "sig" => sig = Some(hex::decode(v).map_err(Error::from)?),
+                _ => {
+                    return Err(Error::msg(format!(
+                        "unknown bundle field '{}' (expected alg/fp/sig)",
+                        k
+                    )));
+                }
+            }
+        }
+        // Trailing entry (no blank line at EOF).
+        if let (Some(a), Some(f), Some(s)) = (alg, fp, sig) {
+            entries.push(SigEntry {
+                alg: a,
+                fp: f,
+                sig: s,
+            });
+        }
+        if entries.is_empty() {
+            return Err(Error::msg("signature bundle has no entries"));
+        }
+        Ok(SigBundle { entries })
+    }
+}
+
 // ===== KEM (Key Encapsulation Mechanism) =====
 // TODO.roadmap/30 — ML-KEM (FIPS 203) multi-recipient encryption.
 
@@ -501,6 +620,53 @@ pub fn kem_decapsulate(
     decap
         .decrypt_shared_key(ciphertext, &[], desired_key_len)
         .map_err(Error::botan)
+}
+
+#[cfg(test)]
+mod sig_bundle_tests {
+    use super::*;
+
+    fn sample_entry(fp: &str, sig_byte: u8) -> SigEntry {
+        SigEntry {
+            alg: SigAlgKind::Ed25519,
+            fp: fp.to_string(),
+            sig: vec![sig_byte; 32],
+        }
+    }
+
+    #[test]
+    fn bundle_round_trips_through_serialize_parse() {
+        let b = SigBundle {
+            entries: vec![
+                sample_entry("9f3a7b...", 0x11),
+                sample_entry("1c8d2e...", 0x22),
+            ],
+        };
+        let s = b.serialize();
+        let parsed = SigBundle::parse(&s).unwrap();
+        assert_eq!(parsed.entries.len(), 2);
+        assert_eq!(parsed.entries[0].fp, "9f3a7b...");
+        assert_eq!(parsed.entries[1].sig, vec![0x22u8; 32]);
+    }
+
+    #[test]
+    fn bundle_rejects_unknown_header() {
+        assert!(SigBundle::parse("garbage\n\nalg: ed25519\nfp: x\nsig: 00\n").is_err());
+    }
+
+    #[test]
+    fn bundle_rejects_unknown_field() {
+        let s = format!(
+            "{}\n\nalg: ed25519\nfp: x\nsig: 00\nbogus: y\n",
+            SigBundle::HEADER
+        );
+        assert!(SigBundle::parse(&s).is_err());
+    }
+
+    #[test]
+    fn bundle_rejects_empty_entries() {
+        assert!(SigBundle::parse(SigBundle::HEADER).is_err());
+    }
 }
 
 #[cfg(test)]

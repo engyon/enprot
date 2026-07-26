@@ -7,6 +7,7 @@ mod chain_directive;
 mod cipher;
 mod config_file;
 mod conflicts;
+mod detached_multi_sig;
 mod deterministic;
 mod encrypt_decrypt;
 mod encrypt_store;
