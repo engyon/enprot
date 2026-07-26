@@ -3,20 +3,22 @@
  * success, non-zero on failure. Built and run inside
  * ghcr.io/hqzing/dockerharmony:latest.
  *
+ * Uses only the C FFI surface (botan/ffi.h) — the C++ class headers
+ * (botan/hash.h, botan/aead.h) require a C++ compiler.
+ *
  * Build:
  *   $NDK/llvm/bin/aarch64-unknown-linux-ohos-clang \
  *     -O2 -I$PREFIX/ohos-aarch64/include/botan-3 \
  *     ci/ohos-smoke.c \
  *     $PREFIX/ohos-aarch64/lib/libbotan-3.a \
- *     -lpthread -ldl \
+ *     -lc++ -lc++abi -lpthread -ldl \
  *     -o ci/ohos-smoke
  *
  * Run (in dockerharmony):
  *   LD_LIBRARY_PATH=. ./ci/ohos-smoke
  */
 
-#include <botan/hash.h>
-#include <botan/aead.h>
+#include <botan/ffi.h>
 #include <stdio.h>
 #include <string.h>
 
