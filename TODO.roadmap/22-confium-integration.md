@@ -1,74 +1,54 @@
-# 22 — Confium integration architecture
+# 22 — Confium integration (one backend, not a blocker)
 
-**Priority**: P1
-**Status**: specified
+**Priority**: P2
+**Status**: reframed (was: blocked on Confium)
+
+## Reframe
+
+Confium is **one** SignerProvider/KemProvider backend, not a
+prerequisite for any feature. The traits were designed (TODOs
+10/11) so that local-files flows work today and Confium plugs in
+later without touching the trait surface or the wire format.
 
 ## Boundary
 
-**Confium owns**: key lifecycle (DKG, storage, resharing), threshold
-protocol execution (FROST signing, threshold KEM decapsulation), network
-transport between parties.
+**Confium owns**: key lifecycle (DKG, storage, resharing),
+threshold protocol execution (FROST signing, threshold KEM
+decapsulation), network transport between parties.
 
-**Enprot owns**: file format (EPT, CHAIN, KEY-RECIPIENTS), capability
+**Enprot owns**: file format (EPT, CHAIN, Encrypted), capability
 model, chain anchors, CAS, Merkle, wire format, verification.
 
 **Integration point**: two trait objects — `SignerProvider` and
-`KemProvider`. Enprot calls trait methods; the Confium impl talks to
-the Confium daemon behind the trait boundary.
+`KemProvider`. Enprot calls trait methods; the Confium impl talks
+to the Confium daemon behind the trait boundary.
 
-## Linking options
+## Local-files (default backend, shipped today)
 
-### Option A: cdylib (C ABI)
+`--signer /path/to/priv.pem` and (after TODO.roadmap/58)
+`--recipient /path/to/pub.pem` are the local-files forms. They go
+through `PemSigner` and the local ML-KEM encapsulation path.
+**This is the only backend that ships today**, and it covers
+every use case that doesn't need cross-host threshold
+coordination.
 
-Link against `libconfium.{so,dylib,dll}` at build time. Add `confium-core`
-as an optional dependency:
+## Confium (future backend; same trait surface)
 
-```toml
-[dependencies]
-confium-core = { version = "0.1", optional = true }
+`--signer confium://session-id` and `--recipient confium://session-id`
+route through a future `ConfiumSigner` / `ConfiumKemProvider`
+that speaks the daemon's JSON-RPC protocol. The traits they
+implement (`SignerProvider`, `KemProvider`) are unchanged from
+today; downstream code that consumes the trait objects doesn't
+need to know which backend is in use.
 
-[features]
-threshold = ["confium-core"]
-```
+### Linking: daemon (recommended)
 
-```rust
-#[cfg(feature = "threshold")]
-mod confium_signer {
-    use confium_core::tc;
-    impl SignerProvider for ConfiumSigner { ... }
-}
-```
+Enprot talks to a local `confium-daemon` process via unix socket.
+No build-time dependency on Confium libraries. The daemon manages
+long-lived state (sessions, key shares, party connections) that
+doesn't fit enprot's per-file model.
 
-Pros: native Rust → Rust, no daemon process needed.
-Cons: enprot binary must be built with confium-core; deploy complexity.
-
-### Option B: daemon (socket)
-
-Enprot talks to a local `confium-daemon` process via unix socket or TCP.
-No build-time dependency:
-
-```rust
-fn confium_sign(endpoint: &str, session: &str, quorum: usize, msg: &[u8]) -> Result<Vec<u8>> {
-    let mut stream = UnixStream::connect(endpoint)?;
-    // Simple JSON-RPC or length-prefixed binary protocol
-    stream.write_all(&protocol::sign_request(session, quorum, msg))?;
-    let response = protocol::read_response(&mut stream)?;
-    Ok(response.signature)
-}
-```
-
-Pros: enprot doesn't need confium at build time; daemon manages state
-(DKG sessions, key shares) that would be awkward to thread through CLI.
-Cons: requires a running daemon; extra deployment step.
-
-**Recommendation**: Option B (daemon). Aligns with enprot's "key
-distribution is external" principle — Confium is a service, not a
-library dependency. The daemon manages long-lived state (sessions,
-key shares, party connections) that doesn't fit enprot's per-file model.
-
-## Protocol between enprot and confium-daemon
-
-Minimal JSON-RPC over unix socket:
+### Protocol (JSON-RPC over unix socket)
 
 ```json
 // enprot → daemon
@@ -86,31 +66,38 @@ Minimal JSON-RPC over unix socket:
 {"result": {"shared_secret": "<base64>"}}
 ```
 
-The daemon handles the multi-round FROST/threshold-KEM protocol with
-remote parties. Enprot sees only the final result.
+## URI dispatch (shipped)
 
-## DKG and resharing
+`parse_signer_arg(s, alg)` already routes by URI scheme:
 
-DKG (Distributed Key Generation) and resharing are **operational
-procedures**, not enprot operations. They're run via `confium-cli`, not
-via enprot. Enprot only consumes the resulting group public key.
+- Bare path → `PemSigner` (shipped)
+- `confium://...` → `Err("not yet implemented")` (stub for the daemon)
+- `pkcs11://...` → `Err("not yet implemented")` (future hardware token)
+
+The stub errors are the right behaviour today: callers see a
+clear "this backend isn't wired yet" message rather than a silent
+fallback. When the Confium daemon ships, the stub becomes a real
+implementation and no consumer code changes.
+
+## DKG and resharing (operational; out of enprot's scope)
+
+Distributed Key Generation and resharing are run via
+`confium-cli`, not enprot. Enprot only consumes the resulting
+group public key.
 
 ```sh
-# One-time: generate threshold group key via Confium (no enprot involved)
+# One-time: generate threshold group key via Confium
 confium dkg init --session root-ca-3of5 --parties 5 --quorum 3 --alg ed25519
 
 # Daily: enprot signs via the existing group key
 enprot encrypt --anchor --signer "confium://root-ca-3of5" file.ept
-
-# Annual: reshare (rotate committee) via Confium (no enprot involved)
-confium dkg reshare --session root-ca-3of5 --new-quorum 3 --new-parties 5
 ```
 
 ## Acceptance criteria
 
-- [ ] JSON-RPC protocol spec documented
-- [ ] `ConfiumSigner` communicates via daemon socket
-- [ ] `ConfiumKemProvider` communicates via daemon socket
-- [ ] Error handling: daemon down → clean error message
-- [ ] Timeout: threshold protocol doesn't complete in N seconds → error
-- [ ] Documentation: "Setting up Confium for enprot" guide
+- [x] Local-files backend works for all sign/verify/encrypt flows
+- [x] `parse_signer_arg` documents the URI scheme
+- [x] Confium URIs produce a clear "not yet implemented" error
+- [ ] (Future) Confium backend plugs in without touching the SignerProvider trait or any consumer
+- [ ] (Future) JSON-RPC protocol spec documented
+- [ ] (Future) Daemon-down and timeout error paths

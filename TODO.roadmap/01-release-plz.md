@@ -1,18 +1,46 @@
 # 01 — release-plz: automated crate publishing
 
 **Priority**: P0
-**Status**: specified
+**Status**: workflow shipped; awaiting `CARGO_REGISTRY_TOKEN` secret
 
 ## Problem
 
 enprot is published to crates.io via a tag-driven deploy.yml workflow.
-This requires manual version bumps, manual tag pushes, and manual Cargo.toml
-synchronization. parsanol-rs uses [release-plz](https://release-plz.dev)
-for fully automated publishing.
+This requires manual version bumps, manual tag pushes, and manual
+Cargo.toml synchronization. parsanol-rs uses
+[release-plz](https://release-plz.dev) for fully automated
+publishing.
 
-## Solution
+## Current state
 
-Adopt release-plz. On every push to `main`:
+- `.github/workflows/release.yml` — shipped. Triggers on push to
+  `main`, runs release-plz, opens a Release PR with version bump
+  + CHANGELOG.
+- `release-plz.toml` — shipped.
+- **Missing**: `CARGO_REGISTRY_TOKEN` secret in repo settings.
+  Until that's added, the workflow runs but the publish step
+  fails. The Release PR still opens (release-plz uses
+  `GITHUB_TOKEN` for that), but merging it doesn't publish.
+
+## Local-token workflow (interim)
+
+Until the secret is added, the maintainer can run release-plz
+locally:
+
+```sh
+cargo install release-plz
+export CARGO_REGISTRY_TOKEN=<token from https://crates.io/settings/tokens>
+release-plz release
+```
+
+This publishes to crates.io and pushes the tag locally; the tag
+push then triggers the binary-build workflow in deploy.yml. Same
+end state as the CI flow, just initiated from the maintainer's
+machine.
+
+## Solution (full CI flow when secret lands)
+
+On every push to `main`:
 
 1. release-plz parses conventional commits since the last release
 2. Determines the new version (patch/minor/major) from commit scope
@@ -21,7 +49,7 @@ Adopt release-plz. On every push to `main`:
 
 ## Implementation
 
-### `.github/workflows/release.yml`
+### `.github/workflows/release.yml` (shipped)
 
 ```yaml
 name: Release

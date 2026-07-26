@@ -1,104 +1,62 @@
-# 20 — Threshold signing via Confium
+# 20 — Multi-signer signatures (local-first; Confium is one backend)
 
 **Priority**: P1
-**Status**: specified
+**Status**: reframed (was: blocked on Confium)
 
-## Problem
+## Reframe
 
-Today's `--signer priv.pem` loads a single private key. For high-assurance
-use cases (root CAs, multi-party contracts), the signing key should never
-exist in one place. Threshold signing via FROST (Confium) solves this:
-K-of-N parties each hold a share; no single party sees the full key.
+The original framing depended on Confium for FROST threshold
+signing. That conflated two concerns:
 
-## Solution
+1. **Coordination** — how `t` of `n` signers agree to sign. This
+   is what Confium provides via its daemon.
+2. **Production** — given that agreement, how the signature bytes
+   are produced and stored.
 
-`ConfiumSigner` implements `SignerProvider` (roadmap 10). When enprot
-calls `provider.sign(msg)`, the ConfiumSigner:
+(2) doesn't need Confium at all. The local-files flow today
+supports `t = n` (every signer signs independently with their own
+privkey); `t < n` threshold requires Confium for the coordination
+step but produces the same wire format. See also TODO.roadmap/22.
 
-1. Sends `msg` to the local Confium daemon (unix socket or TCP)
-2. The daemon coordinates FROST with K-of-N remote parties
-3. Each party contributes a partial signature
-4. Confium combines partials into a valid signature
-5. Returns `(SigAlgKind, signature, group_key_fingerprint)` to enprot
+## Local variant (works today after TODO.roadmap/59 lands)
 
-Enprot embeds the signature in the CHAIN block as usual. The `signer:`
-field contains the group key fingerprint, not any individual party's.
-Verifiers (verify-chain) check against the group pubkey — they can't
-tell the signature was produced via threshold.
+`enprot sign --signer priv1.pem --signer priv2.pem FILE` produces
+N detached signatures, stored as a single bundle file. Verify
+(`enprot verify-sig --multi`) checks every signature.
 
-## URI scheme
+The signer set is recorded in the bundle header so consumers can
+see who signed without parsing each signature individually. This
+is the same model GPG's `--detach-sign --multifile` uses.
+
+## Confium variant (future; same wire format)
+
+`enprot sign --signer confium://session-id FILE` triggers FROST
+threshold signing via the Confium daemon. The daemon internally
+coordinates `t`-of-`n` signers; from enprot's perspective the
+result is a single signature (for threshold) or N signatures (for
+all-participants). The wire format is identical to the local
+variant.
+
+## URI scheme (Confium)
 
 ```
 confium://<session-id>?endpoint=<url>&quorum=<k>&alg=<ed25519|mldsa>
 ```
 
-Example:
-```
---signer "confium://root-ca-3of5?endpoint=unix:///var/run/confium.sock&quorum=3&alg=ed25519"
-```
-
-## ConfiumSigner implementation
-
-```rust
-pub struct ConfiumSigner {
-    endpoint: String,
-    session_id: String,
-    quorum: usize,
-    alg: SigAlgKind,
-    group_fp: KeyFp,  // cached at construction
-}
-
-impl SignerProvider for ConfiumSigner {
-    fn sign(&self, msg: &[u8]) -> Result<(SigAlgKind, Vec<u8>, KeyFp)> {
-        // FFI call to confium-ruby or direct confium-core cdylib
-        // For Rust-native integration: link against confium-core crate
-        let sig = confium::tc::threshold_sign(
-            &self.endpoint,
-            &self.session_id,
-            self.quorum,
-            msg,
-        )?;
-        Ok((self.alg, sig, self.group_fp))
-    }
-}
-```
-
 ## Algorithm support
 
-| Algorithm | Threshold scheme | Confium status |
+| Algorithm | Local (today) | Threshold (Confium, future) |
 |---|---|---|
-| Ed25519 | FROST (Schnorr/EdDSA) | shipped in confium-tc |
-| ML-DSA | Threshold Module-LWE | research phase in confium-tc |
+| Ed25519 | per-signer independent sig | FROST (shipped in confium-tc) |
+| ML-DSA | per-signer independent sig | research phase in confium-tc |
+| Composite | per-leg independent sig | per-leg threshold (future) |
 
-Ed25519 threshold is the initial target. ML-DSA threshold follows when
-confium-tc ships the Module-LWE threshold protocol.
+## Acceptance criteria (local variant)
 
-## Contract mode replacement (supersedes TODO.finalize/28)
+- [ ] `enprot sign` accepts repeatable `--signer`
+- [ ] Each signer's signature is stored with its fingerprint
+- [ ] `enprot verify-sig --multi` checks every signature
+- [ ] Confium URI continues to error with "not yet implemented"
+- [ ] Tests cover 1-signer (backwards compat) and N-signer cases
 
-Threshold signing **replaces** multi-sig for contract mode:
-
-- **Old plan (multi-sig)**: N signatures in one CHAIN block; each party
-  signs independently. Wire format: `sig:hex1;hex2;hex3`.
-- **New plan (threshold)**: One group signature in the CHAIN block.
-  Wire format unchanged from single-party. The quorum is enforced at
-  signing time by Confium, not at verification time.
-
-Benefits:
-- Simpler wire format (one sig, not N)
-- Stronger security (key never assembled in any party's memory)
-- DKG: group key generated without any party seeing the full key
-- Resharing: rotate committee members without key exposure
-
-## Dependencies
-
-- `confium-core` crate (Rust, cdylib) or `confium-ruby` gem
-- Network connectivity between committee members (TCP/QUIC/WS)
-- Each party's key share stored in hardware (PKCS#11/TPM) or software
-
-## Acceptance criteria
-
-- [ ] `ConfiumSigner` implements `SignerProvider`
-- [ ] `--signer confium://...` URI parsing
-- [ ] Chain anchor produced via threshold signs correctly
-- [ ] `verify-chain --trust-root <group-pubkey>` accepts the signature
-- [ ] Documentation: Confium setup guide for committee members
+See TODO.roadmap/59 for the concrete implementation tracker.
