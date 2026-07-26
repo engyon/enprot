@@ -31,6 +31,7 @@ cli = ["dep:clap", "dep:clap_complete"]
 [[bin]]
 name = "enprot"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [[test]]
 name = "integration"
