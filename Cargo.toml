@@ -15,7 +15,14 @@ rust-version = "1.85"
 autotests   = false
 
 [package.metadata.docs.rs]
+# Build all features so docs.rs shows the full API surface.
 all-features = true
+# docs.rs runs `cargo doc` — pass --cfg docsrs so feature-gated
+# items render with the standard "Available on feature=... only"
+# badge once we add feature flags. Botan requires pkg-config at
+# doc-build time; docs.rs installs it via the [package.metadata.docs.rs]
+# `dependencies` field below (no-op until we need extra system libs).
+rustdoc-args = ["--cfg", "docsrs"]
 
 [[bin]]
 name = "enprot"
