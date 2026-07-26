@@ -1,2 +1,8 @@
 /target
 **/*.rs.bk
+
+# Fuzzing artifacts — corpus and crash inputs grow large.
+# Committed seeds live under fuzz/corpus/<target>/seed/ explicitly.
+/fuzz/corpus/*/!(*seed*)
+/fuzz/artifacts/
+/fuzz/target/
