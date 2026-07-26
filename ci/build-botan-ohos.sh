@@ -38,6 +38,11 @@ done
 [ -n "$PREFIX" ] || { echo "usage: $0 --prefix <dir>" >&2; exit 1; }
 PREFIX="$(cd "$PREFIX" && pwd)"
 
+# Resolve the script's own directory to an absolute path BEFORE any cd.
+# Otherwise botan-modules can't be found relative to cwd after we cd into
+# the build dir.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Sysroot is in LLVM-19 (per-arch layout). The SDK's multiarch sysroot
 # at ohos-sdk/linux/native/sysroot is wrong for direct clang invocation
 # (it's only useful via ohos.toolchain.cmake, which we don't use).
@@ -45,7 +50,7 @@ SYSROOT="$PREFIX/llvm-19/sysroot/$NDK_TRIPLE"
 # NDK clang binaries use hyphens throughout (e.g. aarch64-unknown-linux-ohos-clang++).
 NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${RUST_TARGET}-clang++"
 
-for f in "$SYSROOT" "$NDK_CLANGXX"; do
+for f in "$SYSROOT" "$NDK_CLANGXX" "$SCRIPT_DIR/botan-modules"; do
   [ -e "$f" ] || { echo "missing NDK piece: $f" >&2; exit 1; }
 done
 
@@ -70,7 +75,7 @@ if [ ! -d "$SRC_DIR" ]; then
 fi
 
 # BOTAN_MODULES matches ci/botan-modules.
-BOTAN_MODULES="$(cat "$(dirname "$0")/botan-modules")"
+BOTAN_MODULES="$(cat "$SCRIPT_DIR/botan-modules")"
 
 cd "$SRC_DIR"
 
