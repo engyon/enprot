@@ -152,6 +152,57 @@ enum MergePick {
     },
 }
 
+/// Merge outcome for a Plain segment. Same shape as MergePick but
+/// always uses the reserved `__plain__` keyw so the resolve layer
+/// can spot non-WORD conflicts.
+enum PlainPick {
+    Take(TextTree),
+    Conflict { ours: TextTree, theirs: TextTree },
+}
+
+/// Reserved keyw for plain-segment conflicts. Double-underscore
+/// prefix avoids collision with real WORD identifiers (which are
+/// unqualified identifiers in every host language).
+const PLAIN_KEYWORD: &str = "__plain__";
+
+/// Three-way merge for Plain segments. Mirrors `merge_one_region`
+/// but emits a [`PlainPick`] (caller wraps with `PLAIN_KEYWORD`).
+fn merge_one_plain(
+    base: Option<&TextTree>,
+    ours: Option<&TextTree>,
+    theirs: Option<&TextTree>,
+) -> PlainPick {
+    match (base, ours, theirs) {
+        // All three identical (or only one side changed) → take it.
+        (Some(_), Some(o), Some(t)) if o == t => PlainPick::Take(o.clone()),
+        (Some(b), Some(o), Some(t)) if o == b => PlainPick::Take(t.clone()),
+        (Some(b), Some(o), Some(t)) if t == b => PlainPick::Take(o.clone()),
+        (Some(_), Some(o), Some(t)) => PlainPick::Conflict {
+            ours: o.clone(),
+            theirs: t.clone(),
+        },
+        // Plain added on one side only.
+        (None, Some(o), None) => PlainPick::Take(o.clone()),
+        (None, None, Some(t)) => PlainPick::Take(t.clone()),
+        // Plain removed on both sides — nothing to emit.
+        (Some(_), None, None) => PlainPick::Take(Vec::new()),
+        // Plain removed on one side, modified on the other — keep
+        // the modified version (modify-wins-over-delete, same rule
+        // as for regions).
+        (Some(_), Some(o), None) => PlainPick::Take(o.clone()),
+        (Some(_), None, Some(t)) => PlainPick::Take(t.clone()),
+        // Plain added on both sides identically.
+        (None, Some(o), Some(t)) if o == t => PlainPick::Take(o.clone()),
+        // Plain added on both sides differently.
+        (None, Some(o), Some(t)) => PlainPick::Conflict {
+            ours: o.clone(),
+            theirs: t.clone(),
+        },
+        // Defensive — see merge_one_region for the rationale.
+        (None, None, None) => PlainPick::Take(Vec::new()),
+    }
+}
+
 /// Three-way merge two partitioned trees against a shared ancestor.
 /// Returns the merged tree. Conflicts become [`TextNode::Conflict`]
 /// nodes; the caller (typically `enprot resolve`) decides how to
@@ -159,10 +210,15 @@ enum MergePick {
 ///
 /// Walk strategy: ours is authoritative for layout — we walk ours
 /// segment-by-segment and emit each one, only delegating to the
-/// three-way merge for Region segments. Plain and Atom segments
-/// pass through unchanged. Region segments missing from theirs are
-/// kept as ours (modify-wins-over-delete); regions added in theirs
-/// but absent from ours are appended after ours' last region.
+/// three-way merge for Region segments. Plain segments go through
+/// the same three-way merge by positional index (the i-th Plain in
+/// ours is matched against the i-th Plain in base and theirs); a
+/// both-sides-diverge Plain produces a `CONFLICT __plain__` block
+/// rather than silently dropping the theirs side (TODO.roadmap/48).
+/// Atom segments pass through unchanged. Region segments missing
+/// from theirs are kept as ours (modify-wins-over-delete); regions
+/// added in theirs but absent from ours are appended after ours'
+/// last region.
 pub fn merge_trees(base: &TextTree, ours: &TextTree, theirs: &TextTree) -> Result<TextTree> {
     let base_seg = partition(base);
     let ours_seg = partition(ours);
@@ -179,6 +235,22 @@ pub fn merge_trees(base: &TextTree, ours: &TextTree, theirs: &TextTree) -> Resul
         })
     };
 
+    // Plain segments don't carry identity, so we match them
+    // positionally: the i-th Plain in ours corresponds to the i-th
+    // Plain in base and theirs. Inserting or removing a Plain
+    // segment shifts indices downstream — accepted trade-off given
+    // that the alternative (content-hash matching) breaks when two
+    // segments happen to be identical.
+    let plain_at = |segs: &[Segment], i: usize| -> Option<TextTree> {
+        segs.iter()
+            .filter_map(|s| match s {
+                Segment::Plain(nodes) => Some(nodes.clone()),
+                _ => None,
+            })
+            .nth(i)
+    };
+    let mut next_plain_idx = 0usize;
+
     let mut out: TextTree = Vec::new();
     let mut handled: Vec<(String, RegionTag)> = Vec::new();
 
@@ -186,7 +258,23 @@ pub fn merge_trees(base: &TextTree, ours: &TextTree, theirs: &TextTree) -> Resul
     // their original places. Regions go through the 3-way merge.
     for s in &ours_seg {
         match s {
-            Segment::Plain(nodes) => out.extend_from_slice(nodes),
+            Segment::Plain(nodes) => {
+                let i = next_plain_idx;
+                next_plain_idx += 1;
+                let base_plain = plain_at(&base_seg, i);
+                let theirs_plain = plain_at(&theirs_seg, i);
+                match merge_one_plain(base_plain.as_ref(), Some(nodes), theirs_plain.as_ref()) {
+                    PlainPick::Take(nodes) => out.extend_from_slice(&nodes),
+                    PlainPick::Conflict { ours, theirs } => {
+                        out.push(TextNode::Plain("\n".to_string()));
+                        out.push(TextNode::Conflict {
+                            keyw: PLAIN_KEYWORD.to_string(),
+                            ours,
+                            theirs,
+                        });
+                    }
+                }
+            }
             Segment::Atom(node) => out.push(node.clone()),
             Segment::Region { keyw, ours_tag, .. } => {
                 let key = (keyw.clone(), *ours_tag);
@@ -427,6 +515,43 @@ mod tests {
         // Modify-wins-over-delete: the modified region survives.
         let serialized = serialize(&merged);
         assert!(serialized.contains("body-modified"));
+    }
+
+    #[test]
+    fn both_sides_modified_plain_emits_plain_conflict() {
+        // TODO.roadmap/48: previously the theirs-side Plain edit was
+        // silently dropped. Now both sides land in a CONFLICT block
+        // under the reserved __plain__ keyw.
+        let base = parse_str("intro\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let ours = parse_str("intro-our\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let theirs = parse_str("intro-their\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let merged = merge_trees(&base, &ours, &theirs).unwrap();
+        let serialized = serialize(&merged);
+        assert!(
+            serialized.contains("CONFLICT __plain__"),
+            "expected __plain__ conflict; got:\n{serialized}"
+        );
+        assert!(serialized.contains("intro-our"));
+        assert!(serialized.contains("intro-their"));
+    }
+
+    #[test]
+    fn one_sided_plain_change_merges_cleanly() {
+        let base = parse_str("intro\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let ours = parse_str("intro-our\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let theirs = parse_str("intro\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let merged = merge_trees(&base, &ours, &theirs).unwrap();
+        assert_eq!(count_conflicts(&merged), 0);
+        assert!(serialize(&merged).contains("intro-our"));
+    }
+
+    #[test]
+    fn identical_plain_change_on_both_sides_merges_cleanly() {
+        let base = parse_str("intro\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let ours = parse_str("intro-edited\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let theirs = parse_str("intro-edited\n// <( BEGIN X )>\nbody\n// <( END X )>\n");
+        let merged = merge_trees(&base, &ours, &theirs).unwrap();
+        assert_eq!(count_conflicts(&merged), 0);
     }
 
     fn serialize(tree: &TextTree) -> String {
