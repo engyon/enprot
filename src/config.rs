@@ -86,9 +86,41 @@ pub struct ChainConfig {
 impl Config {
     /// Parse a TOML string. Unknown fields are rejected so typos in
     /// the config file surface immediately rather than silently
-    /// being ignored.
+    /// being ignored. Known field values (lang, policy) are
+    /// validated against the crate's const sets.
     pub fn from_toml_str(s: &str) -> Result<Self> {
-        toml::from_str(s).map_err(|e| Error::msg(format!("config parse: {e}")))
+        let cfg: Self = toml::from_str(s).map_err(|e| Error::msg(format!("config parse: {e}")))?;
+        cfg.validate()?;
+        Ok(cfg)
+    }
+
+    /// Validate known field values against the crate's const sets.
+    /// Catches typos like `lang = "pyhton"` or `policy = "defualt"`
+    /// at config-load time instead of at first use.
+    pub fn validate(&self) -> Result<()> {
+        if let Some(ref lang) = self.lang {
+            let valid: Vec<&str> = crate::consts::LANG_SEPARATORS
+                .iter()
+                .map(|(n, _, _)| *n)
+                .collect();
+            if !valid.contains(&lang.as_str()) {
+                return Err(Error::msg(format!(
+                    "config: unknown lang '{}' (valid: {})",
+                    lang,
+                    valid.join(", ")
+                )));
+            }
+        }
+        if let Some(ref policy) = self.policy {
+            if !crate::consts::VALID_POLICIES.contains(&policy.as_str()) {
+                return Err(Error::msg(format!(
+                    "config: unknown policy '{}' (valid: {})",
+                    policy,
+                    crate::consts::VALID_POLICIES.join(", ")
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Load from a single file. Missing file → `Ok(Config::default())`

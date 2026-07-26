@@ -111,6 +111,21 @@ impl Error {
     pub fn json(e: impl std::fmt::Display) -> Self {
         Error::Json(e.to_string())
     }
+
+    /// Wrap this error with additional context (file path, WORD,
+    /// operation name). Produces a richer Display string without
+    /// changing the error type. Usage:
+    ///
+    /// ```ignore
+    /// KeyFp::from_pem(&pem)
+    ///     .map_err(|e| e.with_context(format!("loading {}", path.display())))?
+    /// ```
+    ///
+    /// The Display output becomes:
+    /// `"loading builder.pem: signer fingerprint mismatch"`
+    pub fn with_context(self, ctx: impl std::fmt::Display) -> Self {
+        Error::Msg(format!("{}: {}", ctx, self))
+    }
 }
 
 impl From<botan::Error> for Error {
