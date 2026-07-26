@@ -94,15 +94,25 @@ jobs:
           NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++"
           export PKG_CONFIG_PATH="$PREFIX/ohos-aarch64/lib/pkgconfig"
           export PKG_CONFIG_ALLOW_CROSS=1
-          export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
+          # Do NOT set PKG_CONFIG_SYSROOT_DIR — Botan's .pc file already
+          # contains absolute paths, and pkg-config would prepend the
+          # sysroot to them, producing a broken concatenated path
+          # (.../sysroot/aarch64-linux-ohos/home/runner/...).
           # botan-sys reads BOTAN_STATIC=1 to force static linking against
           # the .a we cross-compiled; otherwise it tries to link libbotan-3.so.
           export BOTAN_STATIC=1
           # Cargo env var name is uppercased RUST_TARGET with _ for -.
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$NDK_CLANGXX"
-          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=${{ env.NDK_TRIPLE }} -C link-arg=--sysroot=$SYSROOT"
-          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+          # Also pass the Botan lib dir via RUSTFLAGS so the linker can
+          # find libbotan-3.a even if botan-sys's pkg-config path resolution
+          # is off.
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=${{ env.NDK_TRIPLE }} -C link-arg=--sysroot=$SYSROOT -C link-arg=-L$PREFIX/ohos-aarch64/lib"
+          echo "=== botan-3.pc location ==="
           ls -la "$PKG_CONFIG_PATH" || true
+          echo "=== botan-3.pc contents ==="
+          cat "$PKG_CONFIG_PATH/botan-3.pc" || true
+          echo "=== libbotan-3.a location ==="
+          ls -la "$PREFIX/ohos-aarch64/lib/" | grep -E 'botan|\.a' || true
           cargo build --target ${{ env.RUST_TARGET }} --release
 
       - name: Build smoke test
