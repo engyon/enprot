@@ -1,7 +1,7 @@
 # 40 — Parser performance investigation
 
 **Priority**: P2
-**Status**: specified
+**Status**: done
 
 The parser benchmarks show 4k segments ≈ 600ms. Profile to find
 the bottleneck: likely the `std::mem::take` pattern in

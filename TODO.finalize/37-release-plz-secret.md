@@ -1,7 +1,7 @@
 # 37 — release-plz: CARGO_REGISTRY_TOKEN secret
 
 **Priority**: P0
-**Status**: blocked on user action
+**Status**: done
 
 ## Problem
 
@@ -32,6 +32,6 @@ triggers the binary build in `deploy.yml`.
 
 ## Acceptance criteria
 
-- [ ] `CARGO_REGISTRY_TOKEN` secret configured
-- [ ] First push to main after configuration triggers a Release PR
-- [ ] Merging the Release PR publishes to crates.io
+- [x] `CARGO_REGISTRY_TOKEN` secret configured (verified via `gh secret list`)
+- [x] First push to main after configuration triggers a Release PR
+- [x] Merging the Release PR publishes to crates.io (v0.4.1 published)
