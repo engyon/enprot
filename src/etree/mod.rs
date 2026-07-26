@@ -213,10 +213,10 @@ pub struct ParseOps {
 impl Drop for ParseOps {
     fn drop(&mut self) {
         use zeroize::Zeroize;
-        for (_, pw) in self.passwords.iter_mut() {
+        for pw in self.passwords.values_mut() {
             pw.zeroize();
         }
-        for (_, pk) in self.crypto.recipient_privkeys.iter_mut() {
+        for pk in self.crypto.recipient_privkeys.values_mut() {
             pk.zeroize();
         }
         if let Some(ref mut pem) = self.anchor.signer_priv_pem {
