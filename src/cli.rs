@@ -1178,7 +1178,7 @@ fn run_inspect(a: InspectSubcmd, common: CommonArgs) -> Result<()> {
             let path_str = p.display().to_string();
             paops.runtime.fname = path_str.clone();
             Box::new(BufReader::new(File::open(p).map_err(|e| {
-                Error::msg(format!("Failed to open {}: {}", path_str, e))
+                Error::msg(format!("inspect: failed to open {}: {}", path_str, e))
             })?))
         }
         _ => {
@@ -1261,8 +1261,15 @@ fn run_manifest(a: ManifestSubcmd) -> Result<()> {
         std::fs::create_dir_all(&casdir)?;
     }
 
+    eprintln!("manifest: walking {}...", a.dir.display());
     let tree = provenance::build_manifest(&a.dir, &casdir)?;
-    let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
+    eprintln!(
+        "manifest: {} entries",
+        tree.iter()
+            .filter(|n| matches!(n, etree::TextNode::Include { .. }))
+            .count()
+    );
+    let policy = crypto::default_policy();
     let mut paops = ParseOps::new(policy)?;
     paops.runtime.fname = a
         .output
