@@ -52,9 +52,11 @@ fn config_file_supplies_casdir_when_cli_omits_it() {
     let dir = tempdir().unwrap();
     let cas = dir.path().join("cas");
     fs::create_dir(&cas).unwrap();
+    // TOML literal string (single quotes) so backslashes in Windows
+    // paths aren't interpreted as escape characters.
     fs::write(
         dir.path().join(".enprot.toml"),
-        format!("casdir = \"{}\"\n", cas.display()),
+        format!("casdir = '{}'\n", cas.display()),
     )
     .unwrap();
 
@@ -84,7 +86,7 @@ fn cli_flag_overrides_config_file() {
     fs::create_dir(&cas_b).unwrap();
     fs::write(
         dir.path().join(".enprot.toml"),
-        format!("casdir = \"{}\"\n", cas_a.display()),
+        format!("casdir = '{}'\n", cas_a.display()),
     )
     .unwrap();
 

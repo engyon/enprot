@@ -34,7 +34,13 @@ fn manifest_walks_tree_and_emits_include_per_file() {
     let body = fs::read_to_string(&manifest_path).unwrap();
     assert!(body.contains("INCLUDE"), "got: {body}");
     assert!(body.contains("# path: a.txt"));
-    assert!(body.contains("# path: sub/b.txt"));
+    // Path comment uses the OS separator; accept either on Windows.
+    let sub_path = if cfg!(windows) {
+        "# path: sub\\b.txt"
+    } else {
+        "# path: sub/b.txt"
+    };
+    assert!(body.contains(sub_path), "missing {sub_path} in: {body}");
     // CAS directory should contain 2 hash-named files.
     let cas_entries = std::fs::read_dir(cas.path()).unwrap().count();
     assert_eq!(cas_entries, 2);

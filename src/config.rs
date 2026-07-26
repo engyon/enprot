@@ -95,8 +95,8 @@ impl Config {
     }
 
     /// Validate known field values against the crate's const sets.
-    /// Catches typos like `lang = "pyhton"` or `policy = "defualt"`
-    /// at config-load time instead of at first use.
+    /// Catches misspelled `lang` or `policy` values at config-load
+    /// time instead of at first use.
     pub fn validate(&self) -> Result<()> {
         if let Some(ref lang) = self.lang {
             let valid: Vec<&str> = crate::consts::LANG_SEPARATORS
