@@ -1,7 +1,7 @@
 # 36 — CLI code extraction for feature-gated library builds
 
 **Priority**: P1
-**Status**: specified
+**Status**: done
 
 ## Problem
 

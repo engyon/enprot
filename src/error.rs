@@ -140,5 +140,11 @@ impl From<hex::FromHexError> for Error {
     }
 }
 
+impl From<crate::ledger::DagError> for Error {
+    fn from(e: crate::ledger::DagError) -> Self {
+        Error::msg(e.to_string())
+    }
+}
+
 /// Convenience alias used everywhere in the crate.
 pub type Result<T> = std::result::Result<T, Error>;

@@ -1,8 +1,10 @@
 # Finalize batch — features and polish
 
-All 35 items have been implemented. Items marked "consolidated" were
+All 46 items have been implemented. Items marked "consolidated" were
 moved into `TODO.roadmap/` with new numbering; the original spec
-files remain here for historical context.
+files remain here for historical context. Items 36-46 were added in
+a later session to track feature-gated library extraction, secrets
+hygiene, parser perf, error ergonomics, and typed extfield access.
 
 | # | File | Status | Consolidated into |
 |---|------|--------|-------------------|
@@ -41,3 +43,14 @@ files remain here for historical context.
 | 33 | `33-eliminate-unreachable.md` | done (PR #107) | — |
 | 34 | `34-typed-directive-names.md` | done (PR #108) | — |
 | 35 | `35-parseops-ergonomics.md`   | done (PR #109) | — |
+| 36 | `36-cli-extraction.md`        | done          | — |
+| 37 | `37-release-plz-secret.md`    | done          | — |
+| 38 | `38-confium-backend.md`       | blocked on external system (Confium daemon) | local-first flows work today |
+| 39 | `39-zeroize-secrets.md`       | done          | — |
+| 40 | `40-parser-perf.md`           | done          | — |
+| 41 | `41-error-context-callsites.md` | done        | — |
+| 42 | `42-inspect-command.md`       | done          | — |
+| 43 | `43-migration-guide.md`       | done          | — |
+| 44 | `44-progress-indicators.md`   | done          | — |
+| 45 | `45-transform-context-trait.md` | done        | — |
+| 46 | `46-typed-extfield-schema.md` | done          | — |
