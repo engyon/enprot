@@ -106,6 +106,13 @@ pub struct CryptoConfig {
     pub cipheropts: CipherOptions,
     pub rng: Option<botan::RandomNumberGenerator>,
     pub pbkdf_cache: Option<PBKDFCache>,
+    /// Recipient pubkeys for KEM-based encryption (TODO.roadmap/60).
+    /// When non-empty, the transform calls kemenc::encrypt instead
+    /// of prot::encrypt (password-based). Empty = password mode.
+    pub recipient_pubs: Vec<String>,
+    /// Recipient private keys for KEM-based decryption (TODO.roadmap/60).
+    /// Keyed by WORD so different WORDs can decrypt with different keys.
+    pub recipient_privkeys: HashMap<String, String>,
 }
 
 /// Per-invocation mutable state: stuff that changes during a parse
@@ -191,6 +198,8 @@ impl ParseOps {
                 cipheropts,
                 rng: Some(rng),
                 pbkdf_cache: Some(Vec::new()),
+                recipient_pubs: Vec::new(),
+                recipient_privkeys: HashMap::new(),
             },
             runtime: RuntimeState {
                 level: 0,

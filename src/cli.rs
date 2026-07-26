@@ -392,6 +392,12 @@ pub struct EncryptSubcmd {
 
     #[command(flatten)]
     pub output: OutputArgs,
+
+    /// Recipient pubkey (PEM). Repeatable. When supplied, the
+    /// transform uses ML-KEM encapsulation instead of PBKDF
+    /// (TODO.roadmap/60). Any one matching privkey can decrypt.
+    #[arg(long = "recipient", value_name = "PUB.pem")]
+    pub recipients: Vec<PathBuf>,
 }
 
 /// Decrypt/Store/Fetch/Passthrough subcommand: just the shared output
@@ -400,6 +406,13 @@ pub struct EncryptSubcmd {
 pub struct OperationSubcmd {
     #[command(flatten)]
     pub output: OutputArgs,
+
+    /// Private key (PEM) for KEM-mode decryption (TODO.roadmap/60).
+    /// When the Encrypted block has a `recipients:` extfield, this
+    /// privkey is used for ML-KEM decapsulation. Ignored for
+    /// password-mode blocks.
+    #[arg(long = "key-file", value_name = "PRIV.pem")]
+    pub key_files: Vec<PathBuf>,
 }
 
 /// `keygen` subcommand: emit a fresh keypair.
@@ -734,6 +747,19 @@ pub struct OutputArgs {
     pub files: Vec<String>,
 }
 
+/// Load multiple PEM files into a Vec<String>. Used for --recipient
+/// (pubkey) and --key-file (privkey) flags. (TODO.roadmap/60.)
+fn load_pems(paths: &[PathBuf]) -> Result<Vec<String>> {
+    paths
+        .iter()
+        .map(|p| fs::read_to_string(p).map_err(Error::from))
+        .collect()
+}
+
+fn load_privkey_pems(paths: &[PathBuf]) -> Result<Vec<String>> {
+    load_pems(paths)
+}
+
 fn parse_word_password(s: &str) -> std::result::Result<(String, String), String> {
     let (word, pass) = s
         .split_once('=')
@@ -839,26 +865,42 @@ where
     let mut common = cli.common;
     common = apply_config(common)?;
     match cli.command {
-        Command::Encrypt(a) => run(common, a.output, Some((a.encrypt, Operation::Encrypt))),
+        Command::Encrypt(a) => run(
+            common,
+            a.output,
+            Some((a.encrypt, Operation::Encrypt)),
+            load_pems(&a.recipients)?,
+            Vec::new(),
+        ),
         Command::Decrypt(a) => run(
             common,
             a.output,
             Some((EncryptOpts::default(), Operation::Decrypt)),
+            Vec::new(),
+            load_privkey_pems(&a.key_files)?,
         ),
         Command::Store(a) => run(
             common,
             a.output,
             Some((EncryptOpts::default(), Operation::Store)),
+            Vec::new(),
+            Vec::new(),
         ),
         Command::Fetch(a) => run(
             common,
             a.output,
             Some((EncryptOpts::default(), Operation::Fetch)),
+            Vec::new(),
+            Vec::new(),
         ),
-        Command::EncryptStore(a) => {
-            run(common, a.output, Some((a.encrypt, Operation::EncryptStore)))
-        }
-        Command::Passthrough(a) => run(common, a.output, None),
+        Command::EncryptStore(a) => run(
+            common,
+            a.output,
+            Some((a.encrypt, Operation::EncryptStore)),
+            load_pems(&a.recipients)?,
+            Vec::new(),
+        ),
+        Command::Passthrough(a) => run(common, a.output, None, Vec::new(), Vec::new()),
         Command::Verify(a) => verify_files(common, a.output),
         Command::List(a) => list_files(common, a.output),
         Command::Completions { shell } => {
@@ -1379,7 +1421,13 @@ impl Operation {
     }
 }
 
-fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operation)>) -> Result<()> {
+fn run(
+    common: CommonArgs,
+    output: OutputArgs,
+    op: Option<(EncryptOpts, Operation)>,
+    recipient_pubs: Vec<String>,
+    recipient_privs: Vec<String>,
+) -> Result<()> {
     let explicit_policy = common.policy.clone();
     let mut policy_name = explicit_policy
         .clone()
@@ -1427,6 +1475,15 @@ fn run(common: CommonArgs, output: OutputArgs, op: Option<(EncryptOpts, Operatio
     paops.separators.left = left;
     paops.separators.right = right;
     paops.passwords.extend(common.password);
+    paops.crypto.recipient_pubs = recipient_pubs;
+    for (i, w) in output.word.iter().enumerate() {
+        if let Some(priv_pem) = recipient_privs.get(i).or_else(|| recipient_privs.first()) {
+            paops
+                .crypto
+                .recipient_privkeys
+                .insert(w.clone(), priv_pem.clone());
+        }
+    }
     if common.pbkdf_disable_cache {
         paops.crypto.pbkdf_cache = None;
     }
