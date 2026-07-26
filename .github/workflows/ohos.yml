@@ -25,7 +25,12 @@ concurrency:
 env:
   RUST_BACKTRACE: full
   BOTAN_VERSION: "3.7.0"
-  OHOS_TRIPLE: aarch64-linux-ohos
+  # Rust uses aarch64-unknown-linux-ohos (with vendor field); the NDK
+  # clang binary also uses that form, but the sysroot path uses
+  # aarch64-linux-ohos (no vendor). ci/setup-ohos-ndk.sh handles the
+  # discrepancy.
+  RUST_TARGET: aarch64-unknown-linux-ohos
+  NDK_TRIPLE: aarch64-linux-ohos
   NDK_PREFIX: ext/ohos
 
 jobs:
@@ -46,7 +51,7 @@ jobs:
 
       - name: Install Rust target
         run: |
-          rustup target add ${{ env.OHOS_TRIPLE }}
+          rustup target add ${{ env.RUST_TARGET }}
           rustup toolchain list
 
       - name: Cache OHOS NDK
@@ -54,12 +59,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.NDK_PREFIX }}
-          key: ohos-ndk-${{ env.OHOS_TRIPLE }}-${{ hashFiles('ci/setup-ohos-ndk.sh') }}
+          key: ohos-ndk-${{ env.NDK_TRIPLE }}-${{ hashFiles('ci/setup-ohos-ndk.sh') }}
 
       - name: Setup OHOS NDK
         if: steps.cache-ndk.outputs.cache-hit != 'true'
         run: |
-          sh ci/setup-ohos-ndk.sh --prefix ${{ env.NDK_PREFIX }}
+          sh ci/setup-ohos-ndk.sh --prefix ${{ env.NDK_PREFIX }} --ndk-triple ${{ env.NDK_TRIPLE }}
 
       - name: Cache Botan build
         id: cache-botan
@@ -68,25 +73,28 @@ jobs:
           path: |
             ${{ env.NDK_PREFIX }}/ohos-aarch64
             ${{ env.NDK_PREFIX }}/botan-build
-          key: ohos-botan-${{ env.BOTAN_VERSION }}-${{ env.OHOS_TRIPLE }}-${{ hashFiles('ci/build-botan-ohos.sh', 'ci/botan-modules') }}
+          key: ohos-botan-${{ env.BOTAN_VERSION }}-${{ env.NDK_TRIPLE }}-${{ hashFiles('ci/build-botan-ohos.sh', 'ci/botan-modules') }}
 
       - name: Cross-compile Botan 3 (static)
         if: steps.cache-botan.outputs.cache-hit != 'true'
         run: |
           sh ci/build-botan-ohos.sh \
             --prefix ${{ env.NDK_PREFIX }} \
-            --botan-version ${{ env.BOTAN_VERSION }}
+            --botan-version ${{ env.BOTAN_VERSION }} \
+            --ndk-triple ${{ env.NDK_TRIPLE }}
 
       - name: Build enprot
         run: |
           SYSROOT=${{ env.NDK_PREFIX }}/ohos-sdk/linux/native/sysroot
+          # NDK ships clang binaries as aarch64-unknown-linux-ohos-clang++.
+          NDK_CLANGXX=${{ env.NDK_PREFIX }}/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++
           export PKG_CONFIG_PATH=${{ env.NDK_PREFIX }}/ohos-aarch64/lib/pkgconfig
           export PKG_CONFIG_ALLOW_CROSS=1
           export PKG_CONFIG_SYSROOT_DIR="$SYSROOT"
-          # Pure-Rust deps + the cross-compiled Botan static lib.
-          export CARGO_TARGET_AARCH64_LINUX_OHOS_LINKER=${{ env.NDK_PREFIX }}/llvm-19/llvm/bin/aarch64_unknown_linux_ohos-clang
-          export CARGO_TARGET_AARCH64_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=${{ env.OHOS_TRIPLE }} -C link-arg=--sysroot=$SYSROOT"
-          cargo build --target ${{ env.OHOS_TRIPLE }} --release
+          # Cargo env var name is uppercased RUST_TARGET with _ for -.
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$NDK_CLANGXX"
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=${{ env.NDK_TRIPLE }} -C link-arg=--sysroot=$SYSROOT"
+          cargo build --target ${{ env.RUST_TARGET }} --release
 
       - name: Build smoke test
         run: |
@@ -96,7 +104,7 @@ jobs:
           SYSROOT=${{ env.NDK_PREFIX }}/ohos-sdk/linux/native/sysroot
           mkdir -p ohos-verify
           "$CLANG" \
-            --target=${{ env.OHOS_TRIPLE }} --sysroot="$SYSROOT" \
+            --target=${{ env.NDK_TRIPLE }} --sysroot="$SYSROOT" \
             -O2 -I"$BOTAN_INC" \
             ci/ohos-smoke.c "$BOTAN_LIB" \
             -lpthread -ldl -lstdc++ \
@@ -104,7 +112,7 @@ jobs:
 
       - name: Copy binary for verification
         run: |
-          cp target/${{ env.OHOS_TRIPLE }}/release/enprot ohos-verify/enprot
+          cp target/${{ env.RUST_TARGET }}/release/enprot ohos-verify/enprot
 
       - name: Verify in dockerharmony
         uses: addnab/docker-run-action@v3
@@ -121,7 +129,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: enprot-aarch64-linux-ohos
+          name: enprot-${{ env.RUST_TARGET }}
           path: |
-            target/${{ env.OHOS_TRIPLE }}/release/enprot
+            target/${{ env.RUST_TARGET }}/release/enprot
             ohos-verify/

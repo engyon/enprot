@@ -476,7 +476,7 @@ would require.
 
 ## Cross-compiling for OHOS (OpenHarmony)
 
-enprot builds for `aarch64-linux-ohos` (HarmonyOS arm64). The cross-compile
+enprot builds for `aarch64-unknown-linux-ohos` (HarmonyOS arm64). The cross-compile
 setup is in `ci/setup-ohos-ndk.sh` (NDK download + sysroot symlink) and
 `ci/build-botan-ohos.sh` (static Botan). CI runs the full pipeline in
 `.github/workflows/ohos.yml` and verifies the binary in `dockerharmony`
@@ -490,9 +490,13 @@ sh ci/build-botan-ohos.sh --prefix ext/ohos --botan-version 3.7.0
 export PKG_CONFIG_PATH=ext/ohos/ohos-aarch64/lib/pkgconfig
 export PKG_CONFIG_ALLOW_CROSS=1
 export PKG_CONFIG_SYSROOT_DIR=ext/ohos/ohos-sdk/linux/native/sysroot
-cargo build --target aarch64-linux-ohos --release
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER=ext/ohos/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++
+cargo build --target aarch64-unknown-linux-ohos --release
 ```
 
+The Rust target uses the `unknown` vendor field (`aarch64-unknown-linux-ohos`);
+the NDK clang binary is named after the Rust triple, but the sysroot path
+and `--target=` flag use the NDK triple (`aarch64-linux-ohos`, no vendor).
 See `docs/ohos-porting-guide.md` for the full porting reference
 (NDK architecture, two-sysroots problem, code signing, CI topology).
 

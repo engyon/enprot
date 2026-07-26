@@ -182,6 +182,6 @@ jobs:
         run: cargo bench --no-run
       - name: Compare PR vs main (criterion auto-prints regression %)
         run: |
-          cargo bench --bench merkle -- --benchmark pr --warm-up-time 1 --measurement-time 3
-          cargo bench --bench crypto  -- --benchmark pr --warm-up-time 1 --measurement-time 3
-          cargo bench --bench parser  -- --benchmark pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench merkle -- --baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench crypto  -- --baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench parser  -- --baseline pr --warm-up-time 1 --measurement-time 3

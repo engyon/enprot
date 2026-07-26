@@ -7,7 +7,8 @@
 #
 # Usage:
 #   ci/build-botan-ohos.sh --prefix ext/ohos --botan-version 3.7.0 \
-#                          [--triple aarch64-linux-ohos]
+#                          [--ndk-triple aarch64-linux-ohos] \
+#                          [--rust-target aarch64-unknown-linux-ohos]
 #
 # Outputs:
 #   $PREFIX/botan-build/             # source + build artifacts
@@ -20,13 +21,15 @@ set -euo pipefail
 
 PREFIX=""
 BOTAN_VERSION="3.7.0"
-TRIPLE="${OHOS_TRIPLE:-aarch64-linux-ohos}"
+NDK_TRIPLE="${NDK_TRIPLE:-aarch64-linux-ohos}"
+RUST_TARGET="${RUST_TARGET:-aarch64-unknown-linux-ohos}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --prefix)        PREFIX="$2"; shift 2;;
     --botan-version) BOTAN_VERSION="$2"; shift 2;;
-    --triple)        TRIPLE="$2"; shift 2;;
+    --ndk-triple)    NDK_TRIPLE="$2"; shift 2;;
+    --rust-target)   RUST_TARGET="$2"; shift 2;;
     -h|--help) sed -n '2,20p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 1;;
   esac
@@ -37,21 +40,23 @@ PREFIX="$(cd "$PREFIX" && pwd)"
 
 SYSROOT="$PREFIX/ohos-sdk/linux/native/sysroot"
 TOOLCHAIN_CMAKE="$PREFIX/ohos-sdk/linux/native/build/cmake/ohos.toolchain.cmake"
-NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${TRIPLE//-/_}-clang++"
+# NDK clang binaries are named after the Rust target triple
+# (e.g. aarch64-unknown-linux-ohos-clang++).
+NDK_CLANGXX="$PREFIX/llvm-19/llvm/bin/${RUST_TARGET//-/_}-clang++"
 
 for f in "$SYSROOT" "$TOOLCHAIN_CMAKE" "$NDK_CLANGXX"; do
   [ -e "$f" ] || { echo "missing NDK piece: $f" >&2; exit 1; }
 done
 
-# CPU mapping for Botan's --cpu flag.
-case "$TRIPLE" in
+# CPU mapping for Botan's --cpu flag (uses NDK triple).
+case "$NDK_TRIPLE" in
   aarch64-linux-ohos) BOTAN_CPU=aarch64;;
   armv7-linux-ohos)   BOTAN_CPU=arm32;;
   x86_64-linux-ohos)  BOTAN_CPU=x86_64;;
-  *) echo "unknown triple: $TRIPLE" >&2; exit 1;;
+  *) echo "unknown ndk triple: $NDK_TRIPLE" >&2; exit 1;;
 esac
 
-INSTALL_PREFIX="$PREFIX/ohos-${TRIPLE%%-*}"
+INSTALL_PREFIX="$PREFIX/ohos-${NDK_TRIPLE%%-*}"
 BUILD_DIR="$PREFIX/botan-build"
 SRC_DIR="$BUILD_DIR/botan"
 
@@ -69,12 +74,14 @@ BOTAN_MODULES="$(cat "$(dirname "$0")/botan-modules")"
 cd "$SRC_DIR"
 
 # Configure for cross-compile. Botan uses --os=linux because OHOS is
-# musl/Linux-based; the target-specific bits come from --cc-abi-flags.
+# musl/Linux-based; the target-specific bits come from --cc-abi-flags
+# (using NDK_TRIPLE since clang normalizes aarch64-linux-ohos ↔
+# aarch64-unknown-linux-ohos).
 # --build-targets=static produces libbotan-3.a (no .so to code-sign).
 python3 ./configure.py \
   --cc=clang \
   --cc-bin="$NDK_CLANGXX" \
-  --cc-abi-flags="--target=$TRIPLE --sysroot=$SYSROOT" \
+  --cc-abi-flags="--target=$NDK_TRIPLE --sysroot=$SYSROOT" \
   --cpu="$BOTAN_CPU" \
   --os=linux \
   --build-targets=static \
@@ -94,7 +101,7 @@ if [ ! -f "$INSTALL_PREFIX/lib/libbotan-3.a" ]; then
 fi
 
 echo
-echo "Botan $BOTAN_VERSION static built for $TRIPLE"
+echo "Botan $BOTAN_VERSION static built for $NDK_TRIPLE (rust: $RUST_TARGET)"
 echo "  install prefix: $INSTALL_PREFIX"
 echo "  lib:            $INSTALL_PREFIX/lib/libbotan-3.a"
 echo "  pkg-config:     $INSTALL_PREFIX/lib/pkgconfig/botan-3.pc"
