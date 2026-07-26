@@ -1011,6 +1011,14 @@ fn init_config(a: InitSubcmd) -> Result<()> {
     if a.git {
         init_gitattributes()?;
     }
+    // Create the CAS directory if it doesn't exist — most commands
+    // assume it's there; creating it at init time saves the user
+    // a separate mkdir.
+    let cas_path = PathBuf::from("cas");
+    if !cas_path.exists() {
+        std::fs::create_dir(&cas_path)?;
+        eprintln!("created {}", cas_path.display());
+    }
     Ok(())
 }
 
