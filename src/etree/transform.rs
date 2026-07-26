@@ -74,16 +74,34 @@ fn transform_begin_end(
         paops.runtime.level -= 1;
 
         let pt = crate::etree::tree_to_blob(&block, paops)?;
-        let pass = ensure_password(keyw, paops, true);
-        let (ct, extfields) = prot::encrypt(
-            pt,
-            &pass,
-            &mut paops.crypto.rng,
-            &paops.crypto.pbkdfopts,
-            &paops.crypto.cipheropts,
-            &mut paops.crypto.pbkdf_cache,
-            &*paops.crypto.policy,
-        )?;
+
+        let (ct, extfields) = if !paops.crypto.recipient_pubs.is_empty() {
+            // KEM mode (TODO.roadmap/60): encrypt to recipient pubkeys
+            // via ML-KEM instead of password-based PBKDF.
+            let rng = paops
+                .crypto
+                .rng
+                .as_mut()
+                .ok_or(Error::Msg("Missing RNG for KEM encrypt".into()))?;
+            crate::kemenc::encrypt(
+                pt,
+                &paops.crypto.recipient_pubs,
+                &paops.crypto.cipheropts.alg,
+                rng,
+            )?
+        } else {
+            // Password mode (default).
+            let pass = ensure_password(keyw, paops, true);
+            prot::encrypt(
+                pt,
+                &pass,
+                &mut paops.crypto.rng,
+                &paops.crypto.pbkdfopts,
+                &paops.crypto.cipheropts,
+                &mut paops.crypto.pbkdf_cache,
+                &*paops.crypto.policy,
+            )?
+        };
 
         let inner = if paops.transforms.store.contains(keyw) || cas_default_applies(paops) {
             let hexhash = cas::save(ct, paops)?;
@@ -138,19 +156,38 @@ fn transform_encrypted(
             _ => return Err(Error::Msg("No data in ENCRYPTED.".into())),
         };
 
-        let pass = ensure_password(keyw, paops, false);
-        let pt = match prot::decrypt(
-            ct,
-            &pass,
-            &extfields.get("pbkdf"),
-            &extfields.get("cipher"),
-            &mut paops.crypto.pbkdf_cache,
-            &*paops.crypto.policy,
-        ) {
-            Ok(ct) => ct.to_vec(),
-            Err(e) => {
-                eprintln!("Error decrypting {}: {}.", keyw, e);
-                return Err(e);
+        let pt = if extfields.contains_key("recipients") {
+            // KEM mode (TODO.roadmap/60): the Encrypted block was
+            // encrypted to recipient pubkeys. Look up the matching
+            // privkey by WORD, then KEM-decapsulate.
+            let priv_pem = paops
+                .crypto
+                .recipient_privkeys
+                .get(keyw)
+                .or_else(|| paops.crypto.recipient_privkeys.values().next())
+                .ok_or_else(|| {
+                    Error::Msg(format!(
+                        "KEM-mode block for WORD {} but no --key-file privkey supplied",
+                        keyw
+                    ))
+                })?;
+            crate::kemenc::decrypt(&ct, priv_pem, extfields)?
+        } else {
+            // Password mode (default).
+            let pass = ensure_password(keyw, paops, false);
+            match prot::decrypt(
+                ct,
+                &pass,
+                &extfields.get("pbkdf"),
+                &extfields.get("cipher"),
+                &mut paops.crypto.pbkdf_cache,
+                &*paops.crypto.policy,
+            ) {
+                Ok(ct) => ct.to_vec(),
+                Err(e) => {
+                    eprintln!("Error decrypting {}: {}.", keyw, e);
+                    return Err(e);
+                }
             }
         };
 

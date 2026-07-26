@@ -22,6 +22,7 @@ mod pipe;
 mod pki;
 mod policy;
 mod provenance;
+mod recipient_encrypt;
 mod resolve;
 mod scm;
 mod smudge_clean;
