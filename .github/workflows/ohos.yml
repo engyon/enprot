@@ -103,10 +103,12 @@ jobs:
           export BOTAN_STATIC=1
           # Cargo env var name is uppercased RUST_TARGET with _ for -.
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$NDK_CLANGXX"
-          # Also pass the Botan lib dir via RUSTFLAGS so the linker can
-          # find libbotan-3.a even if botan-sys's pkg-config path resolution
-          # is off.
-          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=${{ env.NDK_TRIPLE }} -C link-arg=--sysroot=$SYSROOT -C link-arg=-L$PREFIX/ohos-aarch64/lib"
+          # Link args:
+          #   --target/--sysroot  → NDK clang picks the right runtime
+          #   -L$PREFIX/ohos-aarch64/lib  → find libbotan-3.a
+          #   -lc++ -lc++abi  → C++ runtime (Botan is C++/libc++; -lstdc++
+          #                      would pull the wrong ABI).
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_RUSTFLAGS="-C link-arg=--target=${{ env.NDK_TRIPLE }} -C link-arg=--sysroot=$SYSROOT -C link-arg=-L$PREFIX/ohos-aarch64/lib -C link-arg=-lc++ -C link-arg=-lc++abi"
           echo "=== botan-3.pc location ==="
           ls -la "$PKG_CONFIG_PATH" || true
           echo "=== botan-3.pc contents ==="
@@ -126,7 +128,7 @@ jobs:
             --target=${{ env.NDK_TRIPLE }} --sysroot="$SYSROOT" \
             -O2 -I"$BOTAN_INC" \
             ci/ohos-smoke.c "$BOTAN_LIB" \
-            -lpthread -ldl -lstdc++ \
+            -lc++ -lc++abi -lpthread -ldl \
             -o ohos-verify/ohos-smoke
 
       - name: Copy binary for verification
