@@ -162,6 +162,10 @@ pub enum Command {
     /// conflict (TODO.roadmap/49). Exit non-zero if any conflicts
     /// remain — CI-friendly as a gate after a merge-driver step.
     Conflicts(ConflictsSubcmd),
+    /// Combined diagnostic: show structure + integrity + capabilities
+    /// in one pass (TODO.finalize/42). Useful for debugging
+    /// "what is this file and what can I do with it?".
+    Inspect(InspectSubcmd),
     /// Git `clean` filter (TODO.roadmap/45): read plaintext from
     /// stdin, write ciphertext to stdout. Used by `.gitattributes`
     /// `filter=enprot`. Defaults to `aes-256-gcm-siv-det` so the
@@ -269,6 +273,21 @@ pub struct ConflictsSubcmd {
     /// Input file.
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
+}
+
+/// `inspect` subcommand (TODO.finalize/42): combined diagnostic.
+/// Shows file structure, chain anchor integrity, and the
+/// capabilities the current call context has over the file.
+/// Exits non-zero if the file fails integrity checks.
+#[derive(Args)]
+pub struct InspectSubcmd {
+    /// Output format: text (default) or json.
+    #[arg(long, value_enum, default_value_t = output::OutputFormat::Text)]
+    pub format: output::OutputFormat,
+
+    /// Input file (use stdin if omitted).
+    #[arg(value_name = "FILE")]
+    pub file: Option<PathBuf>,
 }
 
 /// Shared args for the git `clean` / `smudge` / `textconv` filters
@@ -556,7 +575,7 @@ pub struct PinSubcmd {
 /// Crypto-policy, separators, RNG source, password store. Defined at
 /// top-level with `global = true` on every field, so clap accepts these
 /// flags before or after the subcommand name.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct CommonArgs {
     /// Produce more verbose output.
     #[arg(short = 'v', long, global = true)]
@@ -841,6 +860,9 @@ where
     if let Command::Conflicts(a) = cli.command {
         return run_conflicts(a);
     }
+    if let Command::Inspect(a) = cli.command {
+        return run_inspect(a, cli.common.clone());
+    }
     // `clean` / `smudge` / `textconv` are stdin→stdout pipes
     // invoked by git filter machinery; they don't take the full
     // CommonArgs shape and bypass config layering.
@@ -946,6 +968,7 @@ where
         Command::MergeDriver(_) => unreachable!("dispatched at top of app_main"),
         Command::Resolve(_) => unreachable!("dispatched at top of app_main"),
         Command::Conflicts(_) => unreachable!("dispatched at top of app_main"),
+        Command::Inspect(_) => unreachable!("dispatched at top of app_main"),
         Command::Clean(_) | Command::Smudge(_) | Command::Textconv(_) => {
             unreachable!("dispatched at top of app_main")
         }
@@ -1136,6 +1159,74 @@ fn run_conflicts(a: ConflictsSubcmd) -> Result<()> {
     }
 
     if count > 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// `inspect` entry point (TODO.finalize/42): combined diagnostic.
+/// Parses the file, lists structure, checks chain anchors, and
+/// shows what the current flag set can do with the file. One
+/// pass, one output, no file modification.
+fn run_inspect(a: InspectSubcmd, common: CommonArgs) -> Result<()> {
+    let policy = resolve_policy(&common)?;
+    let mut paops = ParseOps::new(policy)?;
+    apply_common(&common, &mut paops);
+
+    let reader: Box<dyn BufRead> = match &a.file {
+        Some(p) if p != &PathBuf::from("-") => {
+            let path_str = p.display().to_string();
+            paops.runtime.fname = path_str.clone();
+            Box::new(BufReader::new(File::open(p).map_err(|e| {
+                Error::msg(format!("Failed to open {}: {}", path_str, e))
+            })?))
+        }
+        _ => {
+            paops.runtime.fname = "<stdin>".into();
+            Box::new(BufReader::new(std::io::stdin()))
+        }
+    };
+
+    let tree = etree::parse(reader, &mut paops)?;
+
+    // Section 1: structure (same as `list`)
+    println!("== structure ==");
+    let stdout = std::io::stdout();
+    list_tree(&tree, 0, &mut stdout.lock())?;
+
+    // Section 2: chain anchors
+    let mut dag = ledger::AnchorDag::new();
+    collect_chain_anchors(&tree, &mut dag)?;
+    println!("\n== chain anchors ==");
+    if dag.is_empty() {
+        println!("  (none)");
+    } else {
+        println!("  {} anchor(s)", dag.len());
+        for (id, signed) in dag.iter() {
+            println!("    {} signer={}", id.to_hex(), signed.anchor.signer);
+        }
+    }
+
+    // Section 3: conflicts
+    let conflict_count = tree
+        .iter()
+        .filter(|n| matches!(n, etree::TextNode::Conflict { .. }))
+        .count();
+    println!("\n== conflicts ==");
+    if conflict_count == 0 {
+        println!("  (none)");
+    } else {
+        println!("  {} unresolved conflict(s)", conflict_count);
+    }
+
+    // Section 4: capabilities
+    let caps = capability::CapabilitySet::from_paops(&paops);
+    println!("\n== capabilities ==");
+    for c in caps.iter_sorted() {
+        println!("  {}", c);
+    }
+
+    if conflict_count > 0 {
         std::process::exit(1);
     }
     Ok(())

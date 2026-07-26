@@ -174,6 +174,25 @@ pub struct ParseOps {
     pub anchor: AnchorConfig,
 }
 
+/// Zero secrets on drop so they don't persist in process memory
+/// after the process exits. Without this, passwords and PEM
+/// strings in `passwords` and `crypto.recipient_privkeys` remain
+/// readable via cold-boot or memory-dump attacks. (TODO.finalize/39.)
+impl Drop for ParseOps {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        for (_, pw) in self.passwords.iter_mut() {
+            pw.zeroize();
+        }
+        for (_, pk) in self.crypto.recipient_privkeys.iter_mut() {
+            pk.zeroize();
+        }
+        if let Some(ref mut pem) = self.anchor.signer_priv_pem {
+            pem.zeroize();
+        }
+    }
+}
+
 impl ParseOps {
     pub fn new(policy: Box<dyn CryptoPolicy>) -> Result<ParseOps> {
         let rng = botan::RandomNumberGenerator::new().map_err(Error::botan)?;
@@ -367,18 +386,9 @@ mod tests {
 
     fn parse_ept(ept_file: &str) -> (TextTree, ParseOps, tempfile::TempDir) {
         let casdir = tempdir().unwrap();
-        let mut paops = ParseOps {
-            runtime: RuntimeState {
-                fname: ept_file.to_string(),
-                level: 0,
-            },
-            io: IoConfig {
-                casdir: casdir.path().to_path_buf(),
-                verbose: false,
-                inline_data: false,
-            },
-            ..ParseOps::new(crate::crypto::default_policy()).unwrap()
-        };
+        let mut paops = ParseOps::new(crate::crypto::default_policy()).unwrap();
+        paops.runtime.fname = ept_file.to_string();
+        paops.io.casdir = casdir.path().to_path_buf();
         let tree = parse(BufReader::new(File::open(ept_file).unwrap()), &mut paops).unwrap();
         (tree, paops, casdir)
     }
