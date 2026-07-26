@@ -93,47 +93,55 @@ where
             continue;
         }
 
-        let mut trimmed = line.trim().replacen(&paops.separators.left, "", 1);
-        if !trimmed.ends_with(&paops.separators.right) {
-            return Err(parse_error(
-                paops,
-                lineno,
-                &line,
-                format!("Right separator '{}' missing.", paops.separators.right),
-            ));
-        }
-        let i = trimmed.len() - paops.separators.right.len();
-        trimmed.truncate(i);
-        let cmd: Vec<&str> = trimmed.split_whitespace().collect();
-        if cmd.is_empty() {
-            continue;
-        }
+        // Directive parsing: avoid allocating a new String via
+        // replacen. Work with slices from the original line.
+        // (TODO.finalize/40 — parser perf.)
+        let trimmed = line.trim();
+        let after_left = trimmed
+            .strip_prefix(&paops.separators.left)
+            .unwrap_or(trimmed);
+        let inner = match after_left.strip_suffix(&paops.separators.right) {
+            Some(s) => s,
+            None => {
+                return Err(parse_error(
+                    paops,
+                    lineno,
+                    &line,
+                    format!("Right separator '{}' missing.", paops.separators.right),
+                ));
+            }
+        };
+        let mut parts = inner.split_whitespace();
+        let kw = match parts.next() {
+            Some(k) => k,
+            None => continue,
+        };
 
-        let parsed = match Command::from_keyword(cmd[0]) {
+        let parsed = match Command::from_keyword(kw) {
             Some(c) => c,
             None => {
                 return Err(parse_error(
                     paops,
                     lineno,
                     &line,
-                    format!("Unknown section '{}'.", cmd[0]),
+                    format!("Unknown section '{}'.", kw),
                 ));
             }
         };
 
-        let rest = &cmd[1..];
+        let rest: Vec<&str> = parts.collect();
         match parsed {
-            Command::Data => parse_data(rest, &line, lineno, paops, &mut text)?,
-            Command::Begin => parse_begin(rest, &line, lineno, paops, &mut pstack, &mut text)?,
+            Command::Data => parse_data(&rest, &line, lineno, paops, &mut text)?,
+            Command::Begin => parse_begin(&rest, &line, lineno, paops, &mut pstack, &mut text)?,
             Command::Encrypted => {
-                parse_encrypted(rest, &line, lineno, paops, &mut pstack, &mut text)?
+                parse_encrypted(&rest, &line, lineno, paops, &mut pstack, &mut text)?
             }
-            Command::End => parse_end(rest, &line, lineno, paops, &mut pstack, &mut text)?,
-            Command::Stored => parse_stored(rest, &line, lineno, paops, &mut text)?,
-            Command::Chain => parse_chain(rest, &line, lineno, paops, &mut text)?,
-            Command::Include => parse_include(rest, &line, lineno, paops, &mut text)?,
+            Command::End => parse_end(&rest, &line, lineno, paops, &mut pstack, &mut text)?,
+            Command::Stored => parse_stored(&rest, &line, lineno, paops, &mut text)?,
+            Command::Chain => parse_chain(&rest, &line, lineno, paops, &mut text)?,
+            Command::Include => parse_include(&rest, &line, lineno, paops, &mut text)?,
             Command::Conflict => {
-                parse_conflict(rest, &line, lineno, paops, &mut pstack, &mut text)?
+                parse_conflict(&rest, &line, lineno, paops, &mut pstack, &mut text)?
             }
             Command::Ours => parse_ours(&line, lineno, paops, &mut pstack, &mut text)?,
             Command::Theirs => parse_theirs(&line, lineno, paops, &mut pstack, &mut text)?,
