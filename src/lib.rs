@@ -41,6 +41,7 @@ mod consts;
 pub mod crypto;
 mod error;
 pub mod etree;
+pub mod kemenc;
 pub mod ledger;
 pub mod merge;
 pub mod merkle;
