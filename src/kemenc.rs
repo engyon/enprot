@@ -177,7 +177,13 @@ mod tests {
         let (priv_pem, pub_pem) = recipient_keypair();
         let mut rng = botan::RandomNumberGenerator::new_system().unwrap();
         let pt = b"hello world";
-        let (ct, ext) = encrypt(pt.to_vec(), std::slice::from_ref(&pub_pem), "aes-256-siv", &mut rng).unwrap();
+        let (ct, ext) = encrypt(
+            pt.to_vec(),
+            std::slice::from_ref(&pub_pem),
+            "aes-256-siv",
+            &mut rng,
+        )
+        .unwrap();
         let recovered = decrypt(&ct, &priv_pem, &ext).unwrap();
         assert_eq!(recovered, pt);
     }
