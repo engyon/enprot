@@ -54,6 +54,38 @@ pub use parse::parse;
 pub use transform::transform;
 pub use write::tree_write;
 
+/// Abstraction over the transform's dependencies (TODO.finalize/45).
+/// The transform functions need access to transform sets, passwords,
+/// crypto config, runtime state, and IO config — but they don't need
+/// the full ParseOps struct. This trait captures exactly what the
+/// transform layer accesses, enabling:
+///
+/// - Testing transforms with mock contexts (no real Botan needed
+///   for parse/write round-trip tests)
+/// - Future alternative implementations (e.g., a streaming context
+///   that doesn't hold the entire file in memory)
+///
+/// `ParseOps` implements this trait; all existing callers pass
+/// `&mut ParseOps` and work unchanged.
+pub trait TransformContext {
+    fn max_depth(&self) -> usize;
+    fn transforms(&self) -> &Transforms;
+    fn transforms_mut(&mut self) -> &mut Transforms;
+    fn passwords(&self) -> &HashMap<String, String>;
+    fn crypto(&mut self) -> &mut CryptoConfig;
+    fn crypto_ref(&self) -> &CryptoConfig;
+    fn separators(&self) -> &Separators;
+    fn io(&self) -> &IoConfig;
+    fn io_mut(&mut self) -> &mut IoConfig;
+    fn runtime_mut(&mut self) -> &mut RuntimeState;
+    fn runtime(&self) -> &RuntimeState;
+    fn anchor(&self) -> &AnchorConfig;
+    fn anchor_mut(&mut self) -> &mut AnchorConfig;
+    fn casdir(&self) -> &Path {
+        &self.io().casdir
+    }
+}
+
 pub struct PBKDFOptions {
     pub alg: String,
     pub saltlen: usize,
@@ -231,6 +263,48 @@ impl ParseOps {
             },
             anchor: AnchorConfig::disabled(),
         })
+    }
+}
+
+impl TransformContext for ParseOps {
+    fn max_depth(&self) -> usize {
+        self.max_depth
+    }
+    fn transforms(&self) -> &Transforms {
+        &self.transforms
+    }
+    fn transforms_mut(&mut self) -> &mut Transforms {
+        &mut self.transforms
+    }
+    fn passwords(&self) -> &HashMap<String, String> {
+        &self.passwords
+    }
+    fn crypto(&mut self) -> &mut CryptoConfig {
+        &mut self.crypto
+    }
+    fn crypto_ref(&self) -> &CryptoConfig {
+        &self.crypto
+    }
+    fn separators(&self) -> &Separators {
+        &self.separators
+    }
+    fn io(&self) -> &IoConfig {
+        &self.io
+    }
+    fn io_mut(&mut self) -> &mut IoConfig {
+        &mut self.io
+    }
+    fn runtime_mut(&mut self) -> &mut RuntimeState {
+        &mut self.runtime
+    }
+    fn runtime(&self) -> &RuntimeState {
+        &self.runtime
+    }
+    fn anchor(&self) -> &AnchorConfig {
+        &self.anchor
+    }
+    fn anchor_mut(&mut self) -> &mut AnchorConfig {
+        &mut self.anchor
     }
 }
 
