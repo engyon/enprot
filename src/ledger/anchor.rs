@@ -144,8 +144,8 @@ impl FromStr for SignerId {
 ///
 /// Field ordering follows the wire format (see `display_unsigned`):
 /// parents, signer, timestamp, mutations, payload-hash. The signature
-/// commits to `parents || signer || timestamp || payload-hash` (the
-/// mutations field is informational, not signed, so it can be edited
+/// commits to `parents || signer || co_signers || timestamp || payload-hash`
+/// (the mutations field is informational, not signed, so it can be edited
 /// later for translation/clarity without invalidating the signature).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Anchor {
@@ -153,8 +153,16 @@ pub struct Anchor {
     /// Genesis anchor has zero parents. Merge anchor has 2+.
     pub parents: Vec<AnchorHash>,
 
-    /// Who signed this anchor and with what algorithm.
+    /// Who signed this anchor and with what algorithm. For multi-sig
+    /// anchors (TODO.roadmap/57), this is the *primary* signer; the
+    /// full signer set is `[signer].iter().chain(co_signers.iter())`.
     pub signer: SignerId,
+
+    /// Additional signers for multi-sig anchors (TODO.roadmap/57).
+    /// Empty for single-signer anchors (the common case). Each entry
+    /// must sign the same `signing_bytes` as the primary signer; the
+    /// wire format records one `sig` per signer in the same order.
+    pub co_signers: Vec<SignerId>,
 
     /// RFC 3339 timestamp (e.g., `2026-07-25T14:30:00Z`). Optional —
     /// omitted on genesis or in tests.
@@ -192,6 +200,12 @@ impl Anchor {
         }
         // signer canonicalization: "<alg>:<fp-hex>"
         out.extend_from_slice(self.signer.to_string().as_bytes());
+        // co_signers are part of the signed payload so a malicious
+        // signer can't silently strip a co-signer's entry from the
+        // wire format. Each co_signer is appended in order.
+        for cs in &self.co_signers {
+            out.extend_from_slice(cs.to_string().as_bytes());
+        }
         if let Some(ref ts) = self.timestamp {
             out.extend_from_slice(ts.as_bytes());
         }
@@ -243,6 +257,7 @@ impl Anchor {
         Ok(SignedAnchor {
             anchor: self.clone(),
             signature: sig,
+            co_signatures: Vec::new(),
         })
     }
 }
@@ -282,6 +297,7 @@ impl AnchorBuilder {
         Anchor {
             parents: self.parents,
             signer: self.signer,
+            co_signers: Vec::new(),
             timestamp: self.timestamp,
             mutations: self.mutations,
             payload_hash: self.payload_hash,
@@ -292,16 +308,22 @@ impl AnchorBuilder {
 /// An [`Anchor`] plus its detached signature. This is what gets
 /// serialized into a `CHAIN` block in the file and what the DAG is
 /// built out of.
+///
+/// For multi-sig anchors (TODO.roadmap/57), `co_signatures` carries
+/// the additional signatures in the same order as `anchor.co_signers`.
+/// Single-signer anchors leave `co_signatures` empty.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SignedAnchor {
     pub anchor: Anchor,
     pub signature: Vec<u8>,
+    pub co_signatures: Vec<Vec<u8>>,
 }
 
 impl SignedAnchor {
-    /// Verify the signature against the embedded signer fingerprint
-    /// using the supplied pubkey PEM. The PEM's fingerprint must
-    /// match `anchor.signer.fp`.
+    /// Verify the primary signature against the embedded signer
+    /// fingerprint using the supplied pubkey PEM. For multi-sig
+    /// anchors (TODO.roadmap/57), use [`Self::verify_multi`] which
+    /// checks every signature.
     pub fn verify(&self, pubkey_pem: &str) -> Result<()> {
         let actual_fp = KeyFp::from_pem(pubkey_pem)?;
         if actual_fp != self.anchor.signer.fp {
@@ -323,6 +345,58 @@ impl SignedAnchor {
         }
     }
 
+    /// Verify every signature on a multi-sig anchor. `resolver`
+    /// maps each signer fingerprint hex to the corresponding pubkey
+    /// PEM. Every signature must validate; a single bad signature
+    /// fails the whole anchor. (TODO.roadmap/57.)
+    pub fn verify_multi<F>(&self, resolver: F) -> Result<()>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        // Verify primary first.
+        let primary_fp_hex = self.anchor.signer.fp.to_hex();
+        let primary_pem = resolver(&primary_fp_hex).ok_or_else(|| {
+            Error::msg(format!(
+                "no pubkey registered for primary signer {}",
+                primary_fp_hex
+            ))
+        })?;
+        self.verify(&primary_pem)?;
+        // Then each co-signer in order.
+        for (cs, cosig) in self.anchor.co_signers.iter().zip(self.co_signatures.iter()) {
+            let fp_hex = cs.fp.to_hex();
+            let pem = resolver(&fp_hex).ok_or_else(|| {
+                Error::msg(format!("no pubkey registered for co-signer {}", fp_hex))
+            })?;
+            let ok = pki::verify(cs.alg, &pem, &self.anchor.signing_bytes(), cosig)?;
+            if !ok {
+                return Err(Error::msg(format!(
+                    "co-signer {} signature verification failed",
+                    fp_hex
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Append a co-signer's signature. The signature must be over
+    /// `self.anchor.signing_bytes()` — which already includes the
+    /// co_signers list, so all co-signers must be registered before
+    /// any signature is produced. (TODO.roadmap/57.)
+    pub fn add_co_signature(&mut self, co_signer: SignerId, signature: Vec<u8>) -> Result<()> {
+        // The signing_bytes must already reflect this co_signer;
+        // otherwise the primary signer signed different bytes than
+        // the co-signer did, and verification will fail.
+        if !self.anchor.co_signers.contains(&co_signer) {
+            return Err(Error::msg(format!(
+                "co-signer {} not in anchor.co_signers; append it before any signature is produced",
+                co_signer
+            )));
+        }
+        self.co_signatures.push(signature);
+        Ok(())
+    }
+
     /// Convenience: the anchor's DAG identity.
     pub fn id(&self) -> Result<AnchorHash> {
         self.anchor.id()
@@ -332,9 +406,18 @@ impl SignedAnchor {
     /// the `CHAIN` directive (TODO.finalize/17). Round-trips through
     /// [`SignedAnchor::from_extfields`].
     ///
-    /// Field names: `parents` (comma-separated hex), `signer`
-    /// (`<alg>:<fp-hex>`), `ts` (RFC 3339, optional), `mut`
-    /// (description, optional), `payload` (hex), `sig` (hex).
+    /// Single-signer fields: `parents` (comma-separated hex),
+    /// `signer` (`<alg>:<fp-hex>`), `ts` (RFC 3339, optional),
+    /// `mut` (description, optional), `payload` (hex), `sig` (hex).
+    ///
+    /// Multi-signer fields (TODO.roadmap/57, emitted when
+    /// `co_signatures` is non-empty): `signers` (comma-separated
+    /// `<alg>:<fp-hex>`), `sigs` (comma-separated hex). The
+    /// single-signer `signer` and `sig` fields are still emitted
+    /// with the primary signer's values so older verifiers that
+    /// don't know about `signers` see a consistent (single-sig)
+    /// view of the anchor — they'll verify only the primary
+    /// signature and miss the co-signatures, but won't reject.
     pub fn to_extfields(&self) -> std::collections::BTreeMap<String, String> {
         let mut m = std::collections::BTreeMap::new();
         if !self.anchor.parents.is_empty() {
@@ -356,6 +439,20 @@ impl SignedAnchor {
         }
         m.insert("payload".into(), self.anchor.payload_hash.to_hex());
         m.insert("sig".into(), hex::encode(&self.signature));
+        if !self.co_signatures.is_empty() {
+            let signers = std::iter::once(&self.anchor.signer)
+                .chain(self.anchor.co_signers.iter())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            m.insert("signers".into(), signers);
+            let sigs = std::iter::once(&self.signature)
+                .chain(self.co_signatures.iter())
+                .map(hex::encode)
+                .collect::<Vec<_>>()
+                .join(",");
+            m.insert("sigs".into(), sigs);
+        }
         m
     }
 
@@ -363,23 +460,16 @@ impl SignedAnchor {
     /// directive parser) into a [`SignedAnchor`]. Inverse of
     /// [`SignedAnchor::to_extfields`].
     ///
-    /// Required fields: `signer`, `payload`, `sig`. Optional: `ts`,
-    /// `mut`, `parents` (empty parents = genesis anchor).
+    /// Single-sig required fields: `signer`, `payload`, `sig`.
+    /// Multi-sig (TODO.roadmap/57): if `signers` is present, the
+    /// list is parsed in order; the first entry populates the
+    /// single-signer fields, the rest populate `co_signers` and
+    /// `co_signatures`. Optional: `ts`, `mut`, `parents`.
     pub fn from_extfields(extfields: &std::collections::BTreeMap<String, String>) -> Result<Self> {
-        let signer_str = extfields
-            .get("signer")
-            .ok_or_else(|| Error::msg("CHAIN missing required 'signer' field"))?;
-        let signer: SignerId = signer_str.parse()?;
-
         let payload_str = extfields
             .get("payload")
             .ok_or_else(|| Error::msg("CHAIN missing required 'payload' field"))?;
         let payload_hash = PayloadHash::from_hex(payload_str)?;
-
-        let sig_str = extfields
-            .get("sig")
-            .ok_or_else(|| Error::msg("CHAIN missing required 'sig' field"))?;
-        let signature = hex::decode(sig_str)?;
 
         let parents: Vec<AnchorHash> = extfields
             .get("parents")
@@ -395,15 +485,64 @@ impl SignedAnchor {
         let timestamp = extfields.get("ts").cloned();
         let mutations = extfields.get("mut").cloned().unwrap_or_default();
 
+        // Multi-sig mode takes precedence when the `signers` field
+        // is present. The single-sig `signer` and `sig` fields are
+        // still required (they hold the primary signer's data) so
+        // older producers and consumers stay consistent.
+        let (signer, co_signers, signature, co_signatures) =
+            if let Some(signers_str) = extfields.get("signers") {
+                let sigs_str = extfields
+                    .get("sigs")
+                    .ok_or_else(|| Error::msg("multi-sig CHAIN missing 'sigs' field"))?;
+                let signer_ids: Vec<SignerId> = signers_str
+                    .split(',')
+                    .map(|s| s.parse::<SignerId>())
+                    .collect::<Result<Vec<_>>>()?;
+                let sigs: Vec<Vec<u8>> = sigs_str
+                    .split(',')
+                    .map(|s| hex::decode(s).map_err(Error::from))
+                    .collect::<Result<Vec<_>>>()?;
+                if signer_ids.len() != sigs.len() {
+                    return Err(Error::msg(format!(
+                        "multi-sig CHAIN: {} signers vs {} sigs (must match)",
+                        signer_ids.len(),
+                        sigs.len()
+                    )));
+                }
+                if signer_ids.is_empty() {
+                    return Err(Error::msg("multi-sig CHAIN: empty signers list"));
+                }
+                let primary_signer = signer_ids[0].clone();
+                let primary_sig = sigs[0].clone();
+                let co_signers = signer_ids[1..].to_vec();
+                let co_signatures = sigs[1..].to_vec();
+                (primary_signer, co_signers, primary_sig, co_signatures)
+            } else {
+                let signer_str = extfields
+                    .get("signer")
+                    .ok_or_else(|| Error::msg("CHAIN missing required 'signer' field"))?;
+                let signer: SignerId = signer_str.parse()?;
+                let sig_str = extfields
+                    .get("sig")
+                    .ok_or_else(|| Error::msg("CHAIN missing required 'sig' field"))?;
+                let signature = hex::decode(sig_str)?;
+                (signer, Vec::new(), signature, Vec::new())
+            };
+
         let anchor = Anchor {
             parents,
             signer,
+            co_signers,
             timestamp,
             mutations,
             payload_hash,
         };
 
-        Ok(SignedAnchor { anchor, signature })
+        Ok(SignedAnchor {
+            anchor,
+            signature,
+            co_signatures,
+        })
     }
 }
 
@@ -500,6 +639,108 @@ mod tests {
     }
 
     #[test]
+    fn multi_sig_anchor_round_trips() {
+        // TODO.roadmap/57: an anchor with N signers round-trips
+        // through to_extfields / from_extfields and verifies under
+        // verify_multi with all signers' pubkeys.
+        let (priv1, pub1) = ed25519_keypair();
+        let (priv2, pub2) = ed25519_keypair();
+        let fp1 = KeyFp::from_pem(&pub1).unwrap();
+        let fp2 = KeyFp::from_pem(&pub2).unwrap();
+        let signer1 = SignerId::new(SigAlgKind::Ed25519, fp1);
+        let signer2 = SignerId::new(SigAlgKind::Ed25519, fp2);
+
+        // Build the anchor with both co_signers BEFORE signing so
+        // signing_bytes reflects the full signer set.
+        let mut anchor = Anchor::builder(signer1, dummy_payload())
+            .with_mutations("multi-sig test")
+            .build();
+        anchor.co_signers.push(signer2.clone());
+
+        // Primary signs first.
+        let mut signed = anchor.sign(&priv1, &pub1, SigAlgKind::Ed25519).unwrap();
+        // Co-signer signs the same bytes.
+        let mut rng = botan::RandomNumberGenerator::new_system().unwrap();
+        let cosig = pki::sign(
+            SigAlgKind::Ed25519,
+            &priv2,
+            &anchor.signing_bytes(),
+            &mut rng,
+        )
+        .unwrap();
+        signed.add_co_signature(signer2, cosig).unwrap();
+
+        // Wire format round-trip.
+        let ext = signed.to_extfields();
+        let rebuilt = SignedAnchor::from_extfields(&ext).unwrap();
+        assert_eq!(rebuilt, signed);
+
+        // Multi-sig verify with a resolver that knows both pubkeys.
+        let resolver = |fp_hex: &str| {
+            if fp_hex == fp1.to_hex() {
+                Some(pub1.clone())
+            } else if fp_hex == fp2.to_hex() {
+                Some(pub2.clone())
+            } else {
+                None
+            }
+        };
+        signed.verify_multi(resolver).unwrap();
+    }
+
+    #[test]
+    fn multi_sig_verify_rejects_missing_co_signer_pubkey() {
+        let (priv1, pub1) = ed25519_keypair();
+        let (priv2, _pub2) = ed25519_keypair();
+        let fp1 = KeyFp::from_pem(&pub1).unwrap();
+        let fp2 = KeyFp::from_pem(&_pub2).unwrap();
+        let signer1 = SignerId::new(SigAlgKind::Ed25519, fp1);
+        let signer2 = SignerId::new(SigAlgKind::Ed25519, fp2);
+
+        let mut anchor = Anchor::builder(signer1, dummy_payload()).build();
+        anchor.co_signers.push(signer2.clone());
+        let mut signed = anchor.sign(&priv1, &pub1, SigAlgKind::Ed25519).unwrap();
+        let mut rng = botan::RandomNumberGenerator::new_system().unwrap();
+        let cosig = pki::sign(
+            SigAlgKind::Ed25519,
+            &priv2,
+            &anchor.signing_bytes(),
+            &mut rng,
+        )
+        .unwrap();
+        signed.add_co_signature(signer2, cosig).unwrap();
+
+        // Resolver only knows the primary; co-signer lookup fails.
+        let resolver = |fp_hex: &str| {
+            if fp_hex == fp1.to_hex() {
+                Some(pub1.clone())
+            } else {
+                None
+            }
+        };
+        assert!(signed.verify_multi(resolver).is_err());
+    }
+
+    #[test]
+    fn multi_sig_single_signer_backwards_compat() {
+        // An anchor with no co_signers produces wire format
+        // indistinguishable from the legacy single-sig format:
+        // no `signers` or `sigs` field is emitted.
+        let (priv_pem, pub_pem) = ed25519_keypair();
+        let fp = KeyFp::from_pem(&pub_pem).unwrap();
+        let signer = SignerId::new(SigAlgKind::Ed25519, fp);
+        let anchor = Anchor::builder(signer, dummy_payload()).build();
+        let signed = anchor
+            .sign(&priv_pem, &pub_pem, SigAlgKind::Ed25519)
+            .unwrap();
+        let ext = signed.to_extfields();
+        assert!(!ext.contains_key("signers"));
+        assert!(!ext.contains_key("sigs"));
+        assert!(ext.contains_key("signer"));
+        assert!(ext.contains_key("sig"));
+    }
+
+    #[test]
     fn verify_rejects_wrong_pubkey() {
         let (priv_pem, pub_pem) = ed25519_keypair();
         let (_, other_pub) = ed25519_keypair();
@@ -548,6 +789,7 @@ mod tests {
         let tampered_signed = SignedAnchor {
             anchor: tampered,
             signature: signed.signature.clone(),
+            co_signatures: Vec::new(),
         };
         assert!(tampered_signed.verify(&pub_pem).is_err());
     }
