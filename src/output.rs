@@ -40,7 +40,8 @@ pub const SCHEMA: &str = "enprot/v1";
 
 /// Output rendering mode. `Text` is the historical default; `Json`
 /// emits a stable, machine-readable envelope.
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, clap::ValueEnum)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
 pub enum OutputFormat {
     #[default]
     Text,

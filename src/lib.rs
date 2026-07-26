@@ -69,31 +69,6 @@ use std::path::{Path, PathBuf};
 use clap::builder::PossibleValuesParser;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
-/// Chain-anchor production config (TODO.finalize/17). Populated by
-/// `run()` when `--anchor --signer <priv>` are both supplied. Lives
-/// on `ParseOps` so the per-file pipeline can append anchors as it
-/// writes outputs.
-#[derive(Clone, Debug, Default)]
-pub struct AnchorConfig {
-    /// True iff `--anchor` was supplied AND `--signer <priv>` resolves.
-    pub enabled: bool,
-    /// Human-readable label of the operation that produced this anchor
-    /// (e.g., "encrypt", "store", "encrypt-store"). Informational;
-    /// appears in the `mut:` field of the wire-format CHAIN block.
-    pub operation: String,
-    /// WORDs the operation targeted. Joined into the `mut:` field.
-    pub words: Vec<String>,
-    /// Loaded once at startup; the privkey PEM that signs each anchor.
-    /// The pubkey is derived from this via Botan (`Privkey::pubkey()`).
-    pub signer_priv_pem: Option<String>,
-}
-
-impl AnchorConfig {
-    pub fn disabled() -> Self {
-        AnchorConfig::default()
-    }
-}
-
 use crate::etree::ParseOps;
 
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
@@ -1647,9 +1622,9 @@ fn build_anchor_config(
     signer_path: Option<&Path>,
     op_kind: Option<Operation>,
     words: &[String],
-) -> Result<AnchorConfig> {
+) -> Result<etree::AnchorConfig> {
     if !anchor_flag {
-        return Ok(AnchorConfig::disabled());
+        return Ok(etree::AnchorConfig::disabled());
     }
     let signer_path =
         signer_path.ok_or_else(|| Error::msg("--anchor requires --signer <PRIV.pem>"))?;
@@ -1658,7 +1633,7 @@ fn build_anchor_config(
         .map(|k| k.label())
         .unwrap_or("passthrough")
         .to_string();
-    Ok(AnchorConfig {
+    Ok(etree::AnchorConfig {
         enabled: true,
         operation: op,
         words: words.to_vec(),

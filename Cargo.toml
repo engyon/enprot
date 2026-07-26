@@ -25,14 +25,8 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
-# The `cli` feature will eventually gate the clap/clap_complete deps
-# so downstream Rust consumers can use enprot as a library without
-# pulling in CLI dependencies. The deps are not yet marked optional
-# because the CLI structs (CommonArgs, Command, app_main) live in
-# src/lib.rs alongside library code — they need extraction to a
-# separate src/cli.rs module first. See TODO.roadmap/02.
 default = ["cli"]
-cli = []
+cli = ["dep:clap", "dep:clap_complete"]
 
 [[bin]]
 name = "enprot"
@@ -45,8 +39,8 @@ path = "tests/tests.rs"
 [dependencies]
 hex            = "0.4"
 rpassword      = "7"
-clap           = { version = "4.5", features = ["derive", "wrap_help"] }
-clap_complete  = "4"
+clap           = { version = "4.5", features = ["derive", "wrap_help"], optional = true }
+clap_complete  = { version = "4", optional = true }
 botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
 phf            = { version = "0.14", features = ["macros"] }
 thiserror      = "2"
