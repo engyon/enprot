@@ -116,17 +116,25 @@ pub fn add_to_manifest(manifest_path: &Path, path: &Path, casdir: &Path) -> Resu
     Ok(added)
 }
 
-/// Parse `cargo_toml_path`'s `[dependencies]` table and append one
-/// entry per dependency. The "content" of each entry is the
-/// `name=version` string, content-addressed via CAS so the manifest
-/// records the exact resolved version.
+/// Parse `cargo_toml_path`'s dependency tables and append one
+/// entry per dependency. Covers `[dependencies]`,
+/// `[dev-dependencies]`, `[build-dependencies]`,
+/// `[target.<cfg>.{dependencies,dev-dependencies,build-dependencies}]`,
+/// and `[workspace.dependencies]`. Each entry's source table is
+/// recorded in the annotation comment so downstream policy can
+/// distinguish test-only deps from runtime deps.
+///
+/// Workspace-inherited entries (`{ workspace = true }`) emit
+/// `=workspace` as the version placeholder. The vendor should
+/// re-run `scm deps` against the workspace root Cargo.toml to
+/// capture resolved versions.
 pub fn add_cargo_deps(
     manifest_path: &Path,
     cargo_toml_path: &Path,
     casdir: &Path,
 ) -> Result<usize> {
     let raw = std::fs::read_to_string(cargo_toml_path)?;
-    let deps = parse_cargo_dependencies(&raw)?;
+    let deps = collect_cargo_deps(&raw)?;
 
     let existing = std::fs::read_to_string(manifest_path).unwrap_or_default();
     let policy =
@@ -142,14 +150,10 @@ pub fn add_cargo_deps(
     };
 
     let mut added = 0;
-    // Sort deps for byte-stable output across runs.
-    let mut sorted: Vec<(String, String)> = deps.into_iter().collect();
-    sorted.sort();
-    for (name, version) in sorted {
-        let content = format!("{name}={version}");
-        let bytes = content.into_bytes();
+    for dep in &deps {
+        let bytes = dep.cas_content();
         let hash = crate::cas::save(bytes, &mut paops)?;
-        tree.push(TextNode::Plain(format!("# dep: {name}={version}")));
+        tree.push(TextNode::Plain(format!("# dep: {}", dep.annotation())));
         tree.push(TextNode::Include { hash });
         added += 1;
     }
@@ -160,31 +164,138 @@ pub fn add_cargo_deps(
     Ok(added)
 }
 
-/// Minimal Cargo.toml `[dependencies]` parser. Returns a Vec of
-/// (name, version) pairs. Version is the simple-form value (e.g.
-/// `"1.0"`); table-form (`{ version = "...", features = [...] }`) is
-/// flattened to just the version field. We use the `toml` crate for
-/// the actual parse so we don't reinvent TOML.
-fn parse_cargo_dependencies(cargo_toml: &str) -> Result<Vec<(String, String)>> {
+/// A single dependency entry. `source` identifies which Cargo table
+/// the entry came from; consumers treat all sources as equally
+/// significant for trust purposes but may filter on source for
+/// license-policy or attack-surface analysis.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Dep {
+    pub source: String,
+    pub name: String,
+    pub version: String,
+}
+
+impl Dep {
+    /// Render the manifest annotation. Format: `name=version` for
+    /// the default source; `name=version (source)` otherwise. The
+    /// CAS content is always `name=version` (no source tag) so
+    /// cross-source deduplication works correctly.
+    fn annotation(&self) -> String {
+        if self.source == "deps" {
+            format!("{}={}", self.name, self.version)
+        } else {
+            format!("{}={} ({})", self.name, self.version, self.source)
+        }
+    }
+
+    /// CAS content for this entry. Stable across sources so an entry
+    /// appearing in both `[dependencies]` and `[dev-dependencies]`
+    /// with the same version deduplicates to one CAS blob.
+    fn cas_content(&self) -> Vec<u8> {
+        format!("{}={}", self.name, self.version).into_bytes()
+    }
+}
+
+/// Walk every dependency-bearing table in a Cargo manifest.
+/// Recognised sources (in stable emission order):
+///
+/// - `deps` — top-level `[dependencies]`
+/// - `dev-deps` — `[dev-dependencies]`
+/// - `build-deps` — `[build-dependencies]`
+/// - `target <cfg>` — `[target.'<cfg>'.dependencies]` (and dev/build)
+/// - `workspace` — `[workspace.dependencies]` (resolved version, not
+///   the `workspace = true` inheritance marker)
+///
+/// Workspace-inherited entries (`{ workspace = true }`) emit
+/// `=workspace` as the version; the vendor should re-run scm deps
+/// against the workspace root Cargo.toml to capture resolved
+/// versions.
+fn collect_cargo_deps(cargo_toml: &str) -> Result<Vec<Dep>> {
     let parsed: toml::Value =
         toml::from_str(cargo_toml).map_err(|e| Error::msg(format!("Cargo.toml parse: {e}")))?;
-    let Some(deps_table) = parsed.get("dependencies").and_then(|v| v.as_table()) else {
-        return Ok(Vec::new());
-    };
     let mut out = Vec::new();
-    for (name, val) in deps_table {
-        let version = match val {
-            toml::Value::String(s) => s.clone(),
-            toml::Value::Table(t) => t
-                .get("version")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?")
-                .to_string(),
-            _ => "?".to_string(),
-        };
-        out.push((name.clone(), version));
-    }
+    collect_from_table(&parsed, "dependencies", "deps", &mut out);
+    collect_from_table(&parsed, "dev-dependencies", "dev-deps", &mut out);
+    collect_from_table(&parsed, "build-dependencies", "build-deps", &mut out);
+    collect_from_table(&parsed, "workspace.dependencies", "workspace", &mut out);
+    collect_target_deps(&parsed, &mut out);
+    // Stable emission: sort by (source, name) so identical input
+    // produces byte-identical manifests across runs.
+    out.sort();
     Ok(out)
+}
+
+fn collect_from_table(root: &toml::Value, path: &str, source: &str, out: &mut Vec<Dep>) {
+    let table = walk_path(root, path).and_then(|v| v.as_table());
+    let Some(table) = table else {
+        return;
+    };
+    for (name, val) in table {
+        if let Some(dep) = dep_from_value(name, val, source) {
+            out.push(dep);
+        }
+    }
+}
+
+fn collect_target_deps(root: &toml::Value, out: &mut Vec<Dep>) {
+    let Some(targets) = root.get("target").and_then(|v| v.as_table()) else {
+        return;
+    };
+    for (cfg, inner) in targets {
+        let inner = match inner.as_table() {
+            Some(t) => t,
+            None => continue,
+        };
+        for (table_name, source) in [
+            ("dependencies", "deps"),
+            ("dev-dependencies", "dev-deps"),
+            ("build-dependencies", "build-deps"),
+        ] {
+            let Some(t) = inner.get(table_name).and_then(|v| v.as_table()) else {
+                continue;
+            };
+            for (name, val) in t {
+                if let Some(mut dep) = dep_from_value(name, val, source) {
+                    dep.source = format!("target {cfg}:{source}");
+                    out.push(dep);
+                }
+            }
+        }
+    }
+}
+
+fn dep_from_value(name: &str, val: &toml::Value, source: &str) -> Option<Dep> {
+    match val {
+        toml::Value::String(s) => Some(Dep {
+            source: source.to_string(),
+            name: name.to_string(),
+            version: s.clone(),
+        }),
+        toml::Value::Table(t) => {
+            if t.get("workspace").and_then(|v| v.as_bool()) == Some(true) {
+                Some(Dep {
+                    source: source.to_string(),
+                    name: name.to_string(),
+                    version: "workspace".to_string(),
+                })
+            } else {
+                t.get("version").and_then(|v| v.as_str()).map(|v| Dep {
+                    source: source.to_string(),
+                    name: name.to_string(),
+                    version: v.to_string(),
+                })
+            }
+        }
+        _ => None,
+    }
+}
+
+fn walk_path<'a>(root: &'a toml::Value, path: &str) -> Option<&'a toml::Value> {
+    let mut current = root;
+    for segment in path.split('.') {
+        current = current.get(segment)?;
+    }
+    Some(current)
 }
 
 /// Structural diff between two manifests. Reports added / removed /
@@ -295,11 +406,51 @@ serde = "1.0"
 toml = { version = "0.8", features = ["preserve_order"] }
 hex = "0.4"
 "#;
-        let deps = parse_cargo_dependencies(toml).unwrap();
-        let map: BTreeMap<String, String> = deps.into_iter().collect();
-        assert_eq!(map.get("serde").map(String::as_str), Some("1.0"));
-        assert_eq!(map.get("toml").map(String::as_str), Some("0.8"));
-        assert_eq!(map.get("hex").map(String::as_str), Some("0.4"));
+        let deps = collect_cargo_deps(toml).unwrap();
+        let map: BTreeMap<String, Dep> = deps.into_iter().map(|d| (d.name.clone(), d)).collect();
+        assert_eq!(map.get("serde").map(|d| d.version.as_str()), Some("1.0"));
+        assert_eq!(map.get("toml").map(|d| d.version.as_str()), Some("0.8"));
+        assert_eq!(map.get("hex").map(|d| d.version.as_str()), Some("0.4"));
+        // Default source tag.
+        assert_eq!(map.get("serde").map(|d| d.source.as_str()), Some("deps"));
+    }
+
+    #[test]
+    fn cargo_deps_parser_covers_dev_build_target_tables() {
+        let toml = r#"
+[dependencies]
+serde = "1.0"
+[dev-dependencies]
+tempfile = "3"
+[build-dependencies]
+cc = "1.0"
+[target.'cfg(unix)'.dependencies]
+openssl = "0.10"
+"#;
+        let deps = collect_cargo_deps(toml).unwrap();
+        let by_name: BTreeMap<String, Dep> =
+            deps.into_iter().map(|d| (d.name.clone(), d)).collect();
+        assert_eq!(by_name["serde"].source, "deps");
+        assert_eq!(by_name["tempfile"].source, "dev-deps");
+        assert_eq!(by_name["cc"].source, "build-deps");
+        assert_eq!(by_name["openssl"].source, "target cfg(unix):deps");
+    }
+
+    #[test]
+    fn cargo_deps_workspace_inherited_emits_placeholder() {
+        let toml = r#"
+[dependencies]
+serde = { workspace = true }
+[workspace.dependencies]
+serde = "1.0"
+"#;
+        let deps = collect_cargo_deps(toml).unwrap();
+        // Two entries: the inherited one with `=workspace`, and the
+        // workspace-root definition with the resolved version.
+        let serde_entries: Vec<&Dep> = deps.iter().filter(|d| d.name == "serde").collect();
+        assert_eq!(serde_entries.len(), 2);
+        assert!(serde_entries.iter().any(|d| d.version == "workspace"));
+        assert!(serde_entries.iter().any(|d| d.version == "1.0"));
     }
 
     #[test]
