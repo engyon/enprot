@@ -27,6 +27,15 @@ PREFIX=""
 NDK_TRIPLE="${NDK_TRIPLE:-aarch64-linux-ohos}"
 RUST_TARGET="${RUST_TARGET:-aarch64-unknown-linux-ohos}"
 
+ndk_to_rust_triple() {
+  case "$1" in
+    aarch64-linux-ohos) echo "aarch64-unknown-linux-ohos";;
+    armv7-linux-ohos)   echo "armv7-unknown-linux-ohos";;
+    x86_64-linux-ohos)  echo "x86_64-unknown-linux-ohos";;
+    *) echo "unknown NDK triple: $1" >&2; exit 1;;
+  esac
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --prefix)      PREFIX="$2"; shift 2;;
@@ -36,15 +45,6 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 1;;
   esac
 done
-
-ndk_to_rust_triple() {
-  case "$1" in
-    aarch64-linux-ohos) echo "aarch64-unknown-linux-ohos";;
-    armv7-linux-ohos)   echo "armv7-unknown-linux-ohos";;
-    x86_64-linux-ohos)  echo "x86_64-unknown-linux-ohos";;
-    *) echo "unknown NDK triple: $1" >&2; exit 1;;
-  esac
-}
 
 [ -n "$PREFIX" ] || { echo "usage: $0 --prefix <dir>" >&2; exit 1; }
 
