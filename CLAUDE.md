@@ -142,7 +142,7 @@ The pipeline:
 
 1. `ci/setup-ohos-ndk.sh` — downloads `ohos-sdk-public` + `LLVM-19` from the OpenHarmony daily_build API, extracts both, replaces the SDK's MULTIARCH sysroot with a relative symlink to the LLVM-19 PER-ARCH sysroot (the two-sysroots problem; see `docs/ohos-porting-guide.md`).
 2. `ci/build-botan-ohos.sh` — cross-compiles Botan 3 statically via `configure.py` with `--cc-bin=$NDK/llvm/bin/aarch64-unknown-linux-ohos-clang++` + `--cc-abi-flags="--target=aarch64-linux-ohos --sysroot=..."`. Static build avoids `.so` code-signing.
-3. `cargo build --target aarch64-unknown-linux-ohos --release` — sets `PKG_CONFIG_PATH`, `PKG_CONFIG_ALLOW_CROSS=1`, `PKG_CONFIG_SYSROOT_DIR`, and `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_*` env vars for the linker.
+3. `cargo build --target aarch64-unknown-linux-ohos --release` — sets `PKG_CONFIG_PATH`, `PKG_CONFIG_ALLOW_CROSS=1`, `PKG_CONFIG_SYSROOT_DIR` (pointing at `llvm-19/sysroot/<ndk-triple>`), and `CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_*` env vars for the linker.
 4. Verification in `ghcr.io/hqzing/dockerharmony:latest` (real OHOS userland via qemu binfmt) using `ci/ohos-smoke.c` (Botan hash + AEAD round-trip via the C FFI).
 
 The NDK (~4 GB) is cached across CI runs via `actions/cache@v4` keyed on the setup script's hash. The workflow is `continue-on-error: true` until the cross-compilation is verified green; drop the flag and add `ohos` to required status checks once stable.

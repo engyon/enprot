@@ -489,7 +489,7 @@ sh ci/setup-ohos-ndk.sh --prefix ext/ohos
 sh ci/build-botan-ohos.sh --prefix ext/ohos --botan-version 3.7.0
 export PKG_CONFIG_PATH=ext/ohos/ohos-aarch64/lib/pkgconfig
 export PKG_CONFIG_ALLOW_CROSS=1
-export PKG_CONFIG_SYSROOT_DIR=ext/ohos/ohos-sdk/linux/native/sysroot
+export PKG_CONFIG_SYSROOT_DIR=ext/ohos/llvm-19/sysroot/aarch64-linux-ohos
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER=ext/ohos/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++
 cargo build --target aarch64-unknown-linux-ohos --release
 ```

@@ -64,7 +64,7 @@ jobs:
       - name: Setup OHOS NDK
         if: steps.cache-ndk.outputs.cache-hit != 'true'
         run: |
-          sh ci/setup-ohos-ndk.sh --prefix ${{ env.NDK_PREFIX }} --ndk-triple ${{ env.NDK_TRIPLE }}
+          bash ci/setup-ohos-ndk.sh --prefix ${{ env.NDK_PREFIX }} --ndk-triple ${{ env.NDK_TRIPLE }}
 
       - name: Cache Botan build
         id: cache-botan
@@ -78,14 +78,14 @@ jobs:
       - name: Cross-compile Botan 3 (static)
         if: steps.cache-botan.outputs.cache-hit != 'true'
         run: |
-          sh ci/build-botan-ohos.sh \
+          bash ci/build-botan-ohos.sh \
             --prefix ${{ env.NDK_PREFIX }} \
             --botan-version ${{ env.BOTAN_VERSION }} \
             --ndk-triple ${{ env.NDK_TRIPLE }}
 
       - name: Build enprot
         run: |
-          SYSROOT=${{ env.NDK_PREFIX }}/ohos-sdk/linux/native/sysroot
+          SYSROOT=${{ env.NDK_PREFIX }}/llvm-19/sysroot/${{ env.NDK_TRIPLE }}
           # NDK ships clang binaries as aarch64-unknown-linux-ohos-clang++.
           NDK_CLANGXX=${{ env.NDK_PREFIX }}/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang++
           export PKG_CONFIG_PATH=${{ env.NDK_PREFIX }}/ohos-aarch64/lib/pkgconfig
@@ -101,7 +101,7 @@ jobs:
           CLANG=${{ env.NDK_PREFIX }}/llvm-19/llvm/bin/aarch64-unknown-linux-ohos-clang
           BOTAN_LIB=${{ env.NDK_PREFIX }}/ohos-aarch64/lib/libbotan-3.a
           BOTAN_INC=${{ env.NDK_PREFIX }}/ohos-aarch64/include/botan-3
-          SYSROOT=${{ env.NDK_PREFIX }}/ohos-sdk/linux/native/sysroot
+          SYSROOT=${{ env.NDK_PREFIX }}/llvm-19/sysroot/${{ env.NDK_TRIPLE }}
           mkdir -p ohos-verify
           "$CLANG" \
             --target=${{ env.NDK_TRIPLE }} --sysroot="$SYSROOT" \
