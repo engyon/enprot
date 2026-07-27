@@ -123,6 +123,34 @@ Per the gist, the OHOS NDK binaries are x86_64 ELF. Run on
   dominant target; the others can be added later by extending the
   matrix.
 
+## Current blocker: rnp-rs cross-compile
+
+enprot now requires `rnp-rs` (OpenPGP signature support, see
+TODO.finalize/51 series). rnp-rs's `build.rs` requires `<rnp/rnp.h>`
+at build time — for OHOS this means librnp must be cross-compiled
+for `aarch64-linux-ohos` too.
+
+librnp depends on botan (which we already cross-compile) plus
+json-c and zlib (not yet). A `ci/build-librnp-ohos.sh` script
+needs to:
+
+1. Cross-compile json-c statically (OHOS's zlib is at the
+   non-standard `libshared_libz.z.so` SONAME — see
+   `docs/ohos-porting-guide.md`).
+2. Cross-compile librnp via CMake using the OHOS NDK's
+   `ohos.toolchain.cmake`, picking up the cross-compiled Botan.
+3. Export `RNP_INCLUDE_DIR` + `RNP_LIB_DIR` so rnp-rs's build.rs
+   finds the headers + static lib.
+
+Until that lands, the OHOS workflow stays `continue-on-error: true`.
+The Linux + macOS builds (which build librnp from source via
+`ci/build-librnp.sh`) are unaffected.
+
+Upstream issue for rnp-rs MSRV (different bug, but related to
+enprot's CI chain): <https://github.com/rnpgp/rnp-rs/issues/41> —
+declared MSRV 1.85 doesn't match the actual code (uses let-chains
+that need 1.88+).
+
 ## Acceptance criteria
 
 - [ ] `ci/setup-ohos-ndk.sh` downloads NDK + LLVM-19, sets up
