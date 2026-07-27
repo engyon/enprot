@@ -2,8 +2,13 @@
 . ci/common.inc.sh
 . ci/utils.inc.sh
 
+# librnp is required by rnp-rs (OpenPGP signature support). rnp-rs 0.1.6
+# expects the latest librnp FFI which lags in distro packages, so build
+# from source on every platform.
+ci/build-librnp.sh --prefix "$PREFIX"
+
 if [ $(get_os) == "linux" ]; then
-  sudo apt update && sudo apt -y install git make g++ librnp-dev
+  sudo apt update && sudo apt -y install git make g++
   git clone --depth 1 --branch "$BOTAN_VERSION" https://github.com/randombit/botan
   cd botan
   ./configure.py --prefix="$PREFIX" --without-documentation --build-targets=shared \
@@ -11,11 +16,6 @@ if [ $(get_os) == "linux" ]; then
   make -j2
   sudo make install
 else
-  brew install botan rnp
-  # brew install rnp is sometimes keg-only due to conflicts with an
-  # older `librnp.a` shipped by another formula. Force-link so the
-  # headers and .dylib appear under $(brew --prefix)/include and /lib,
-  # which is where rnp-rs's build.rs looks for <rnp/rnp.h>.
-  brew link --overwrite rnp || true
+  brew install botan
 fi
 
