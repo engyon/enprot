@@ -11,7 +11,7 @@ readme      = "README.md"
 categories  = ["command-line-utilities", "cryptography"]
 keywords    = ["encryption", "engyon", "ept", "botan", "blockchain"]
 edition     = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 autotests   = false
 
 [package.metadata.docs.rs]
