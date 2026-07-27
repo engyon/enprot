@@ -1476,12 +1476,12 @@ fn lookup_word_password(common: &CommonArgs, word: &str) -> Result<String> {
             return Ok(p.clone());
         }
     }
-    if let Ok(env_val) = std::env::var("ENPROPT_KEY") {
-        if let Some((w, p)) = env_val.split_once('=') {
-            if w == word && !p.is_empty() {
-                return Ok(p.to_string());
-            }
-        }
+    if let Ok(env_val) = std::env::var("ENPROPT_KEY")
+        && let Some((w, p)) = env_val.split_once('=')
+        && w == word
+        && !p.is_empty()
+    {
+        return Ok(p.to_string());
     }
     Err(Error::msg(format!(
         "no password supplied for WORD '{}' (pass `-k {0}=PASSWORD` or set ENPROPT_KEY={0}=PASSWORD)",
@@ -1530,13 +1530,13 @@ fn run(
                 Err(_) => false,
             });
     if fips {
-        if let Some(p) = explicit_policy.as_deref() {
-            if p != "nist" {
-                return Err(Error::Msg(format!(
-                    "Policy setting of '{}' conflicts with --fips",
-                    p
-                )));
-            }
+        if let Some(p) = explicit_policy.as_deref()
+            && p != "nist"
+        {
+            return Err(Error::Msg(format!(
+                "Policy setting of '{}' conflicts with --fips",
+                p
+            )));
         }
         policy_name = "nist".to_string();
     }
@@ -1585,17 +1585,16 @@ fn run(
         // refuse to write blocks for a WORD whose required capability
         // the caller doesn't hold. Decrypt/store/fetch don't gate on
         // per-WORD capability — they're not capability-changing ops.
-        if matches!(op_kind, Operation::Encrypt | Operation::EncryptStore) {
-            if let Some(p) = common
+        if matches!(op_kind, Operation::Encrypt | Operation::EncryptStore)
+            && let Some(p) = common
                 .policy_file
                 .as_ref()
                 .map(|p| cappolicy::CapPolicy::load_file(p))
                 .transpose()?
-            {
-                let held = capability::CapabilitySet::from_paops(&paops);
-                for w in &output.word {
-                    p.check_word_capability(w, &held)?;
-                }
+        {
+            let held = capability::CapabilitySet::from_paops(&paops);
+            for w in &output.word {
+                p.check_word_capability(w, &held)?;
             }
         }
         for w in &output.word {
@@ -2233,17 +2232,17 @@ fn verify_node(node: &etree::TextNode, paops: &mut ParseOps) -> usize {
                 n += verify_node(child, paops);
             }
             // Validate extfield format
-            if let Some(cipher_str) = extfields.get("cipher") {
-                if let Err(e) = cipher::parse_cipher_extfield(cipher_str) {
-                    eprintln!("FAIL: cipher extfield '{}': {}", cipher_str, e);
-                    n += 1;
-                }
+            if let Some(cipher_str) = extfields.get("cipher")
+                && let Err(e) = cipher::parse_cipher_extfield(cipher_str)
+            {
+                eprintln!("FAIL: cipher extfield '{}': {}", cipher_str, e);
+                n += 1;
             }
-            if let Some(phc_str) = extfields.get("pbkdf") {
-                if let Err(e) = pbkdf::parse_phc(phc_str) {
-                    eprintln!("FAIL: pbkdf extfield '{}': {}", phc_str, e);
-                    n += 1;
-                }
+            if let Some(phc_str) = extfields.get("pbkdf")
+                && let Err(e) = pbkdf::parse_phc(phc_str)
+            {
+                eprintln!("FAIL: pbkdf extfield '{}': {}", phc_str, e);
+                n += 1;
             }
             n
         }
@@ -2271,13 +2270,13 @@ fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> 
                 Err(_) => false,
             });
     if fips {
-        if let Some(p) = explicit_policy.as_deref() {
-            if p != "nist" {
-                return Err(Error::Msg(format!(
-                    "Policy setting of '{}' conflicts with --fips",
-                    p
-                )));
-            }
+        if let Some(p) = explicit_policy.as_deref()
+            && p != "nist"
+        {
+            return Err(Error::Msg(format!(
+                "Policy setting of '{}' conflicts with --fips",
+                p
+            )));
         }
         policy_name = "nist".to_string();
     }
@@ -2295,20 +2294,20 @@ fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> 
 /// this. Before this helper existed, the logic was duplicated in
 /// both, risking drift (TODO.finalize/32).
 fn resolve_separators(common: &CommonArgs) -> (String, String) {
-    if let Some(ref lang) = common.lang {
-        if let Some((left, right)) = consts::lang_separators(lang) {
-            let l = if common.left_separator == consts::DEFAULT_LEFT_SEP {
-                left.to_string()
-            } else {
-                common.left_separator.clone()
-            };
-            let r = if common.right_separator == consts::DEFAULT_RIGHT_SEP {
-                right.to_string()
-            } else {
-                common.right_separator.clone()
-            };
-            return (l, r);
-        }
+    if let Some(ref lang) = common.lang
+        && let Some((left, right)) = consts::lang_separators(lang)
+    {
+        let l = if common.left_separator == consts::DEFAULT_LEFT_SEP {
+            left.to_string()
+        } else {
+            common.left_separator.clone()
+        };
+        let r = if common.right_separator == consts::DEFAULT_RIGHT_SEP {
+            right.to_string()
+        } else {
+            common.right_separator.clone()
+        };
+        return (l, r);
     }
     (
         common.left_separator.clone(),
@@ -2569,12 +2568,11 @@ fn audit_log_stream(_common: CommonArgs, a: AuditLogSubcmd) -> Result<()> {
         let chain_node =
             build_chain_anchor_node_with_parent(&tree, &priv_pem, "append", "", last_anchor)?;
         // Track the new anchor's hash so the next iteration parents off it.
-        if let etree::TextNode::Chain { extfields } = &chain_node {
-            if let Ok(signed) = ledger::SignedAnchor::from_extfields(extfields) {
-                if let Ok(h) = signed.id() {
-                    last_anchor = Some(h);
-                }
-            }
+        if let etree::TextNode::Chain { extfields } = &chain_node
+            && let Ok(signed) = ledger::SignedAnchor::from_extfields(extfields)
+            && let Ok(h) = signed.id()
+        {
+            last_anchor = Some(h);
         }
         tree.push(chain_node);
         line_count += 1;
@@ -2849,27 +2847,26 @@ fn verify_chain_one_file(
 
     let mut errors: Vec<String> = Vec::new();
     for r in &report.reports {
-        if !r.ok {
-            if let Some(ref e) = r.error {
-                errors.push(format!("{}: {}", r.id, e));
-            }
+        if !r.ok
+            && let Some(ref e) = r.error
+        {
+            errors.push(format!("{}: {}", r.id, e));
         }
-        if let Some(p) = cap_policy {
-            if let Some(signed) = dag.get(&r.id) {
-                if !p.trust_root_allows(&signed.anchor.signer) {
-                    errors.push(format!(
-                        "{}: signer {} not in policy trust_roots",
-                        r.id, signed.anchor.signer
-                    ));
-                }
-            }
+        if let Some(p) = cap_policy
+            && let Some(signed) = dag.get(&r.id)
+            && !p.trust_root_allows(&signed.anchor.signer)
+        {
+            errors.push(format!(
+                "{}: signer {} not in policy trust_roots",
+                r.id, signed.anchor.signer
+            ));
         }
     }
 
-    if let Some(p) = cap_policy {
-        if p.chain.require_monotonic_timestamps {
-            errors.extend(check_monotonic_timestamps(&dag));
-        }
+    if let Some(p) = cap_policy
+        && p.chain.require_monotonic_timestamps
+    {
+        errors.extend(check_monotonic_timestamps(&dag));
     }
 
     // Content integrity: recompute payload_hash for each CHAIN block

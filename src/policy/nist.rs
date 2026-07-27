@@ -109,10 +109,10 @@ impl CryptoPolicy for CryptoPolicyNIST {
         if key_len < 14 {
             return Err("Key length violates policy".to_string());
         }
-        if let Some(iters) = params.get("i") {
-            if *iters < 1000 {
-                return Err("Iteration count violates policy".to_string());
-            }
+        if let Some(iters) = params.get("i")
+            && *iters < 1000
+        {
+            return Err("Iteration count violates policy".to_string());
         }
         Ok(())
     }

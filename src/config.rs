@@ -111,14 +111,14 @@ impl Config {
                 )));
             }
         }
-        if let Some(ref policy) = self.policy {
-            if !crate::consts::VALID_POLICIES.contains(&policy.as_str()) {
-                return Err(Error::msg(format!(
-                    "config: unknown policy '{}' (valid: {})",
-                    policy,
-                    crate::consts::VALID_POLICIES.join(", ")
-                )));
-            }
+        if let Some(ref policy) = self.policy
+            && !crate::consts::VALID_POLICIES.contains(&policy.as_str())
+        {
+            return Err(Error::msg(format!(
+                "config: unknown policy '{}' (valid: {})",
+                policy,
+                crate::consts::VALID_POLICIES.join(", ")
+            )));
         }
         Ok(())
     }
@@ -171,10 +171,10 @@ impl Config {
         if let Some(v) = env_first("ENPROPT_FIPS") {
             self.fips = parse_bool(&v);
         }
-        if let Some(v) = env_first("ENPROPT_MAX_DEPTH") {
-            if let Ok(n) = v.parse() {
-                self.max_depth = Some(n);
-            }
+        if let Some(v) = env_first("ENPROPT_MAX_DEPTH")
+            && let Ok(n) = v.parse()
+        {
+            self.max_depth = Some(n);
         }
         if let Some(v) = env_first("ENPROPT_CIPHER") {
             self.encrypt.cipher = Some(v);
@@ -182,10 +182,10 @@ impl Config {
         if let Some(v) = env_first("ENPROPT_PBKDF") {
             self.encrypt.pbkdf = Some(v);
         }
-        if let Some(v) = env_first("ENPROPT_PBKDF_MSEC") {
-            if let Ok(n) = v.parse() {
-                self.encrypt.pbkdf_msec = Some(n);
-            }
+        if let Some(v) = env_first("ENPROPT_PBKDF_MSEC")
+            && let Ok(n) = v.parse()
+        {
+            self.encrypt.pbkdf_msec = Some(n);
         }
         if let Some(v) = env_first("ENPROPT_CHAIN_SIGNER") {
             self.chain.signer = Some(v);
@@ -309,10 +309,10 @@ fn walk_up(start: &Path) -> impl Iterator<Item = PathBuf> {
 
 /// Resolve the user-level config path. Honours `XDG_CONFIG_HOME`.
 pub fn user_config_path() -> Option<PathBuf> {
-    if let Some(xdg) = env::var_os("XDG_CONFIG_HOME") {
-        if !xdg.is_empty() {
-            return Some(PathBuf::from(xdg).join("enprot").join("config.toml"));
-        }
+    if let Some(xdg) = env::var_os("XDG_CONFIG_HOME")
+        && !xdg.is_empty()
+    {
+        return Some(PathBuf::from(xdg).join("enprot").join("config.toml"));
     }
     let home = env::var_os("HOME")?;
     Some(
