@@ -32,9 +32,11 @@ if [ "$(uname)" = "Linux" ]; then
     cmake libjson-c-dev zlib1g-dev libbz2-dev
 fi
 
-git clone --depth 1 --branch "v${RNP_VERSION}" \
+git clone --branch "v${RNP_VERSION}" \
   https://github.com/rnpgp/rnp.git "$SRC_DIR/rnp"
 cd "$SRC_DIR/rnp"
+# libsexpp is a submodule; needed for the cmake build.
+git submodule update --init --recursive
 
 # Build librnp via CMake. Force botan backend (librnp also supports
 # OpenSSL but botan matches enprot's existing dep).
