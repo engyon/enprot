@@ -112,12 +112,15 @@ impl SignerProvider for PemSigner {
 ///
 /// Supported URI schemes:
 /// - Bare path (`priv.pem`) → [`PemSigner`] with Ed25519
-/// - `confium://...` → `ConfiumSigner` (TODO.roadmap/22 — not yet implemented)
+/// - `confium://...` → `ConfiumSigner` (TODO.finalize/38 — crates
+///   released at v0.3.0 but daemon CLI is still scaffolding; the
+///   threshold primitives in `confium-tc-frost-ed25519` etc. are
+///   working but multi-party coordination via the daemon isn't)
 /// - `pkcs11://...` → `Pkcs11Signer` (future)
 pub fn parse_signer_arg(s: &str, alg: SigAlgKind) -> Result<Box<dyn SignerProvider>> {
     if s.starts_with("confium://") {
         Err(Error::msg(
-            "Confium threshold signing not yet implemented (see TODO.roadmap/22)",
+            "Confium threshold signing: daemon CLI not yet shipped (see TODO.finalize/38)",
         ))
     } else if s.starts_with("pkcs11://") {
         Err(Error::msg("PKCS#11 hardware signing not yet implemented"))
@@ -169,11 +172,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_confium_uri_returns_not_yet_implemented() {
+    fn parse_confium_uri_returns_daemon_pending_error() {
         let result = parse_signer_arg("confium://session-1", SigAlgKind::Ed25519);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("not yet implemented"));
+        assert!(err.contains("daemon"), "should reference the daemon: {err}");
+        assert!(
+            err.contains("TODO.finalize/38"),
+            "should link the tracking TODO: {err}"
+        );
     }
 
     #[test]
