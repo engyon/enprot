@@ -54,9 +54,11 @@ toml           = "0.8"
 aes-gcm-siv    = "0.11"
 zeroize        = { version = "1", features = ["alloc"] }
 # OpenPGP signature support. rnp-rs is the Rust binding to librnp
-# (the OpenPGP C library from Ribose). Requires librnp installed at
-# build time (`brew install rnp` on macOS, `apt install librnp-dev`
-# on Debian, etc.).
+# (the OpenPGP C library from Ribose). rnp-rs 0.1.6 expects librnp
+# with the newest FFI symbols (rnp_key_get_version,
+# rnp_key_certification_create, etc.), which lag behind in distro
+# packages. ci/install.sh builds librnp from source to guarantee a
+# compatible version.
 rnp-rs         = "0.1.6"
 
 [dev-dependencies]
