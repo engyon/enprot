@@ -1087,9 +1087,9 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "rnp-rs"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "431065101e620d1054a801f57bd2749d5f63afa89f5a46ecce72b112692481fb"
+checksum = "8f504230b70cf39c635dd9dec36a48cf4029d14b46946c75629e3a3d67752611"
 dependencies = [
  "bindgen",
  "cmake",
