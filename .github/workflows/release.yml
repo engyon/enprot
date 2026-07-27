@@ -22,6 +22,22 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # release-plz runs `cargo publish` which compiles enprot. enprot
+      # transitively requires botan-sys (pkg-config botan-3) and rnp-rs
+      # (<rnp/rnp.h>). ci/install.sh builds both from source so the
+      # release job has matching versions regardless of distro lag.
+      - name: Install system build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake libjson-c-dev zlib1g-dev libbz2-dev \
+            git make g++ python3 jq unzip
+      - name: Install Botan + librnp
+        run: ./ci/install.sh
+        env:
+          BOTAN_VERSION: "3.7.0"
+          PREFIX: /usr
+
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5
         env:
