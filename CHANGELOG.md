@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/engyon/enprot/compare/v0.4.1...v0.4.2) - 2026-07-27
+
+### Other
+
+- Bump rnp-rs 0.1.6 -> 0.1.7
+- Cross-ref upstream OHOS-blocker issues in TODO.finalize/51
+- Document OHOS + rnp-rs blocker (librnp cross-compile pending)
+- Update Confium integration tracker to reflect released v0.3.0 crates
+- Fix clippy::collapsible_if across cli.rs, config.rs, policy/nist.rs
+- Drop Windows from CI matrix (librnp unavailable); tracked in TODO 52
+- Bump MSRV 1.85 -> 1.88 (rnp-rs uses let-chains)
+- force /usr/local on macOS (SIP blocks /usr)
+- Disable ENABLE_PQC/ENABLE_CRYPTO_REFRESH in librnp build
+- Fix botan module names (auto_seeding_rng etc. don't exist)
+- Expand ci/botan-modules with everything librnp needs
+- Fix librnp build: init submodules, build botan first
+- Build librnp from source in CI (rnp-rs 0.1.6 needs newest FFI)
+- install librnp-dev / rnp for rnp-rs build
+- Add OpenPGP signature support via rnp-rs 0.1.6 (required dep)
+- Simplify OHOS smoke test: hash + RNG only (no botan_aead_*)
+- Fix OHOS smoke test: use botan/ffi.h (C FFI) instead of C++ headers
+- Fix OHOS linker: -lc++ -lc++abi instead of -lstdc++
+- Fix OHOS linker: drop PKG_CONFIG_SYSROOT_DIR, add -L for botan lib
+- Fix OHOS pkg-config: use absolute paths + BOTAN_STATIC=1
+- Fix build-botan-ohos.sh: resolve botan-modules via absolute path
+- Fix NDK clang++ binary name: hyphens, not underscores
+- Fix function ordering in setup-ohos-ndk.sh
+- Fix OHOS NDK setup: archive format + sysroot path
+- Fix OHOS Rust target name + criterion --baseline flag
+- Add OHOS (OpenHarmony) cross-compile target
+- Architecture audit: 4 new TODOs (47-50) written and completed
+- Mark TODO.finalize/36-46 as done; small DRY cleanup
+- Fix three CI failures: clippy, typos, Windows paths
+
 ## [0.4.0] - 2026-07-24
 
 ### Breaking Changes
