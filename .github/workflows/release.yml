@@ -33,7 +33,14 @@ jobs:
             cmake libjson-c-dev zlib1g-dev libbz2-dev \
             git make g++ python3 jq unzip
       - name: Install Botan + librnp
-        run: ./ci/install.sh
+        run: |
+          ./ci/install.sh
+          # ci/install.sh clones botan/ and tmp dirs into the working
+          # tree, which `cargo publish` then refuses to package (3k+
+          # untracked files). Clean up after the install — the system
+          # install is what we need, not the source.
+          rm -rf botan/ tmp.*/ 2>/dev/null || true
+          git status --porcelain | head -5 || true
         env:
           BOTAN_VERSION: "3.7.0"
           PREFIX: /usr
