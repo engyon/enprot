@@ -49,8 +49,8 @@ cmake .. \
   -DBUILD_TESTING=OFF \
   -DENABLE_DOC=OFF \
   -DCRYPTO_BACKEND=botan \
-  -DENABLE_PQC=ON \
-  -DENABLE_CRYPTO_REFRESH=ON
+  -DENABLE_PQC=OFF \
+  -DENABLE_CRYPTO_REFRESH=OFF
 
 make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
 sudo make install
