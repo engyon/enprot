@@ -53,6 +53,11 @@ toml           = "0.8"
 # Botan.
 aes-gcm-siv    = "0.11"
 zeroize        = { version = "1", features = ["alloc"] }
+# OpenPGP signature support. rnp-rs is the Rust binding to librnp
+# (the OpenPGP C library from Ribose). Requires librnp installed at
+# build time (`brew install rnp` on macOS, `apt install librnp-dev`
+# on Debian, etc.).
+rnp-rs         = "0.1.6"
 
 [dev-dependencies]
 tempfile    = "3"
