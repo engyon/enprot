@@ -8,9 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 It depends on **Botan 3** (CI builds against 3.7.0; Homebrew ships 3.12.0) as the underlying crypto provider via the `botan` crate (`botan3` + `pkg-config` features). The `aes-256-gcm-siv` cipher is provided by the RustCrypto `aes-gcm-siv` crate because Botan does not implement RFC 8452. AES-256-SIV is the default AEAD; SHA-3 / Argon2 / Scrypt / PBKDF2 are used for hashing and KDF. Deterministic AEAD variants (`aes-256-gcm-det`, `aes-256-gcm-siv-det`) derive the nonce from plaintext via HKDF + HMAC so identical plaintexts produce identical ciphertexts (CAS dedup).
 
+It also depends on **librnp** (the OpenPGP C library from Ribose) via `rnp-rs` for OpenPGP signature support. Install via `brew install rnp` (macOS), `apt install librnp-dev` (Debian/Ubuntu), or build from source. `ci/install.sh` handles Linux + macOS; Windows builds librnp via vcpkg (TBD). If `brew install rnp` reports conflicts, run `brew link --overwrite rnp` to expose headers under `$(brew --prefix)/include/rnp/`.
+
 ## Build & test
 
-Requires Botan 3 installed on the system (`brew install botan` on macOS; see `ci/install.sh` for the Linux build from source). Then:
+Requires Botan 3 and librnp installed on the system (`brew install botan rnp` on macOS — run `brew link --overwrite rnp` if it conflicts; see `ci/install.sh` for the Linux build from source). Then:
 
 ```sh
 PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig" cargo build        # debug (macOS)
