@@ -13,12 +13,19 @@
 # Requires: botan (any 2.14+ or 3.x), json-c, zlib, cmake, git.
 
 PREFIX="/usr/local"
+# macOS SIP makes /usr read-only; Linux CI passes PREFIX=/usr which
+# works there. Override to /usr/local on macOS regardless of CLI args.
+if [ "$(uname)" = "Darwin" ]; then
+  PREFIX="/usr/local"
+fi
 RNP_VERSION="0.18.1"
 SRC_DIR="$(mktemp -d)"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --prefix) PREFIX="$2"; shift 2;;
+    --prefix)
+      if [ "$(uname)" != "Darwin" ]; then PREFIX="$2"; fi
+      shift 2;;
     --version) RNP_VERSION="$2"; shift 2;;
     -h|--help) sed -n '2,20p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 1;;
