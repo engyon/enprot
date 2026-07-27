@@ -46,6 +46,7 @@ pub mod kemenc;
 pub mod ledger;
 pub mod merge;
 pub mod merkle;
+pub mod openpgp;
 pub mod output;
 mod password;
 mod pbkdf;
