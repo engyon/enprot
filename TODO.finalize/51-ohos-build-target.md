@@ -146,10 +146,17 @@ Until that lands, the OHOS workflow stays `continue-on-error: true`.
 The Linux + macOS builds (which build librnp from source via
 `ci/build-librnp.sh`) are unaffected.
 
-Upstream issue for rnp-rs MSRV (different bug, but related to
-enprot's CI chain): <https://github.com/rnpgp/rnp-rs/issues/41> —
-declared MSRV 1.85 doesn't match the actual code (uses let-chains
-that need 1.88+).
+Upstream issues filed for the OHOS blocker chain:
+
+- **rnp-rs** [rnpgp/rnp-rs#43](https://github.com/rnpgp/rnp-rs/issues/43) —
+  build.rs hardcodes `/usr/include`; doesn't honor
+  `RNP_INCLUDE_DIR`/`RNP_LIB_DIR` on cross-compile.
+- **librnp** [rnpgp/rnp#2436](https://github.com/rnpgp/rnp/issues/2436) —
+  CMake has no `OHOS` platform target; `find_package(Botan)` picks up
+  host-installed botan.
+- **rnp-rs MSRV** [rnpgp/rnp-rs#41](https://github.com/rnpgp/rnp-rs/issues/41) —
+  declared MSRV 1.85 doesn't match the actual code (uses let-chains
+  that need 1.88+).
 
 ## Acceptance criteria
 
