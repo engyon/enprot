@@ -47,10 +47,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable, beta, "1.85"]
+        rust: [stable, beta, "1.88"]
         exclude:
           # Beta on Windows is low-value and burns CI minutes; the
-          # stable + 1.85 pair catches Windows-specific regressions.
+          # stable + 1.88 pair catches Windows-specific regressions.
           - os: windows-latest
             rust: beta
     name: Test on ${{ matrix.rust }} (${{ matrix.os }})

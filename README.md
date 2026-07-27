@@ -1,7 +1,7 @@
 # Engyon: enprot
 
 [![Build Status](https://github.com/engyon/enprot/actions/workflows/tests.yml/badge.svg)](https://github.com/engyon/enprot/actions?workflow=tests)
-[![MSRV 1.85](https://img.shields.io/badge/MSRV-1.85-blue)](https://blog.rust-lang.org/2025/02/20/Rust-1.85.0.html)
+[![MSRV 1.88](https://img.shields.io/badge/MSRV-1.88-blue)](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0.html)
 [![crates.io](https://img.shields.io/crates/v/enprot)](https://crates.io/crates/enprot)
 
 Enprot is a confidentiality processor for text and source code files.
