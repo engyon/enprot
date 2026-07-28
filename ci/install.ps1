@@ -162,16 +162,25 @@ $Env:RNP_LIB_DIR     = "$Env:PREFIX/lib"
 echo "RNP_INCLUDE_DIR=$Env:RNP_INCLUDE_DIR" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 echo "RNP_LIB_DIR=$Env:RNP_LIB_DIR"         | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
-# Cargo config: static-link botan-3 into the enprot binary.
+# Cargo config: static-link all deps into the enprot binary.
 New-Item -ItemType Directory -Force -Path '.cargo'
 $TARGET = "x86_64-pc-windows-msvc"
 $config = @"
 [target.$TARGET.botan-3]
 rustc-link-search = ["native=$Env:PREFIX/lib"]
 rustc-link-lib = ["static=botan-3"]
+[target.$TARGET.json-c]
+rustc-link-search = ["native=$Env:PREFIX/lib"]
+rustc-link-lib = ["static=json-c"]
+[target.$TARGET.sexpp]
+rustc-link-search = ["native=$Env:PREFIX/lib"]
+rustc-link-lib = ["static=sexpp"]
 [target.$TARGET.rnp-0]
 rustc-link-search = ["native=$Env:PREFIX/lib"]
 rustc-link-lib = ["static=rnp-0"]
+[target.$TARGET]
+rustc-link-search = ["native=$Env:PREFIX/lib"]
+rustc-link-lib = ["static=bzip2", "static=zlib"]
 "@
 Set-Content -Path ".cargo\config" -Value $config
 
