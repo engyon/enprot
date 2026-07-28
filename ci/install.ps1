@@ -40,17 +40,31 @@ $zlibVer = "1.3.1"
 tar -xzf zlib.tar.gz
 $zlibDir = Get-ChildItem -Directory -Filter "zlib-*" | Select-Object -First 1
 Push-Location -LiteralPath $zlibDir.FullName
-# zlib has a CMake build — use it for MSVC compatibility.
+# zlib has a CMake build — use it for MSVC compatibility. STATIC
+# build: CMake's default is BUILD_SHARED_LIBS=ON which produces
+# zlib1.dll + zlib.lib (import lib). The resulting binary would
+# fail at runtime with STATUS_DLL_NOT_FOUND. Force static so the
+# code is embedded in the final binary.
+# zlib's CMake names the static target `zlibstatic` → output
+# `zlibstatic.lib`. Rename to `zlib.lib` after install so both
+# rnp's find_package(ZLIB) and enprot's `static=zlib` link
+# directive resolve to the same file.
 New-Item -ItemType Directory -Force -Path build | Out-Null
 Push-Location build
 & cmake .. `
     -DCMAKE_INSTALL_PREFIX="$Env:PREFIX" `
     -DCMAKE_BUILD_TYPE=Release `
-    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+    -DBUILD_SHARED_LIBS=OFF
 & cmake --build . --config Release --parallel $Env:NUMBER_OF_PROCESSORS
 & cmake --install . --config Release
 Pop-Location
 Pop-Location
+$staticZlib = Join-Path $Env:PREFIX "lib/zlibstatic.lib"
+$targetZlib = Join-Path $Env:PREFIX "lib/zlib.lib"
+if (Test-Path $staticZlib) {
+    Copy-Item $staticZlib $targetZlib -Force
+}
 $Env:ZLIB_ROOT = "$Env:PREFIX"
 
 # -------------------- 1. Botan (static, MT runtime) --------------------
