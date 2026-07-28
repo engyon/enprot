@@ -4,10 +4,61 @@
 [![MSRV 1.88](https://img.shields.io/badge/MSRV-1.88-blue)](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0.html)
 [![crates.io](https://img.shields.io/crates/v/enprot)](https://crates.io/crates/enprot)
 
-Enprot is a confidentiality processor for text and source code files.
-It lets you embed encrypted, stored, and authenticated segments directly
-inside any text-based file — source code, documentation, configuration —
-without breaking the host language's syntax.
+**Document confidentiality and provenance for collaborative text.**
+enprot embeds classification levels, content-addressed storage, and
+signed chain anchors inside any text-based file — without breaking
+the host language's syntax.
+
+Built on the [Ribose Standard for Engyon Protected Text][rsd-spec]
+(RSD 12001), enprot implements the document edge of a complete
+trust stack: standalone for individual use; integrated with
+[Confium][confium] for distributed trust, threshold signing, and
+hardware key custody.
+
+[rsd-spec]: https://github.com/riboseinc/rsd-engyon-syntax
+[confium]: https://github.com/confium/confium
+
+### When to use enprot
+
+| Need | Use enprot if… |
+|---|---|
+| Encrypt parts of a source file | You want WORD-level confidentiality, not whole-file |
+| Multi-level classification in one doc | Same file carries PUBLIC + CONFIDENTIAL + SECRET segments |
+| Tamper-evident edit history | Chain anchors sign every transform; verify without decrypting |
+| Merge-friendly signed regions | CONFLICT blocks keep the file valid host-language source |
+| PQ-ready signatures | ML-DSA, ML-KEM, composite Ed25519+ML-DSA ship today |
+| Distributed signing authority | Confium integration (planned) for k-of-n threshold |
+| Hardware key custody | Confium stores: TPM, HSM, PKCS#11, OpenPGP card, cloud KMS |
+
+### How enprot compares
+
+| Feature | enprot | git-crypt | sops | age | sigstore |
+|---|---|---|---|---|---|
+| Encryption in source comments | ✅ | ✅ | ⚠️ YAML/JSON only | ❌ | ❌ |
+| Content-addressed storage | ✅ | ❌ | ❌ | ❌ | ✅ (Rekor) |
+| Signed chain anchors in-file | ✅ | ❌ | ❌ | ❌ | ⚠️ sidecar |
+| Merge-friendly regions | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Multi-level classification per file | ✅ | ❌ | ❌ | ❌ | ❌ |
+| PQ-ready (ML-DSA, ML-KEM) | ✅ | ❌ | ❌ | ❌ | partial |
+| OpenPGP interop | ✅ (rnp-rs) | via GPG | ❌ | ❌ | ❌ |
+| Threshold signing | via Confium | ❌ | ❌ | ❌ | ❌ |
+| Hardware key custody | via Confium | partial (GPG) | partial | ❌ | ✅ (KMS) |
+| Audit transparency log | via Confium | ❌ | ❌ | ❌ | ✅ (Rekor) |
+
+enprot + Confium together cover the full stack: document
+classification + distributed trust + custody + transparency.
+No competitor covers this range.
+
+### Buyer ladder
+
+```
+Phase 1 (now):        Individual         → enprot standalone (this repo)
+Phase 2 (6-12 mo):    Team / release eng → enprot + shared Confium daemon
+Phase 3 (12-24 mo):   Enterprise         → + Confium stores (TPM/HSM) + attributes
+Phase 4 (24+ mo):     Cross-org          → + Confium BLS threshold + transparency
+```
+
+### What's inside
 
 - **Human-editable markup**: EPT directives sit inside host-language
   comments, so files stay valid C, Rust, Python, Markdown, HTML, or LaTeX.
@@ -28,6 +79,8 @@ without breaking the host language's syntax.
   them. CAS-referenced blocks deduplicate across branches.
 - **Post-quantum ready**: ML-DSA signatures, ML-KEM key encapsulation,
   and composite Ed25519+ML-DSA constructions ship today.
+- **OpenPGP interop**: signatures via `rnp-rs` (librnp). Verify what
+  GnuPG / sequoia / Thunderbird produced.
 
 ## Installation
 
