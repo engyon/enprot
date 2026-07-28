@@ -61,6 +61,9 @@ Push-Location -LiteralPath "$WORKDIR\rnp-src\build"
     -DCRYPTO_BACKEND=botan `
     -DENABLE_PQC=OFF `
     -DENABLE_CRYPTO_REFRESH=OFF `
+    -DENABLE_COMPRESSION=OFF `
+    -DENABLE_BZIP2=OFF `
+    -DENABLE_ZLIB=OFF `
     -DCMAKE_INSTALL_PREFIX="$Env:PREFIX" `
     -DBOTAN_INCLUDE_DIR="$Env:PREFIX/include/botan-3" `
     -DBOTAN_LIBRARY="$Env:PREFIX/lib/botan-3.lib" `
