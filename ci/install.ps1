@@ -99,14 +99,15 @@ Push-Location -LiteralPath "$WORKDIR\rnp-src\build"
 # REQUIRED for the CLI tool (src/rnp/), but we only need the library
 # (librnp) for rnp-rs. The stubs satisfy find_path without adding
 # real POSIX compat code.
-# Stub POSIX headers — rnp's src/common/getoptwin.h includes
-# <getopt.h> and <dirent.h> which MSVC doesn't have. Put stubs
-# directly in PREFIX/include so the compiler finds them via -I.
-Set-Content -Path "$Env:PREFIX/include/dirent.h" -Value "/* stub — not used by librnp */"
-Set-Content -Path "$Env:PREFIX/include/getopt.h" -Value "/* stub — not used by librnp */"
-# Stub getopt.lib — CMake's find_library(GETOPT_LIBRARY getopt) needs
-# an actual .lib file even though we never link the CLI. Create a
-# minimal empty static lib that satisfies the find_library call.
+# Stub POSIX headers — rnp's LIBRARY code (not just CLI) uses
+# opendir/readdir/S_ISDIR internally for key-store directory listing.
+# MSVC doesn't ship these. Use tronkko/dirent — a well-known Windows
+# port of POSIX dirent.h that provides the full API.
+& curl -fsSL "https://raw.githubusercontent.com/tronkko/dirent/1.24/include/dirent.h" -o "$Env:PREFIX/include/dirent.h"
+Set-Content -Path "$Env:PREFIX/include/getopt.h" -Value "/* stub — not used by librnp library */"
+# S_ISDIR macro — MSVC's <sys/stat.h> doesn't define it. Add it
+# to dirent.h (already there in tronkko/dirent, but double-check).
+# getopt stub lib — CMake find_library needs an actual .lib file.
 Set-Content -Path "$Env:PREFIX/include/getopt_stub.c" -Value "int __enprot_getopt_stub(void) { return 0; }"
 Push-Location "$Env:PREFIX/include"
 & cl /c /MT getopt_stub.c 2>&1 | Out-Null
