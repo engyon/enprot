@@ -2305,6 +2305,68 @@ fn verify_node(node: &etree::TextNode, paops: &mut ParseOps) -> usize {
             }
             n
         }
+        etree::TextNode::Immutable {
+            name,
+            hashalg,
+            hash,
+            txt,
+        } => {
+            // RSD spec: verify that the declared hash matches the
+            // actual content hash.
+            let mut n = 0;
+            let blob = crate::etree::tree_to_blob(txt, paops);
+            match blob {
+                Ok(b) => {
+                    let policy: &dyn crypto::CryptoPolicy = &*paops.crypto.policy;
+                    match crate::crypto::hexdigest(hashalg, &b, policy) {
+                        Ok(computed) if computed == *hash => {
+                            // Hash matches — pass
+                        }
+                        Ok(computed) => {
+                            eprintln!(
+                                "FAIL: IMMUTABLE {} hash mismatch (declared={}, computed={})",
+                                name, hash, computed
+                            );
+                            n += 1;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "FAIL: IMMUTABLE {} hash algorithm '{}': {}",
+                                name, hashalg, e
+                            );
+                            n += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("FAIL: IMMUTABLE {} internal serialization: {}", name, e);
+                    n += 1;
+                }
+            }
+            // Also verify children
+            for child in txt {
+                n += verify_node(child, paops);
+            }
+            n
+        }
+        etree::TextNode::Muted {
+            name,
+            hashalg,
+            hash,
+        } => {
+            // MUTED is the sanitized form — content lives in CAS.
+            // Verify the CAS blob exists and its hash matches.
+            match cas::load(hash, paops) {
+                Ok(_) => 0,
+                Err(e) => {
+                    eprintln!(
+                        "FAIL: MUTED {} CAS blob ({}={}): {}",
+                        name, hashalg, hash, e
+                    );
+                    1
+                }
+            }
+        }
         _ => 0,
     }
 }
