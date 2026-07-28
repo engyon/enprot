@@ -2200,10 +2200,10 @@ fn list_tree_to_nodes(tree: &etree::TextTree, depth: usize, out: &mut Vec<output
                     children: Vec::new(),
                 });
             }
-            etree::TextNode::Key { name: _, .. }
-            | etree::TextNode::Unkey { name: _ }
-            | etree::TextNode::Cert { name: _, .. }
-            | etree::TextNode::Uncert { name: _ } => {
+            etree::TextNode::Key { .. }
+            | etree::TextNode::Unkey { .. }
+            | etree::TextNode::Cert { .. }
+            | etree::TextNode::Uncert { .. } => {
                 // Key/cert declarations are metadata; skip in list output
                 // for now. Future: surface in a separate "declarations"
                 // section.
