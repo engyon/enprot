@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/engyon/enprot/compare/v0.4.2...v0.5.0) - 2026-07-28
+
+### Other
+
+- Restore deny.toml; fix .gitignore to only match 64-char CAS hashes
+- Fix provenance CAS: use set_local_casdir after trait refactor
+- Restore deny.toml
+- Fix clippy: use .. instead of name: _ in KEY/CERT match patterns
+- strategic positioning + RSD spec directive documentation
+- Remove stray CAS test blobs + add to .gitignore
+- Add IMMUTABLE/MUTED hash verification to enprot verify
+- Restore deny.toml (accidentally deleted)
+- Implement RSD spec directives: IMMUTABLE/MUTABLE/MUTED + KEY/CERT/UNKEY/UNCERT
+- Implementation batch: 7 TODOs landed as code + 4 as docs
+
 ## [0.4.2](https://github.com/engyon/enprot/compare/v0.4.1...v0.4.2) - 2026-07-27
 
 ### Other
