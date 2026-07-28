@@ -17,9 +17,10 @@ $WORKDIR = $PWD
 # unconditionally — even with ENABLE_BZIP2=OFF. Chocolatey's bzip2
 # only ships the exe + DLL, not a .lib. Build from source instead.
 $bzip2Ver = "1.0.8"
-& curl -fsSL "https://sourceware.org/pub/bzip2/bzip2-$bzip2Ver.tar.gz" -o bzip2.tar.gz
+& curl -fsSL "https://github.com/libarchive/bzip2/archive/refs/tags/bzip2-$bzip2Ver.tar.gz" -o bzip2.tar.gz
 tar -xzf bzip2.tar.gz
-Push-Location -LiteralPath "bzip2-$bzip2Ver"
+$bzip2Dir = Get-ChildItem -Directory -Filter "bzip2-*" | Select-Object -First 1
+Push-Location -LiteralPath $bzip2Dir.FullName
 # bzip2's Makefile is Unix-oriented. For MSVC we compile the single
 # source file that produces the library.
 & cl /O2 /MT /c blocksort.c huffman.c crctable.c randtable.c compress.c decompress.c bzlib.c
@@ -35,9 +36,10 @@ Pop-Location
 
 # -------------------- 0b. ZLIB (librnp find_package REQUIRED) --------------------
 $zlibVer = "1.3.1"
-& curl -fsSL "https://zlib.net/fossils/zlib-$zlibVer.tar.gz" -o zlib.tar.gz
+& curl -fsSL "https://github.com/madler/zlib/releases/download/v$zlibVer/zlib-$zlibVer.tar.gz" -o zlib.tar.gz
 tar -xzf zlib.tar.gz
-Push-Location -LiteralPath "zlib-$zlibVer"
+$zlibDir = Get-ChildItem -Directory -Filter "zlib-*" | Select-Object -First 1
+Push-Location -LiteralPath $zlibDir.FullName
 # zlib has a CMake build — use it for MSVC compatibility.
 New-Item -ItemType Directory -Force -Path build | Out-Null
 Push-Location build
@@ -93,9 +95,14 @@ Push-Location -LiteralPath "$WORKDIR\rnp-src\build"
 # KYBER; crypto-refresh needs HKDF which is enabled but they also want
 # the broader refresh surface).
 # Point librnp's CMake at the just-built botan + json-c. Provide
-# Windows-compatible POSIX headers (dirent.h, getopt.h) from rnp's
-# own src/common/ directory — MSVC doesn't ship them.
-$rnpCommon = "$WORKDIR\rnp-src\src\common"
+# stub dirent.h + getopt.h — rnp's CMake find_path() calls these
+# REQUIRED for the CLI tool (src/rnp/), but we only need the library
+# (librnp) for rnp-rs. The stubs satisfy find_path without adding
+# real POSIX compat code.
+$stubDir = "$Env:PREFIX/include/posix-stubs"
+New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
+Set-Content -Path "$stubDir/dirent.h" -Value "/* stub — rnp CLI not built */"
+Set-Content -Path "$stubDir/getopt.h" -Value "/* stub — rnp CLI not built */"
 
 & cmake .. `
     -DCMAKE_BUILD_TYPE=Release `
@@ -113,15 +120,20 @@ $rnpCommon = "$WORKDIR\rnp-src\src\common"
     -DBOTAN_LIBRARY="$Env:PREFIX/lib/botan-3.lib" `
     -DJSON-C_INCLUDE_DIR="$Env:PREFIX/include/json-c" `
     -DJSON-C_LIBRARY="$Env:PREFIX/lib/json-c.lib" `
-    -DDIRENT_INCLUDE_DIR="$rnpCommon" `
-    -DGETOPT_INCLUDE_DIR="$rnpCommon" `
+    -DDIRENT_INCLUDE_DIR="$stubDir" `
+    -DGETOPT_INCLUDE_DIR="$stubDir" `
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake configure failed" }
 
-& cmake --build . --config Release --parallel $Env:NUMBER_OF_PROCESSORS
+# Build ONLY the librnp target, not the CLI tools (rnp/rnpkeys).
+# The CLI needs dirent.h/getopt.h (stubs above satisfy find_path
+# but not actual compilation of CLI source).
+& cmake --build . --config Release --target librnp --parallel $Env:NUMBER_OF_PROCESSORS
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake build failed" }
 
-& cmake --install . --config Release
+# Install just the library + headers.
+& cmake --install . --config Release --component Headers
+& cmake --install . --config Release --component Libraries
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake install failed" }
 
 Pop-Location
