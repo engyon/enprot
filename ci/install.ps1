@@ -1,16 +1,6 @@
 $BOTAN_MODULES = "$($(get-content 'ci\botan-modules') -join ',')"
 $ErrorActionPreference = "Stop"
 
-# Install bzip2 dev (librnp's CMake find_package(BZip2) is
-# unconditional even when ENABLE_BZIP2=OFF — providing the dev
-# package is the path of least resistance on Windows runners).
-& choco install -y --no-progress bzip2 2>&1 | Out-Null
-$bzip2Base = "C:\ProgramData\chocolatey\lib\bzip2\tools"
-if (Test-Path "$bzip2Base\libbz2.lib") {
-    $Env:BZIP2_INCLUDE_DIR = $bzip2Base
-    $Env:BZIP2_LIBRARY     = "$bzip2Base\libbz2.lib"
-}
-
 # setup msvc compiler environment
 $vswhere = "${Env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $vspath = & "$vswhere" -latest -property installationPath
@@ -21,6 +11,27 @@ if (-not $Env:PREFIX) {
     $Env:PREFIX = (Join-Path $PWD 'botan-install').Replace('\', '/')
 }
 $WORKDIR = $PWD
+
+# -------------------- 0. BZip2 (librnp find_package REQUIRED) --------------------
+# librnp's src/lib/CMakeLists.txt calls find_package(BZip2 REQUIRED)
+# unconditionally — even with ENABLE_BZIP2=OFF. Chocolatey's bzip2
+# only ships the exe + DLL, not a .lib. Build from source instead.
+$bzip2Ver = "1.0.8"
+& curl -fsSL "https://sourceware.org/pub/bzip2/bzip2-$bzip2Ver.tar.gz" -o bzip2.tar.gz
+tar -xzf bzip2.tar.gz
+Push-Location -LiteralPath "bzip2-$bzip2Ver"
+# bzip2's Makefile is Unix-oriented. For MSVC we compile the single
+# source file that produces the library.
+& cl /O2 /MT /c blocksort.c huffman.c crctable.c randtable.c compress.c decompress.c bzlib.c
+& lib /OUT:bzip2.lib blocksort.obj huffman.obj crctable.obj randtable.obj compress.obj decompress.obj bzlib.obj
+# Install headers + lib into PREFIX
+New-Item -ItemType Directory -Force -Path "$Env:PREFIX/include" | Out-Null
+New-Item -ItemType Directory -Force -Path "$Env:PREFIX/lib" | Out-Null
+Copy-Item bzlib.h "$Env:PREFIX/include/"
+Copy-Item bzip2.lib "$Env:PREFIX/lib/"
+$Env:BZIP2_INCLUDE_DIR = "$Env:PREFIX/include"
+$Env:BZIP2_LIBRARY = "$Env:PREFIX/lib/bzip2.lib"
+Pop-Location
 
 # -------------------- 1. Botan (static, MT runtime) --------------------
 & git clone --depth 1 --branch "$Env:BOTAN_VERSION" https://github.com/randombit/botan
