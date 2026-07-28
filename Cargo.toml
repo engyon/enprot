@@ -42,7 +42,6 @@ hex            = "0.4"
 rpassword      = "7"
 clap           = { version = "4.5", features = ["derive", "wrap_help"], optional = true }
 clap_complete  = { version = "4", optional = true }
-botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
 phf            = { version = "0.14", features = ["macros"] }
 thiserror      = "2"
 serde          = { version = "1", features = ["derive"] }
@@ -62,6 +61,19 @@ zeroize        = { version = "1", features = ["alloc"] }
 # coverage; the prebuilt libs are a fallback for users who skip the
 # system-librnp install step.
 rnp-rs         = "0.1.7"
+
+# botan-sys unconditionally calls `pkg-config` when its `pkg-config`
+# feature is on (build.rs:72 — `.unwrap()` on the probe). Windows
+# runners don't ship pkg-config. Split the dep per target:
+#   - Unix: keep `pkg-config` so `cargo build` finds the system Botan.
+#   - Windows: drop `pkg-config`, enable `static`. botan-sys then just
+#     emits `cargo:rustc-link-lib=static=botan-3`; enprot's build.rs
+#     points cargo at $PREFIX/lib via `cargo:rustc-link-search`.
+[target.'cfg(not(windows))'.dependencies]
+botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
+
+[target.'cfg(windows)'.dependencies]
+botan          = { version = "0.11", default-features = false, features = ["botan3", "static"] }
 
 [dev-dependencies]
 tempfile    = "3"
