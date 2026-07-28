@@ -103,6 +103,14 @@ $stubDir = "$Env:PREFIX/include/posix-stubs"
 New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
 Set-Content -Path "$stubDir/dirent.h" -Value "/* stub — rnp CLI not built */"
 Set-Content -Path "$stubDir/getopt.h" -Value "/* stub — rnp CLI not built */"
+# Stub getopt.lib — CMake's find_library(GETOPT_LIBRARY getopt) needs
+# an actual .lib file even though we never link the CLI. Create a
+# minimal empty static lib that satisfies the find_library call.
+Set-Content -Path "$stubDir/getopt_stub.c" -Value "int __enprot_getopt_stub(void) { return 0; }"
+Push-Location $stubDir
+& cl /c /MT getopt_stub.c 2>&1 | Out-Null
+& lib /OUT:getopt.lib getopt_stub.obj 2>&1 | Out-Null
+Pop-Location
 
 & cmake .. `
     -DCMAKE_BUILD_TYPE=Release `
@@ -122,6 +130,7 @@ Set-Content -Path "$stubDir/getopt.h" -Value "/* stub — rnp CLI not built */"
     -DJSON-C_LIBRARY="$Env:PREFIX/lib/json-c.lib" `
     -DDIRENT_INCLUDE_DIR="$stubDir" `
     -DGETOPT_INCLUDE_DIR="$stubDir" `
+    -DGETOPT_LIBRARY="$stubDir/getopt.lib" `
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake configure failed" }
 
