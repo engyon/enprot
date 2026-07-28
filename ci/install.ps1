@@ -33,6 +33,24 @@ $Env:BZIP2_INCLUDE_DIR = "$Env:PREFIX/include"
 $Env:BZIP2_LIBRARY = "$Env:PREFIX/lib/bzip2.lib"
 Pop-Location
 
+# -------------------- 0b. ZLIB (librnp find_package REQUIRED) --------------------
+$zlibVer = "1.3.1"
+& curl -fsSL "https://zlib.net/fossils/zlib-$zlibVer.tar.gz" -o zlib.tar.gz
+tar -xzf zlib.tar.gz
+Push-Location -LiteralPath "zlib-$zlibVer"
+# zlib has a CMake build — use it for MSVC compatibility.
+New-Item -ItemType Directory -Force -Path build | Out-Null
+Push-Location build
+& cmake .. `
+    -DCMAKE_INSTALL_PREFIX="$Env:PREFIX" `
+    -DCMAKE_BUILD_TYPE=Release `
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+& cmake --build . --config Release --parallel $Env:NUMBER_OF_PROCESSORS
+& cmake --install . --config Release
+Pop-Location
+Pop-Location
+$Env:ZLIB_ROOT = "$Env:PREFIX"
+
 # -------------------- 1. Botan (static, MT runtime) --------------------
 & git clone --depth 1 --branch "$Env:BOTAN_VERSION" https://github.com/randombit/botan
 Push-Location -LiteralPath botan
