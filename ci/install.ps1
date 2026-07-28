@@ -162,25 +162,10 @@ $Env:RNP_LIB_DIR     = "$Env:PREFIX/lib"
 echo "RNP_INCLUDE_DIR=$Env:RNP_INCLUDE_DIR" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 echo "RNP_LIB_DIR=$Env:RNP_LIB_DIR"         | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
-# Cargo config: static-link all deps via rustflags. Cargo's
-# .cargo/config doesn't support rustc-link-lib as a top-level key
-# under [target.<triple>]; use rustflags instead.
-New-Item -ItemType Directory -Force -Path '.cargo'
-$TARGET = "x86_64-pc-windows-msvc"
-$libDir = "$Env:PREFIX/lib"
-$config = @"
-[target.$TARGET]
-rustflags = [
-    "-L", "native=$libDir",
-    "-l", "static=botan-3",
-    "-l", "static=json-c",
-    "-l", "static=sexpp",
-    "-l", "static=rnp-0",
-    "-l", "static=bzip2",
-    "-l", "static=zlib",
-]
-"@
-Set-Content -Path ".cargo\config" -Value $config
+# Link directives are emitted by build.rs on Windows (not via
+# .cargo/config rustflags, which would break dep compilation).
+# We just need PREFIX available to cargo build.
+echo "PREFIX=$Env:PREFIX" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
 # Sanity check: rnp.h must be present.
 $Expected = Join-Path $Env:PREFIX "include/rnp/rnp.h"
