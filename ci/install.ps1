@@ -162,9 +162,19 @@ $Env:RNP_LIB_DIR     = "$Env:PREFIX/lib"
 echo "RNP_INCLUDE_DIR=$Env:RNP_INCLUDE_DIR" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 echo "RNP_LIB_DIR=$Env:RNP_LIB_DIR"         | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
-# Link directives are emitted by build.rs on Windows (not via
-# .cargo/config rustflags, which would break dep compilation).
-# We just need PREFIX available to cargo build.
+# Make the just-built static libs findable globally. enprot's build.rs
+# emits `cargo:rustc-link-search=native=$PREFIX/lib`, but that only
+# applies to enprot's own compilation — not to dependency build scripts
+# like botan-sys, which independently emit `cargo:rustc-link-lib=static=
+# botan-3` and need to resolve the .lib at compile time. RUSTFLAGS env
+# var is the global mechanism: it applies to every rustc invocation,
+# including dep compilation.
+# Note: RUSTFLAGS takes precedence over .cargo/config.toml [build]
+# rustflags, so we carry the remap-path-prefix forward here too.
+$Env:RUSTFLAGS = "--remap-path-prefix=/usr/local/cargo=/cargo -L native=$Env:PREFIX/lib"
+echo "RUSTFLAGS=$Env:RUSTFLAGS" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
+
+# PREFIX is available to cargo build.
 echo "PREFIX=$Env:PREFIX" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
 # Sanity check: rnp.h must be present.
