@@ -181,8 +181,14 @@ impl AnchorConfig {
 /// clean: `RuntimeState` mutates per-file, `IoConfig` is set once
 /// at startup.
 pub struct IoConfig {
-    /// CAS directory: where `STORED` blobs live.
+    /// CAS directory: legacy field, used only to construct the default
+    /// [`cas::LocalCas`] in [`ParseOps::new`]. New callers should
+    /// populate `cas` directly.
     pub casdir: PathBuf,
+    /// Pluggable content-addressed storage (TODO.completion/15).
+    /// Default: `LocalCas` rooted at `casdir`. Swap for `MemoryCas`
+    /// (testing), `S3Cas` (future), `IpfsCas` (future), etc.
+    pub cas: Box<dyn crate::cas::CasStore>,
     /// Verbose output (caller asked for `-v`).
     pub verbose: bool,
     /// Force inline `DATA` blocks on encrypt even when CAS is
@@ -190,6 +196,23 @@ pub struct IoConfig {
     /// (CAS-referenced `STORED ct <hash>` is the merge-friendly
     /// default whenever CAS exists). See TODO.roadmap/42.
     pub inline_data: bool,
+}
+
+impl IoConfig {
+    /// Set the CAS directory AND swap the active `LocalCas` to point
+    /// at it. Existing call sites that did `paops.io.casdir = path`
+    /// should use this instead so the trait-based backend follows.
+    ///
+    /// Backends other than `LocalCas` (e.g. `MemoryCas`, future
+    /// `S3Cas`) ignore this — callers set them once via direct field
+    /// assignment.
+    pub fn set_local_casdir(&mut self, path: PathBuf) {
+        self.casdir = path.clone();
+        self.cas = Box::new(crate::cas::LocalCas {
+            root: path,
+            verbose: self.verbose,
+        });
+    }
 }
 
 pub struct ParseOps {
@@ -258,6 +281,7 @@ impl ParseOps {
             },
             io: IoConfig {
                 casdir: Path::new("").to_path_buf(),
+                cas: Box::new(crate::cas::LocalCas::new(Path::new("").to_path_buf())),
                 verbose: false,
                 inline_data: false,
             },
@@ -416,6 +440,18 @@ impl Directive {
     /// Parse a keyword string into a `Directive`. Returns `None` for
     /// unrecognized keywords (caller decides whether that's an error
     /// or a pass-through line).
+    ///
+    /// In addition to the canonical enprot keywords, accepts RSD-spec
+    /// vocabulary as input-only aliases (the writer always emits the
+    /// canonical form):
+    ///
+    /// | Spec        | Maps to              | Why                          |
+    /// |-------------|----------------------|------------------------------|
+    /// | `CLASSIFY`  | `Directive::Begin`   | confidentiality intent       |
+    /// | `UNCLASSIFY`| `Directive::End`     | closes CLASSIFY              |
+    /// | `CLASSIFIED`| `Directive::Encrypted`| post-encryption form         |
+    /// | `SIGNED`    | `Directive::Begin`   | integrity intent             |
+    /// | `SIGNATURE` | `Directive::Encrypted`| sig payload                  |
     pub fn from_keyword(kw: &str) -> Option<Self> {
         match kw {
             "BEGIN" => Some(Directive::Begin),
@@ -428,6 +464,13 @@ impl Directive {
             "OURS" => Some(Directive::Ours),
             "THEIRS" => Some(Directive::Theirs),
             "INCLUDE" => Some(Directive::Include),
+            // RSD-spec vocabulary (input-only aliases). The writer
+            // emits the canonical enprot form on the left.
+            "CLASSIFY" => Some(Directive::Begin),
+            "UNCLASSIFY" => Some(Directive::End),
+            "CLASSIFIED" => Some(Directive::Encrypted),
+            "SIGNED" => Some(Directive::Begin),
+            "SIGNATURE" => Some(Directive::Encrypted),
             _ => None,
         }
     }
@@ -518,6 +561,24 @@ mod tests {
         assert_eq!(Command::from_keyword("STORED"), Some(Command::Stored));
         assert_eq!(Command::from_keyword("ENCRYPTED"), Some(Command::Encrypted));
         assert_eq!(Command::from_keyword("garbage"), None);
+    }
+
+    #[test]
+    fn directive_accepts_rsd_spec_vocabulary_as_aliases() {
+        // Per TODO.completion/07: RSD spec uses classification-native
+        // vocabulary. Accept as input-only aliases; the writer emits
+        // the canonical enprot form.
+        assert_eq!(Directive::from_keyword("CLASSIFY"), Some(Directive::Begin));
+        assert_eq!(Directive::from_keyword("UNCLASSIFY"), Some(Directive::End));
+        assert_eq!(
+            Directive::from_keyword("CLASSIFIED"),
+            Some(Directive::Encrypted)
+        );
+        assert_eq!(Directive::from_keyword("SIGNED"), Some(Directive::Begin));
+        assert_eq!(
+            Directive::from_keyword("SIGNATURE"),
+            Some(Directive::Encrypted)
+        );
     }
 
     #[test]

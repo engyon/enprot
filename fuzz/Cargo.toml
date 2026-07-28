@@ -9,6 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+enprot = { path = ".." }
 
 [[bin]]
 name = "parse_no_panic"
@@ -19,5 +20,17 @@ doc = false
 [[bin]]
 name = "conflict_well_formed"
 path = "fuzz_targets/conflict_well_formed.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_extfields"
+path = "fuzz_targets/parse_extfields.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "merge_driver"
+path = "fuzz_targets/merge_driver.rs"
 test = false
 doc = false

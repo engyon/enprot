@@ -1289,7 +1289,7 @@ fn run_attest(a: AttestSubcmd) -> Result<()> {
     // has no CAS-referenced content (the chain anchor just needs to
     // hash the file state).
     if paops.io.casdir.as_os_str().is_empty() {
-        paops.io.casdir = PathBuf::from(".");
+        paops.io.set_local_casdir(PathBuf::from("."));
     }
 
     let attested = provenance::attest(&tree, &priv_pem, &paops.io.casdir, Vec::new())?;
@@ -1551,11 +1551,11 @@ fn run(
     };
 
     if let Some(dir) = common.casdir.clone() {
-        paops.io.casdir = dir;
+        paops.io.set_local_casdir(dir);
     } else if Path::new("cas").is_dir() {
-        paops.io.casdir = Path::new("cas").to_path_buf();
+        paops.io.set_local_casdir(Path::new("cas").to_path_buf());
     } else {
-        paops.io.casdir = Path::new(".").to_path_buf();
+        paops.io.set_local_casdir(Path::new(".").to_path_buf());
     }
 
     paops.io.verbose = common.verbose && !common.quiet;
@@ -2318,11 +2318,11 @@ fn resolve_separators(common: &CommonArgs) -> (String, String) {
 /// Apply common args to ParseOps (shared by `run` and `verify_files`).
 fn apply_common(common: &CommonArgs, paops: &mut ParseOps) {
     if let Some(dir) = common.casdir.clone() {
-        paops.io.casdir = dir;
+        paops.io.set_local_casdir(dir);
     } else if Path::new("cas").is_dir() {
-        paops.io.casdir = Path::new("cas").to_path_buf();
+        paops.io.set_local_casdir(Path::new("cas").to_path_buf());
     } else {
-        paops.io.casdir = Path::new(".").to_path_buf();
+        paops.io.set_local_casdir(Path::new(".").to_path_buf());
     }
     paops.io.verbose = common.verbose && !common.quiet;
     paops.io.inline_data = common.inline || common.casdir.is_none();

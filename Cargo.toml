@@ -84,6 +84,10 @@ harness = false
 name = "parser"
 harness = false
 
+[[bench]]
+name = "comparison"
+harness = false
+
 [[test]]
 name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip.rs"
@@ -93,3 +97,12 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+# Reproducible builds (TODO.completion/12). Abort-on-panic keeps
+# binaries free of unwind tables that vary by build env; debug
+# symbols limited to line tables (no full paths embedded).
+panic = "abort"
+debug = "line-tables-only"
+
+[profile.release.package."*"]
+# Strip build-env-specific debug info from dependencies too.
+debug = "line-tables-only"
