@@ -4,10 +4,57 @@
 [![MSRV 1.88](https://img.shields.io/badge/MSRV-1.88-blue)](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0.html)
 [![crates.io](https://img.shields.io/crates/v/enprot)](https://crates.io/crates/enprot)
 
-Enprot is a confidentiality processor for text and source code files.
-It lets you embed encrypted, stored, and authenticated segments directly
-inside any text-based file — source code, documentation, configuration —
-without breaking the host language's syntax.
+**Document confidentiality and provenance for collaborative text.**
+enprot embeds classification levels, content-addressed storage, and
+signed chain anchors inside any text-based file — without breaking
+the host language's syntax.
+
+Built on the [Ribose Standard for Engyon Protected Text][rsd-spec]
+(RSD 12001), enprot implements the document edge of a complete
+trust stack: standalone for individual use; integrated with
+[Confium][confium] for distributed trust, threshold signing, and
+hardware key custody.
+
+[rsd-spec]: https://github.com/riboseinc/rsd-engyon-syntax
+[confium]: https://github.com/confium/confium
+
+### When to use enprot
+
+| Need | Use enprot if… |
+|---|---|
+| Encrypt parts of a source file | You want WORD-level confidentiality, not whole-file |
+| Multi-level classification in one doc | Same file carries PUBLIC + CONFIDENTIAL + SECRET segments |
+| Tamper-evident edit history | Chain anchors sign every transform; verify without decrypting |
+| Merge-friendly signed regions | CONFLICT blocks keep the file valid host-language source |
+| PQ-ready signatures | ML-DSA, ML-KEM, composite Ed25519+ML-DSA ship today |
+| Distributed signing authority | Confium integration (planned) for k-of-n threshold |
+| Hardware key custody | Confium stores: TPM, HSM, PKCS#11, OpenPGP card, cloud KMS |
+| Integrity without confidentiality | IMMUTABLE/MUTABLE blocks per RSD spec |
+
+### How enprot compares
+
+| Feature | enprot | git-crypt | sops | age | sigstore |
+|---|---|---|---|---|---|
+| Encryption in source comments | yes | yes | partial (YAML/JSON) | no | no |
+| Content-addressed storage | yes | no | no | no | yes (Rekor) |
+| Signed chain anchors in-file | yes | no | no | no | partial (sidecar) |
+| Merge-friendly regions | yes | no | no | no | no |
+| Multi-level classification | yes | no | no | no | no |
+| IMMUTABLE integrity blocks | yes | no | no | no | no |
+| PQ-ready (ML-DSA, ML-KEM) | yes | no | no | no | partial |
+| OpenPGP interop | yes (rnp-rs) | via GPG | no | no | no |
+| Threshold signing | via Confium | no | no | no | no |
+| Hardware key custody | via Confium | partial (GPG) | partial | no | yes (KMS) |
+| Audit transparency log | via Confium | no | no | no | yes (Rekor) |
+
+### Buyer ladder
+
+```
+Phase 1 (now):        Individual         → enprot standalone (this repo)
+Phase 2 (6-12 mo):    Team / release eng → enprot + shared Confium daemon
+Phase 3 (12-24 mo):   Enterprise         → + Confium stores (TPM/HSM) + attributes
+Phase 4 (24+ mo):     Cross-org          → + Confium BLS threshold + transparency
+```
 
 - **Human-editable markup**: EPT directives sit inside host-language
   comments, so files stay valid C, Rust, Python, Markdown, HTML, or LaTeX.
@@ -114,6 +161,21 @@ Directive types:
 | `CHAIN key:val …` | Signed chain anchor — tamper-evident history. |
 | `INCLUDE <hash>` | Cross-file CAS reference (provenance manifests). |
 | `CONFLICT <WORD>` | Merge-driver conflict marker (resolved by `enprot resolve`). |
+| `IMMUTABLE <name> <hashalg>=<hash>` | Content-addressed integrity block (RSD spec). Verified by `enprot verify`. |
+| `MUTABLE <name>` | Closes an `IMMUTABLE` block. |
+| `MUTED <name> <hashalg>=<hash>` | Sanitized `IMMUTABLE` — content replaced by hash reference (in CAS). |
+| `KEY <name> <hashalg>=<hash>` | Declares a key binding by content hash (RSD spec). |
+| `UNKEY <name>` | Ends a `KEY` binding scope. |
+| `CERT <name> <hashalg>=<hash>` | Declares a public-key cert binding by content hash. |
+| `UNCERT <name>` | Ends a `CERT` binding scope. |
+
+**RSD spec aliases** (input-only; writer emits canonical form):
+
+| Spec vocabulary | Canonical enprot form |
+|---|---|
+| `CLASSIFY` / `UNCLASSIFY` | `BEGIN` / `END` |
+| `CLASSIFIED` | `ENCRYPTED` |
+| `SIGNED` / `SIGNATURE` | `BEGIN` / `ENCRYPTED` |
 
 ### Host-language separators
 
