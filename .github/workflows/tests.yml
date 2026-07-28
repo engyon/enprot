@@ -46,10 +46,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows is excluded until librnp is packaged for it (vcpkg
-        # port or vendored build). Tracked in TODO.finalize/52.
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable, beta, "1.88"]
+        exclude:
+          # Beta on Windows is low-value; stable + 1.88 catch Windows
+          # regressions without burning the extra minutes.
+          - os: windows-latest
+            rust: beta
     name: Test on ${{ matrix.rust }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
