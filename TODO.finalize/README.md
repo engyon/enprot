@@ -63,4 +63,4 @@ target — implementation complete, first CI run pending.
 | 49 | `49-no-unwrap-in-prod.md`      | done          | — |
 | 50 | `50-docs-markdown-migration.md`| done (adoc deletion pending user OK) | — |
 | 51 | `51-ohos-build-target.md`     | done (impl complete; CI verification pending first run) | — |
-| 52 | `52-windows-librnp.md`        | specified (Windows needs librnp via vcpkg) | — |
+| 52 | `52-windows-librnp.md`        | done | — |
