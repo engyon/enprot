@@ -99,17 +99,18 @@ Push-Location -LiteralPath "$WORKDIR\rnp-src\build"
 # REQUIRED for the CLI tool (src/rnp/), but we only need the library
 # (librnp) for rnp-rs. The stubs satisfy find_path without adding
 # real POSIX compat code.
-$stubDir = "$Env:PREFIX/include/posix-stubs"
-New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
-Set-Content -Path "$stubDir/dirent.h" -Value "/* stub — rnp CLI not built */"
-Set-Content -Path "$stubDir/getopt.h" -Value "/* stub — rnp CLI not built */"
+# Stub POSIX headers — rnp's src/common/getoptwin.h includes
+# <getopt.h> and <dirent.h> which MSVC doesn't have. Put stubs
+# directly in PREFIX/include so the compiler finds them via -I.
+Set-Content -Path "$Env:PREFIX/include/dirent.h" -Value "/* stub — not used by librnp */"
+Set-Content -Path "$Env:PREFIX/include/getopt.h" -Value "/* stub — not used by librnp */"
 # Stub getopt.lib — CMake's find_library(GETOPT_LIBRARY getopt) needs
 # an actual .lib file even though we never link the CLI. Create a
 # minimal empty static lib that satisfies the find_library call.
-Set-Content -Path "$stubDir/getopt_stub.c" -Value "int __enprot_getopt_stub(void) { return 0; }"
-Push-Location $stubDir
+Set-Content -Path "$Env:PREFIX/include/getopt_stub.c" -Value "int __enprot_getopt_stub(void) { return 0; }"
+Push-Location "$Env:PREFIX/include"
 & cl /c /MT getopt_stub.c 2>&1 | Out-Null
-& lib /OUT:getopt.lib getopt_stub.obj 2>&1 | Out-Null
+& lib /OUT:"$Env:PREFIX/lib/getopt.lib" getopt_stub.obj 2>&1 | Out-Null
 Pop-Location
 
 & cmake .. `
@@ -128,9 +129,9 @@ Pop-Location
     -DBOTAN_LIBRARY="$Env:PREFIX/lib/botan-3.lib" `
     -DJSON-C_INCLUDE_DIR="$Env:PREFIX/include/json-c" `
     -DJSON-C_LIBRARY="$Env:PREFIX/lib/json-c.lib" `
-    -DDIRENT_INCLUDE_DIR="$stubDir" `
-    -DGETOPT_INCLUDE_DIR="$stubDir" `
-    -DGETOPT_LIBRARY="$stubDir/getopt.lib" `
+    -DDIRENT_INCLUDE_DIR="$Env:PREFIX/include" `
+    -DGETOPT_INCLUDE_DIR="$Env:PREFIX/include" `
+    -DGETOPT_LIBRARY="$Env:PREFIX/lib/getopt.lib" `
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake configure failed" }
 
