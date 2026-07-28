@@ -6,4 +6,4 @@
 /fuzz/corpus/*/!(*seed*)
 /fuzz/artifacts/
 /fuzz/target/
-[0-9a-f]*
+[0-9a-f]{64}
