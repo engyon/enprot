@@ -92,6 +92,11 @@ Push-Location -LiteralPath "$WORKDIR\rnp-src\build"
 # features that need botan modules we don't ship (PQC needs DILITHIUM,
 # KYBER; crypto-refresh needs HKDF which is enabled but they also want
 # the broader refresh surface).
+# Point librnp's CMake at the just-built botan + json-c. Provide
+# Windows-compatible POSIX headers (dirent.h, getopt.h) from rnp's
+# own src/common/ directory — MSVC doesn't ship them.
+$rnpCommon = "$WORKDIR\rnp-src\src\common"
+
 & cmake .. `
     -DCMAKE_BUILD_TYPE=Release `
     -DBUILD_SHARED_LIBS=OFF `
@@ -108,6 +113,8 @@ Push-Location -LiteralPath "$WORKDIR\rnp-src\build"
     -DBOTAN_LIBRARY="$Env:PREFIX/lib/botan-3.lib" `
     -DJSON-C_INCLUDE_DIR="$Env:PREFIX/include/json-c" `
     -DJSON-C_LIBRARY="$Env:PREFIX/lib/json-c.lib" `
+    -DDIRENT_INCLUDE_DIR="$rnpCommon" `
+    -DGETOPT_INCLUDE_DIR="$rnpCommon" `
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake configure failed" }
 
