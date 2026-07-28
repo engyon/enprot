@@ -2055,6 +2055,24 @@ fn list_tree<W: Write>(tree: &etree::TextTree, depth: usize, out: &mut W) -> Res
             etree::TextNode::Conflict { keyw, .. } => {
                 writeln!(out, "{}CONFLICT  {}", indent, keyw)?;
             }
+            etree::TextNode::Immutable { name, .. } => {
+                writeln!(out, "{}IMMUTABLE {}", indent, name)?;
+            }
+            etree::TextNode::Muted { name, .. } => {
+                writeln!(out, "{}MUTED     {}", indent, name)?;
+            }
+            etree::TextNode::Key { name, .. } => {
+                writeln!(out, "{}KEY       {}", indent, name)?;
+            }
+            etree::TextNode::Unkey { name } => {
+                writeln!(out, "{}UNKEY     {}", indent, name)?;
+            }
+            etree::TextNode::Cert { name, .. } => {
+                writeln!(out, "{}CERT      {}", indent, name)?;
+            }
+            etree::TextNode::Uncert { name } => {
+                writeln!(out, "{}UNCERT    {}", indent, name)?;
+            }
         }
     }
     Ok(())
@@ -2155,6 +2173,40 @@ fn list_tree_to_nodes(tree: &etree::TextTree, depth: usize, out: &mut Vec<output
                     payload: None,
                     children: Vec::new(),
                 });
+            }
+            etree::TextNode::Immutable { name, .. } => {
+                out.push(output::ListNode {
+                    kind: "immutable",
+                    word: name.clone(),
+                    depth,
+                    cipher: None,
+                    pbkdf: None,
+                    cas: None,
+                    signer: None,
+                    payload: None,
+                    children: Vec::new(),
+                });
+            }
+            etree::TextNode::Muted { name, .. } => {
+                out.push(output::ListNode {
+                    kind: "muted",
+                    word: name.clone(),
+                    depth,
+                    cipher: None,
+                    pbkdf: None,
+                    cas: None,
+                    signer: None,
+                    payload: None,
+                    children: Vec::new(),
+                });
+            }
+            etree::TextNode::Key { name: _, .. }
+            | etree::TextNode::Unkey { name: _ }
+            | etree::TextNode::Cert { name: _, .. }
+            | etree::TextNode::Uncert { name: _ } => {
+                // Key/cert declarations are metadata; skip in list output
+                // for now. Future: surface in a separate "declarations"
+                // section.
             }
         }
     }

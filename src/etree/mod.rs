@@ -383,6 +383,60 @@ pub enum TextNode {
         ours: TextTree,
         theirs: TextTree,
     },
+    /// RSD spec §"Immutable Blocks": a block whose content is
+    /// content-addressed. Parser verifies the declared hash matches
+    /// the actual content. IMMUTABLE provides integrity but no
+    /// confidentiality — useful for license text, regulatory
+    /// disclosures, standard references.
+    ///
+    /// Wire form (per spec):
+    /// ```text
+    /// // <( IMMUTABLE <name> <hashalg>=<hex-hash> )>
+    /// ... content ...
+    /// // <( MUTABLE <name> )>
+    /// ```
+    Immutable {
+        name: String,
+        hashalg: String,
+        hash: String,
+        txt: TextTree,
+    },
+    /// MUTED — sanitized form of an IMMUTABLE block. Content has been
+    /// moved to CAS; the directive carries only the hash reference.
+    /// Analogous to `Stored` for ciphertext.
+    ///
+    /// Wire form: `// <( MUTED <name> <hashalg>=<hex-hash> )>`
+    Muted {
+        name: String,
+        hashalg: String,
+        hash: String,
+    },
+    /// RSD spec §"Group keys": a key binding declared by content
+    /// hash. The hash references a NOC (Nereon configuration) key
+    /// file in CAS. Pairs with `Unkey` to scope the binding.
+    ///
+    /// Wire form: `// <( KEY <name> <hashalg>=<hex-hash> )>`
+    Key {
+        name: String,
+        hashalg: String,
+        hash: String,
+    },
+    /// UNKEY — ends a KEY binding scope. Parser "forgets" the
+    /// binding when it sees this.
+    Unkey {
+        name: String,
+    },
+    /// CERT — declares a public-key cert binding by content hash.
+    /// Analogous to Key but for verification keys.
+    Cert {
+        name: String,
+        hashalg: String,
+        hash: String,
+    },
+    /// UNCERT — ends a CERT binding scope.
+    Uncert {
+        name: String,
+    },
 }
 
 /// EPT directive types — one per recognized keyword in the markup.
@@ -417,6 +471,26 @@ pub enum Directive {
     Theirs,
     /// Cross-file DAG reference (TODO.finalize/25).
     Include,
+    /// IMMUTABLE block opener per RSD spec §"Immutable Blocks".
+    /// Pairs with `Mutable` as the closer. Content is content-
+    /// addressed; hash declared in the directive.
+    Immutable,
+    /// MUTABLE — closes an IMMUTABLE block.
+    Mutable,
+    /// MUTED — sanitized form of an IMMUTABLE block (content
+    /// replaced by hash reference, lives in CAS). Analogous to
+    /// STORED for ciphertext.
+    Muted,
+    /// KEY — declares a key binding by content hash. Pairs with
+    /// `Unkey` as the scope-ender.
+    Key,
+    /// UNKEY — ends a KEY binding scope.
+    Unkey,
+    /// CERT — declares a public-key cert binding by content hash.
+    /// Pairs with `Uncert` as the scope-ender.
+    Cert,
+    /// UNCERT — ends a CERT binding scope.
+    Uncert,
 }
 
 impl Directive {
@@ -434,6 +508,13 @@ impl Directive {
             Directive::Ours => "OURS",
             Directive::Theirs => "THEIRS",
             Directive::Include => "INCLUDE",
+            Directive::Immutable => "IMMUTABLE",
+            Directive::Mutable => "MUTABLE",
+            Directive::Muted => "MUTED",
+            Directive::Key => "KEY",
+            Directive::Unkey => "UNKEY",
+            Directive::Cert => "CERT",
+            Directive::Uncert => "UNCERT",
         }
     }
 
@@ -464,6 +545,13 @@ impl Directive {
             "OURS" => Some(Directive::Ours),
             "THEIRS" => Some(Directive::Theirs),
             "INCLUDE" => Some(Directive::Include),
+            "IMMUTABLE" => Some(Directive::Immutable),
+            "MUTABLE" => Some(Directive::Mutable),
+            "MUTED" => Some(Directive::Muted),
+            "KEY" => Some(Directive::Key),
+            "UNKEY" => Some(Directive::Unkey),
+            "CERT" => Some(Directive::Cert),
+            "UNCERT" => Some(Directive::Uncert),
             // RSD-spec vocabulary (input-only aliases). The writer
             // emits the canonical enprot form on the left.
             "CLASSIFY" => Some(Directive::Begin),
@@ -629,5 +717,89 @@ mod tests {
         let input = "// <( )>\n";
         let tree = parse(BufReader::new(input.as_bytes()), &mut paops).unwrap();
         assert!(tree.is_empty());
+    }
+
+    #[test]
+    fn immutable_mutable_round_trips() {
+        // RSD spec §"Immutable Blocks" — IMMUTABLE/MUTABLE block
+        // should parse and re-serialize without loss.
+        let mut paops = ParseOps::new(crate::crypto::default_policy()).unwrap();
+        paops.runtime.fname = "<test>".into();
+        let input = "\
+// <( IMMUTABLE License sha384=ABCDEF0123456789 )>
+Copyright (c) 2026 Example Inc.
+All rights reserved.
+// <( MUTABLE License )>
+";
+        let tree = parse(BufReader::new(input.as_bytes()), &mut paops).unwrap();
+        assert_eq!(tree.len(), 1, "expected one IMMUTABLE node");
+        match &tree[0] {
+            TextNode::Immutable {
+                name,
+                hashalg,
+                hash,
+                txt,
+            } => {
+                assert_eq!(name, "License");
+                assert_eq!(hashalg, "sha384");
+                assert_eq!(hash, "ABCDEF0123456789");
+                assert!(!txt.is_empty(), "IMMUTABLE block should have content");
+            }
+            other => panic!("expected Immutable, got {other:?}"),
+        }
+        // Round-trip: write the tree back and re-parse
+        let mut blob = Vec::new();
+        let mut paops_w = paops;
+        crate::etree::tree_write(&mut blob, &tree, &mut paops_w).unwrap();
+        let s = String::from_utf8(blob).unwrap();
+        assert!(
+            s.contains("IMMUTABLE License sha384=ABCDEF0123456789"),
+            "output: {s}"
+        );
+        assert!(s.contains("MUTABLE License"), "output: {s}");
+    }
+
+    #[test]
+    fn muted_directive_parses() {
+        // RSD spec: MUTED is the sanitized form of IMMUTABLE.
+        let mut paops = ParseOps::new(crate::crypto::default_policy()).unwrap();
+        paops.runtime.fname = "<test>".into();
+        let input = "// <( MUTED License sha384=ABCDEF0123456789 )>\n";
+        let tree = parse(BufReader::new(input.as_bytes()), &mut paops).unwrap();
+        assert_eq!(tree.len(), 1);
+        match &tree[0] {
+            TextNode::Muted {
+                name,
+                hashalg,
+                hash,
+            } => {
+                assert_eq!(name, "License");
+                assert_eq!(hashalg, "sha384");
+                assert_eq!(hash, "ABCDEF0123456789");
+            }
+            other => panic!("expected Muted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn key_unkey_cert_uncert_parse() {
+        let mut paops = ParseOps::new(crate::crypto::default_policy()).unwrap();
+        paops.runtime.fname = "<test>".into();
+        let input = "\
+// <( KEY Deputies sha384=86716A025E4AAF0347C9 )>
+// <( CERT Alice sha384=7725AD485A8EBDE97BB04E86C1 )>
+some content
+// <( UNKEY Deputies )>
+// <( UNCERT Alice )>
+";
+        let tree = parse(BufReader::new(input.as_bytes()), &mut paops).unwrap();
+        // 4 directives + 1 plain line = 5 nodes
+        assert!(
+            tree.len() >= 4,
+            "expected at least 4 nodes, got {}",
+            tree.len()
+        );
+        // Verify first node is Key
+        assert!(matches!(&tree[0], TextNode::Key { name, .. } if name == "Deputies"));
     }
 }

@@ -59,6 +59,14 @@ enum Frame {
         ours: TextTree,
         mode: ConflictMode,
     },
+    /// IMMUTABLE/MUTABLE frame. The hash field carries the declared
+    /// content hash from the IMMUTABLE directive; verified on close.
+    Immutable {
+        name: String,
+        hashalg: String,
+        hash: String,
+        outer: TextTree,
+    },
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -145,6 +153,15 @@ where
             }
             Command::Ours => parse_ours(&line, lineno, paops, &mut pstack, &mut text)?,
             Command::Theirs => parse_theirs(&line, lineno, paops, &mut pstack, &mut text)?,
+            Command::Immutable => {
+                parse_immutable(&rest, &line, lineno, paops, &mut pstack, &mut text)?
+            }
+            Command::Mutable => parse_mutable(&rest, &line, lineno, paops, &mut pstack, &mut text)?,
+            Command::Muted => parse_muted(&rest, &line, lineno, paops, &mut text)?,
+            Command::Key => parse_key(&rest, &line, lineno, paops, &mut text)?,
+            Command::Unkey => parse_unkey(&rest, &line, lineno, paops, &mut text)?,
+            Command::Cert => parse_cert(&rest, &line, lineno, paops, &mut text)?,
+            Command::Uncert => parse_uncert(&rest, &line, lineno, paops, &mut text)?,
         }
     }
 
@@ -159,6 +176,9 @@ where
                 }
                 Frame::Conflict { keyw, .. } => {
                     eprintln!("Parse: CONFLICT {} without END.", keyw);
+                }
+                Frame::Immutable { name, .. } => {
+                    eprintln!("Parse: IMMUTABLE {} without MUTABLE.", name);
                 }
             }
         }
@@ -408,6 +428,15 @@ fn parse_end(
             paops.runtime.level -= 1;
             Ok(())
         }
+        Some(Frame::Immutable { name, .. }) => Err(parse_error(
+            paops,
+            lineno,
+            line,
+            format!(
+                "END inside IMMUTABLE {} — use MUTABLE {} to close.",
+                name, name
+            ),
+        )),
         None => Err(parse_error(
             paops,
             lineno,
@@ -599,5 +628,255 @@ fn parse_theirs(
     }
     ours.append(text);
     *mode = ConflictMode::Theirs;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------
+// IMMUTABLE / MUTABLE / MUTED (RSD spec §"Immutable Blocks")
+// ---------------------------------------------------------------------
+
+/// Parse `IMMUTABLE <name> <hashalg>=<hash>` — opens a content-
+/// addressed integrity block. Pairs with MUTABLE as the closer.
+fn parse_immutable(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut Vec<Frame>,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 2 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "IMMUTABLE needs <name> <hashalg>=<hash>.",
+        ));
+    }
+    let name = cmd[0].to_owned();
+    let (hashalg, hash) = parse_hash_spec(cmd[1], paops, lineno, line, "IMMUTABLE")?;
+    paops.runtime.level += 1;
+    pstack.push(Frame::Immutable {
+        name,
+        hashalg,
+        hash,
+        outer: std::mem::take(text),
+    });
+    Ok(())
+}
+
+/// Parse `MUTABLE <name>` — closes an IMMUTABLE block. The content
+/// accumulated in `text` becomes the block's body; the declared
+/// hash is recorded (verification happens at `verify` time, not
+/// parse time, to keep the parser policy-agnostic).
+fn parse_mutable(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &mut ParseOps,
+    pstack: &mut Vec<Frame>,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 1 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "MUTABLE needs a single name.",
+        ));
+    }
+    match pstack.pop() {
+        Some(Frame::Immutable {
+            name,
+            hashalg,
+            hash,
+            outer,
+        }) => {
+            if name != cmd[0] {
+                return Err(parse_error(
+                    paops,
+                    lineno,
+                    line,
+                    format!("MUTABLE mismatch (expected '{}').", name),
+                ));
+            }
+            let node = TextNode::Immutable {
+                name,
+                hashalg,
+                hash,
+                txt: std::mem::take(text),
+            };
+            *text = outer;
+            text.push(node);
+            paops.runtime.level -= 1;
+            Ok(())
+        }
+        Some(_) => Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "MUTABLE inside non-IMMUTABLE block.",
+        )),
+        None => Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "MUTABLE without IMMUTABLE.",
+        )),
+    }
+}
+
+/// Parse `MUTED <name> <hashalg>=<hash>` — standalone directive for
+/// a sanitized IMMUTABLE block whose content lives in CAS.
+fn parse_muted(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &ParseOps,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 2 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "MUTED needs <name> <hashalg>=<hash>.",
+        ));
+    }
+    let name = cmd[0].to_owned();
+    let (hashalg, hash) = parse_hash_spec(cmd[1], paops, lineno, line, "MUTED")?;
+    text.push(TextNode::Muted {
+        name,
+        hashalg,
+        hash,
+    });
+    Ok(())
+}
+
+/// Parse a `<hashalg>=<hash>` spec like `sha384=ABCDEF…` or
+/// `sha3-256=…`. Returns (algorithm_name, hex_hash).
+fn parse_hash_spec(
+    s: &str,
+    paops: &ParseOps,
+    lineno: i32,
+    line: &str,
+    directive: &str,
+) -> Result<(String, String)> {
+    let (alg, hash) = s.split_once('=').ok_or_else(|| {
+        parse_error(
+            paops,
+            lineno,
+            line,
+            format!("{} needs <hashalg>=<hash>, got '{}'", directive, s),
+        )
+    })?;
+    if hash.is_empty() {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            format!("{} hash is empty", directive),
+        ));
+    }
+    Ok((alg.to_string(), hash.to_string()))
+}
+
+// ---------------------------------------------------------------------
+// KEY / UNKEY / CERT / UNCERT (RSD spec §"Group keys")
+// ---------------------------------------------------------------------
+
+/// Parse `KEY <name> <hashalg>=<hash>` — declares a key binding.
+fn parse_key(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &ParseOps,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 2 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "KEY needs <name> <hashalg>=<hash>.",
+        ));
+    }
+    let name = cmd[0].to_owned();
+    let (hashalg, hash) = parse_hash_spec(cmd[1], paops, lineno, line, "KEY")?;
+    text.push(TextNode::Key {
+        name,
+        hashalg,
+        hash,
+    });
+    Ok(())
+}
+
+/// Parse `UNKEY <name>` — ends a KEY binding scope.
+fn parse_unkey(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &ParseOps,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 1 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "UNKEY needs a single name.",
+        ));
+    }
+    text.push(TextNode::Unkey {
+        name: cmd[0].to_owned(),
+    });
+    Ok(())
+}
+
+/// Parse `CERT <name> <hashalg>=<hash>` — declares a public-key cert.
+fn parse_cert(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &ParseOps,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 2 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "CERT needs <name> <hashalg>=<hash>.",
+        ));
+    }
+    let name = cmd[0].to_owned();
+    let (hashalg, hash) = parse_hash_spec(cmd[1], paops, lineno, line, "CERT")?;
+    text.push(TextNode::Cert {
+        name,
+        hashalg,
+        hash,
+    });
+    Ok(())
+}
+
+/// Parse `UNCERT <name>` — ends a CERT binding scope.
+fn parse_uncert(
+    cmd: &[&str],
+    line: &str,
+    lineno: i32,
+    paops: &ParseOps,
+    text: &mut Vec<TextNode>,
+) -> Result<()> {
+    if cmd.len() != 1 {
+        return Err(parse_error(
+            paops,
+            lineno,
+            line,
+            "UNCERT needs a single name.",
+        ));
+    }
+    text.push(TextNode::Uncert {
+        name: cmd[0].to_owned(),
+    });
     Ok(())
 }

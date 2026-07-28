@@ -131,6 +131,18 @@ fn partition(tree: &TextTree) -> Vec<Segment> {
                 }
                 out.push(Segment::Atom(node.clone()));
             }
+            // RSD spec directives are atomic atoms for merge purposes.
+            TextNode::Immutable { .. }
+            | TextNode::Muted { .. }
+            | TextNode::Key { .. }
+            | TextNode::Unkey { .. }
+            | TextNode::Cert { .. }
+            | TextNode::Uncert { .. } => {
+                if !plain_buf.is_empty() {
+                    out.push(Segment::Plain(std::mem::take(&mut plain_buf)));
+                }
+                out.push(Segment::Atom(node.clone()));
+            }
         }
     }
     if !plain_buf.is_empty() {

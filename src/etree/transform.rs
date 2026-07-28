@@ -47,6 +47,17 @@ pub fn transform(text_in: &TextTree, paops: &mut crate::etree::ParseOps) -> Resu
             TextNode::Chain { .. } | TextNode::Include { .. } | TextNode::Conflict { .. } => {
                 node.clone()
             }
+            // IMMUTABLE/MUTED/KEY/CERT/UNKEY/UNCERT are integrity and
+            // key-binding directives, not confidentiality transforms.
+            // They pass through unchanged. Future `store`/`fetch` for
+            // IMMUTABLE↔MUTED sanitization will be separate transform
+            // modes.
+            TextNode::Immutable { .. }
+            | TextNode::Muted { .. }
+            | TextNode::Key { .. }
+            | TextNode::Unkey { .. }
+            | TextNode::Cert { .. }
+            | TextNode::Uncert { .. } => node.clone(),
             TextNode::BeginEnd { keyw, txt } => transform_begin_end(keyw, txt, paops)?,
             TextNode::Encrypted {
                 keyw,

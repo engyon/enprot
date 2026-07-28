@@ -217,6 +217,14 @@ fn print_tree<W: Write>(out: &mut W, tree: &TextTree, indent: &str) -> Result<()
                 writeln!(out, "{}INCLUDE {}", indent, &hash[..hash.len().min(16)])?
             }
             TextNode::Conflict { keyw, .. } => writeln!(out, "{}CONFLICT {}", indent, keyw)?,
+            TextNode::Immutable { name, hashalg, .. } => {
+                writeln!(out, "{}IMMUTABLE {} {}=…", indent, name, hashalg)?
+            }
+            TextNode::Muted { name, .. } => writeln!(out, "{}MUTED {}", indent, name)?,
+            TextNode::Key { name, .. } => writeln!(out, "{}KEY {}", indent, name)?,
+            TextNode::Unkey { name } => writeln!(out, "{}UNKEY {}", indent, name)?,
+            TextNode::Cert { name, .. } => writeln!(out, "{}CERT {}", indent, name)?,
+            TextNode::Uncert { name } => writeln!(out, "{}UNCERT {}", indent, name)?,
         }
     }
     Ok(())
