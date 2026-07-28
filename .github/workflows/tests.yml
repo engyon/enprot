@@ -77,9 +77,6 @@ jobs:
           $Env:Path += ";$Env:PREFIX/lib"
           $Env:TARGET = "x86_64-pc-windows-msvc"
           ./ci/install.ps1
-          New-Item -ItemType Directory -Force -Path '.cargo'
-          $config = "[target.$Env:TARGET.botan-3]`nrustc-link-search = [`"native=$Env:PREFIX/lib`"]`nrustc-link-lib = [`"static=botan-3`"]"
-          Set-Content -Path .cargo\config -Value $config
       - name: Build
         run: cargo build --verbose
       - name: Run tests
