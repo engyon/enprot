@@ -54,7 +54,7 @@ pub fn build_manifest(dir: &Path, casdir: &Path) -> Result<TextTree> {
     }
     let policy = crate::crypto::default_policy();
     let mut paops = ParseOps::new(policy)?;
-    paops.io.casdir = casdir.to_path_buf();
+    paops.io.set_local_casdir(casdir.to_path_buf());
     paops.runtime.fname = dir.display().to_string();
 
     let mut files = collect_files(dir)?;
@@ -131,7 +131,7 @@ pub fn attest(
 
     let policy = crate::crypto::default_policy();
     let mut paops = ParseOps::new(policy)?;
-    paops.io.casdir = casdir.to_path_buf();
+    paops.io.set_local_casdir(casdir.to_path_buf());
     paops.runtime.fname = "<provenance-attest>".into();
 
     // Derive the signer fingerprint (we need it for the SignerId).

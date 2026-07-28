@@ -43,7 +43,16 @@ fn manifest_walks_tree_and_emits_include_per_file() {
     assert!(body.contains(sub_path), "missing {sub_path} in: {body}");
     // CAS directory should contain 2 hash-named files.
     let cas_entries = std::fs::read_dir(cas.path()).unwrap().count();
-    assert_eq!(cas_entries, 2);
+    assert_eq!(
+        cas_entries,
+        2,
+        "expected 2 CAS blobs, got {}: {:?}",
+        cas_entries,
+        std::fs::read_dir(cas.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
