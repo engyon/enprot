@@ -178,6 +178,102 @@ pub fn tree_write<W: Write>(outw: &mut W, text: &TextTree, paops: &mut ParseOps)
                     paops.separators.right
                 )?;
             }
+            TextNode::Immutable {
+                name,
+                hashalg,
+                hash,
+                txt,
+            } => {
+                writeln!(
+                    outw,
+                    "{} {} {} {}={} {}",
+                    paops.separators.left,
+                    Directive::Immutable.keyword(),
+                    name,
+                    hashalg,
+                    hash,
+                    paops.separators.right
+                )?;
+                paops.runtime.level += 1;
+                tree_write(outw, txt, paops)?;
+                paops.runtime.level -= 1;
+                writeln!(
+                    outw,
+                    "{} {} {} {}",
+                    paops.separators.left,
+                    Directive::Mutable.keyword(),
+                    name,
+                    paops.separators.right
+                )?;
+            }
+            TextNode::Muted {
+                name,
+                hashalg,
+                hash,
+            } => {
+                writeln!(
+                    outw,
+                    "{} {} {} {}={} {}",
+                    paops.separators.left,
+                    Directive::Muted.keyword(),
+                    name,
+                    hashalg,
+                    hash,
+                    paops.separators.right
+                )?;
+            }
+            TextNode::Key {
+                name,
+                hashalg,
+                hash,
+            } => {
+                writeln!(
+                    outw,
+                    "{} {} {} {}={} {}",
+                    paops.separators.left,
+                    Directive::Key.keyword(),
+                    name,
+                    hashalg,
+                    hash,
+                    paops.separators.right
+                )?;
+            }
+            TextNode::Unkey { name } => {
+                writeln!(
+                    outw,
+                    "{} {} {} {}",
+                    paops.separators.left,
+                    Directive::Unkey.keyword(),
+                    name,
+                    paops.separators.right
+                )?;
+            }
+            TextNode::Cert {
+                name,
+                hashalg,
+                hash,
+            } => {
+                writeln!(
+                    outw,
+                    "{} {} {} {}={} {}",
+                    paops.separators.left,
+                    Directive::Cert.keyword(),
+                    name,
+                    hashalg,
+                    hash,
+                    paops.separators.right
+                )?;
+            }
+            TextNode::Uncert { name } => {
+                writeln!(
+                    outw,
+                    "{} {} {} {}",
+                    paops.separators.left,
+                    Directive::Uncert.keyword(),
+                    name,
+                    paops.separators.right
+                )?;
+            }
         }
     }
     Ok(())

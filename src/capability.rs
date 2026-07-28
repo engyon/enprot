@@ -427,6 +427,14 @@ pub fn required_for(node: &TextNode) -> CapabilitySet {
                 }
             }
         }
+        // RSD spec directives: IMMUTABLE/MUTED/KEY/CERT are atomic
+        // metadata — no sub-nodes, no special capability requirement.
+        TextNode::Immutable { .. }
+        | TextNode::Muted { .. }
+        | TextNode::Key { .. }
+        | TextNode::Unkey { .. }
+        | TextNode::Cert { .. }
+        | TextNode::Uncert { .. } => {}
     }
     s
 }
