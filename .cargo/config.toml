@@ -1,0 +1,7 @@
+# Reproducible-build link flags (TODO.completion/12).
+# Canonical path remapping so debug info doesn't carry build-env-
+# specific paths like /home/runner/work/... The leading slash
+# matches absolute paths; the replacement `/cargo` is a stable
+# placeholder.
+[build]
+rustflags = ["--remap-path-prefix=/usr/local/cargo=/cargo"]

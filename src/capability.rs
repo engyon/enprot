@@ -133,6 +133,125 @@ pub enum Capability {
     Verifier(KeyFp),
 }
 
+// ---------------------------------------------------------------------
+// SigningProvenance (TODO.completion/10)
+//
+// Records HOW a chain anchor's signature was produced. Verifier-
+// agnostic on the wire (the signature bytes verify the same way
+// regardless), but the capability ledger / inspect / audit log
+// surfaces this metadata so auditors can answer "was this signed
+// by a single key or by a 3-of-5 threshold session?"
+// ---------------------------------------------------------------------
+
+/// What kind of signer backend produced a signature.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum SignerBackend {
+    /// Local PEM file (default `PemSigner`).
+    Pem,
+    /// OpenPGP via rnp-rs.
+    OpenPGP,
+    /// PKCS#11 hardware token.
+    Pkcs11,
+}
+
+/// Threshold signing scheme. Mirrors Confium's `confium-tc-*` crate
+/// taxonomy; extended as new threshold schemes ship.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum ThresholdScheme {
+    /// FROST over Ed25519 (`confium-tc-frost-ed25519`).
+    FrostEd25519,
+    /// FROST over ML-DSA-65 (`confium-tc-frost-ml-dsa-65`).
+    FrostMlDsa65,
+    /// FROST over P-256 (`confium-tc-frost-p256`).
+    FrostP256,
+    /// Threshold BLS for cross-org aggregation (`confium-tc-bls`).
+    Bls,
+    /// GG18 threshold ECDSA (`confium-tc-gg18`).
+    Gg18,
+    /// CMP20 threshold ECDSA over P-256 (`confium-tc-cmp20`).
+    Cmp20,
+}
+
+/// Hardware key custody backend.
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum HardwareBackend {
+    Tpm,
+    Hsm,
+    Yubikey,
+    CloudKMS,
+}
+
+/// Identifier for a threshold-signing party within a session.
+/// Opaque string; specific format depends on the daemon (Confium
+/// uses deployment-manifest actor IDs).
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct PartyId(pub String);
+
+impl fmt::Display for PartyId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// How a signature was produced. Carried by the capability ledger
+/// alongside the anchor; NOT serialized into the chain anchor wire
+/// format itself (which stays `signer:<alg>:<fp>` for verifier
+/// portability — see TODO.completion/10).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SigningProvenance {
+    /// Single-party signature from local key material.
+    /// `pubkey_fp` is the key's fingerprint; `backend` records how
+    /// the key was loaded.
+    Local {
+        pubkey_fp: KeyFp,
+        backend: SignerBackend,
+    },
+    /// Threshold signature from a Confium session (or compatible
+    /// threshold backend). `group_fp` is the aggregate pubkey
+    /// fingerprint; verifiers check this against their trust root.
+    Threshold {
+        scheme: ThresholdScheme,
+        group_fp: KeyFp,
+        threshold: u32,
+        parties_total: u32,
+        participants: Vec<PartyId>,
+        session_id: String,
+        daemon_endpoint: String,
+        completed_at_unix: i64,
+    },
+    /// Hardware-backed single-party signature (TPM/HSM/YubiKey/cloud
+    /// KMS via Confium store). Same wire bytes as Local but the
+    /// ledger records that key material never left the device.
+    HardwareBacked {
+        pubkey_fp: KeyFp,
+        backend: HardwareBackend,
+        device_id: String,
+    },
+}
+
+impl SigningProvenance {
+    /// The fingerprint verifiers check against their trust root.
+    /// For Local/HardwareBacked this is the key's own fp; for
+    /// Threshold it's the aggregate group fp.
+    pub fn signing_fingerprint(&self) -> &KeyFp {
+        match self {
+            SigningProvenance::Local { pubkey_fp, .. } => pubkey_fp,
+            SigningProvenance::Threshold { group_fp, .. } => group_fp,
+            SigningProvenance::HardwareBacked { pubkey_fp, .. } => pubkey_fp,
+        }
+    }
+
+    /// True if this signature required multiple parties to coordinate.
+    pub fn is_threshold(&self) -> bool {
+        matches!(self, SigningProvenance::Threshold { .. })
+    }
+
+    /// True if the key material stayed in hardware (TPM/HSM/etc).
+    pub fn is_hardware_backed(&self) -> bool {
+        matches!(self, SigningProvenance::HardwareBacked { .. })
+    }
+}
+
 impl Capability {
     /// One-word tier name (`viewer`, `reader`, `decryptor`, `signer`,
     /// `verifier`) suitable for `list --capabilities` output.
@@ -332,7 +451,7 @@ mod tests {
     fn reader_added_when_casdir_exists() {
         let tmp = tempfile::tempdir().unwrap();
         let mut paops = empty_paops();
-        paops.io.casdir = tmp.path().to_path_buf();
+        paops.io.set_local_casdir(tmp.path().to_path_buf());
         let caps = CapabilitySet::from_paops(&paops);
         assert!(caps.contains(&Capability::Reader));
     }
@@ -340,7 +459,9 @@ mod tests {
     #[test]
     fn reader_not_added_when_casdir_missing() {
         let mut paops = empty_paops();
-        paops.io.casdir = "/nonexistent/path/that/does/not/exist".into();
+        paops
+            .io
+            .set_local_casdir("/nonexistent/path/that/does/not/exist".into());
         let caps = CapabilitySet::from_paops(&paops);
         assert!(!caps.contains(&Capability::Reader));
     }

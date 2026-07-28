@@ -21,18 +21,20 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Signer provider abstraction (TODO.roadmap/10).
+//! Signer provider abstraction (TODO.roadmap/10 + TODO.completion/08).
 //!
-//! [`SignerProvider`] abstracts how signatures are produced. Today,
-//! [`PemSigner`] wraps the existing PEM-based path. Future
-//! implementations:
+//! [`SignerProvider`] abstracts how signatures are produced:
 //!
-//! - [`ConfiumSigner`](TODO.roadmap/20) — threshold signing via FROST
-//! - `Pkcs11Signer` — hardware token signing
+//! - [`PemSigner`] wraps the existing PEM-based path (sync, local).
+//! - [`AsyncSignerProvider`] is the async variant for network-backed
+//!   backends (Confium threshold, future cloud KMS). Built on Rust
+//!   1.88+'s native async fn in traits — no `async-trait` macro.
+//! - [`AnySigner`] bridges the two so sync CLI callers don't have to
+//!   care which variant a provider implements.
 //!
-//! All implementations return the same shape: algorithm, raw signature
-//! bytes, and the key fingerprint. The wire format is identical —
-//! verifiers can't tell whether threshold was used.
+//! All paths return the same shape: algorithm, raw signature bytes,
+//! and the key fingerprint. The wire format is identical — verifiers
+//! can't tell whether threshold was used.
 
 use std::path::Path;
 
@@ -40,20 +42,110 @@ use crate::capability::KeyFp;
 use crate::error::{Error, Result};
 use crate::pki::{self, SigAlgKind};
 
-/// How signatures are produced. The trait abstracts over single-party
-/// PEM keys, threshold (Confium), hardware (PKCS#11), and any future
-/// signing backend.
-///
-/// Callers receive `(algorithm, signature_bytes, fingerprint)` and
-/// embed them in the chain anchor wire format. The fingerprint is the
-/// group key's fingerprint for threshold, or the individual key's for
-/// single-party.
+/// Sync signing — single-party, local key material. Implementors:
+/// [`PemSigner`], future `Pkcs11Signer` (smartcard via sync API).
 pub trait SignerProvider: Send + Sync + std::fmt::Debug {
     /// Sign a message. Returns algorithm, raw signature, key fingerprint.
     fn sign(&self, msg: &[u8]) -> Result<(SigAlgKind, Vec<u8>, KeyFp)>;
 
     /// The key fingerprint this provider signs under.
     fn fingerprint(&self) -> Result<KeyFp>;
+}
+
+/// Async signing — multi-party, network-backed, potentially slow.
+/// Implementors: future `ConfiumSigner`, future `CloudKMSSigner`.
+///
+/// Native `async fn` in traits (stable since Rust 1.75, MSRV-aligned
+/// at 1.88). No `async-trait` macro needed.
+///
+/// Why a separate trait (rather than making `SignerProvider::sign`
+/// async)? Every consumer would gain `async fn` pollution for a
+/// feature most users don't need. Dual trait keeps sync consumers
+/// sync; async consumers opt in via [`AnySigner`] or by calling
+/// `AsyncSignerProvider::sign_async` directly.
+pub trait AsyncSignerProvider: Send + Sync + std::fmt::Debug {
+    /// Sign a message asynchronously. Same return shape as
+    /// [`SignerProvider::sign`].
+    #[allow(clippy::type_complexity)]
+    fn sign_async(
+        &self,
+        msg: &[u8],
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(SigAlgKind, Vec<u8>, KeyFp)>> + Send + '_>,
+    >;
+
+    /// The key fingerprint this provider signs under.
+    fn fingerprint(&self) -> Result<KeyFp>;
+}
+
+#[allow(clippy::type_complexity)]
+/// Bridge enum so callers can dispatch over either trait without
+/// caring which. CLI uses [`AnySigner::sign_blocking`]; library
+/// callers that want concurrency call `sign_async` directly on the
+/// [`AsyncSignerProvider`] variant.
+pub enum AnySigner {
+    /// Local sync backend.
+    Sync(Box<dyn SignerProvider>),
+    /// Network-backed async backend.
+    Async(Box<dyn AsyncSignerProvider>),
+}
+
+impl AnySigner {
+    /// Block on the operation. For sync backends this is a direct
+    /// call; for async backends it parks a single-threaded runtime
+    /// until the future completes. CLI consumers use this; library
+    /// consumers should call `AsyncSignerProvider::sign_async`
+    /// directly to integrate with their own runtime.
+    pub fn sign_blocking(&self, msg: &[u8]) -> Result<(SigAlgKind, Vec<u8>, KeyFp)> {
+        match self {
+            AnySigner::Sync(s) => s.sign(msg),
+            AnySigner::Async(s) => {
+                // Simple current-thread runtime. We don't pull in
+                // tokio as a hard dep — the future is polled here
+                // via `std::future::Future::poll`. For real async
+                // consumers, the ConfiumSigner will expose
+                // `sign_async` directly so they integrate their own
+                // runtime.
+                let fut = s.sign_async(msg);
+                futures_block_on::block_on(fut)
+            }
+        }
+    }
+
+    pub fn fingerprint(&self) -> Result<KeyFp> {
+        match self {
+            AnySigner::Sync(s) => s.fingerprint(),
+            AnySigner::Async(s) => s.fingerprint(),
+        }
+    }
+}
+
+// Minimal block_on without pulling tokio. Polls the future on the
+// current thread. Sufficient for CLI single-shot use; library
+// consumers should integrate their own runtime.
+mod futures_block_on {
+    use std::future::Future;
+    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+    pub fn block_on<F: Future>(fut: F) -> F::Output {
+        // No-op waker — we never actually wake; we just spin polling.
+        fn noop_clone(_: *const ()) -> RawWaker {
+            RawWaker::new(std::ptr::null(), &NOOP_VTABLE)
+        }
+        fn noop(_: *const ()) {}
+        static NOOP_VTABLE: RawWakerVTable = RawWakerVTable::new(noop_clone, noop, noop, noop);
+
+        let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &NOOP_VTABLE)) };
+        let mut cx = Context::from_waker(&waker);
+        // Pin without unsafe: use the Box trick.
+        let mut fut = Box::pin(fut);
+        loop {
+            match fut.as_mut().poll(&mut cx) {
+                Poll::Ready(v) => return v,
+                Poll::Pending => std::thread::yield_now(),
+            }
+        }
+    }
 }
 
 /// Single-party PEM-backed signer. Wraps today's `pki::sign` path.

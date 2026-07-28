@@ -34,7 +34,7 @@
 
 pub mod capability;
 mod cappolicy;
-mod cas;
+pub mod cas;
 mod cipher;
 mod config;
 mod consts;
