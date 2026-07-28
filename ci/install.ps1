@@ -146,10 +146,11 @@ if ($LASTEXITCODE -ne 0) { throw "librnp cmake build failed" }
 # when trying to install the unbuilt rnp.exe CLI. That error is
 # expected — we only built the librnp target. Tolerate it: the
 # headers and .lib are already in place by the time the error fires.
-$ErrorActionPreference = 'Continue'
-& cmake --install . --config Release 2>&1 | Out-Null
+$ErrorActionPreference = 'SilentlyContinue'
+& cmake --install . --config Release 2>$null
 $ErrorActionPreference = 'Stop'
-$LASTEXITCODE = 0  # Reset — cmake install fails on unbuilt rnp.exe; headers+lib already installed
+$Error.Clear()
+$global:LASTEXITCODE = 0
 
 Pop-Location
 
