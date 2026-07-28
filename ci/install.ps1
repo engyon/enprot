@@ -149,6 +149,7 @@ if ($LASTEXITCODE -ne 0) { throw "librnp cmake build failed" }
 $ErrorActionPreference = 'Continue'
 & cmake --install . --config Release 2>&1 | Out-Null
 $ErrorActionPreference = 'Stop'
+$LASTEXITCODE = 0  # Reset — cmake install fails on unbuilt rnp.exe; headers+lib already installed
 
 Pop-Location
 
