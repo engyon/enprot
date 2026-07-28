@@ -142,9 +142,9 @@ if ($LASTEXITCODE -ne 0) { throw "librnp cmake configure failed" }
 & cmake --build . --config Release --target librnp --parallel $Env:NUMBER_OF_PROCESSORS
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake build failed" }
 
-# Install just the library + headers.
-& cmake --install . --config Release --component Headers
-& cmake --install . --config Release --component Libraries
+# Install just the library + headers. Full install is fine —
+# unbuilt CLI targets are skipped by CMake.
+& cmake --install . --config Release
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake install failed" }
 
 Pop-Location
