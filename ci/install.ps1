@@ -1,6 +1,16 @@
 $BOTAN_MODULES = "$($(get-content 'ci\botan-modules') -join ',')"
 $ErrorActionPreference = "Stop"
 
+# Install bzip2 dev (librnp's CMake find_package(BZip2) is
+# unconditional even when ENABLE_BZIP2=OFF — providing the dev
+# package is the path of least resistance on Windows runners).
+& choco install -y --no-progress bzip2 2>&1 | Out-Null
+$bzip2Base = "C:\ProgramData\chocolatey\lib\bzip2\tools"
+if (Test-Path "$bzip2Base\libbz2.lib") {
+    $Env:BZIP2_INCLUDE_DIR = $bzip2Base
+    $Env:BZIP2_LIBRARY     = "$bzip2Base\libbz2.lib"
+}
+
 # setup msvc compiler environment
 $vswhere = "${Env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $vspath = & "$vswhere" -latest -property installationPath
