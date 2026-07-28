@@ -162,16 +162,23 @@ $Env:RNP_LIB_DIR     = "$Env:PREFIX/lib"
 echo "RNP_INCLUDE_DIR=$Env:RNP_INCLUDE_DIR" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 echo "RNP_LIB_DIR=$Env:RNP_LIB_DIR"         | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
-# Cargo config: static-link all deps into the enprot binary.
-# Using [target.<triple>] with flat link-search + link-lib keys
-# (Cargo's standard format; per-lib sub-tables like [target.triple.lib]
-# are NOT valid Cargo config).
+# Cargo config: static-link all deps via rustflags. Cargo's
+# .cargo/config doesn't support rustc-link-lib as a top-level key
+# under [target.<triple>]; use rustflags instead.
 New-Item -ItemType Directory -Force -Path '.cargo'
 $TARGET = "x86_64-pc-windows-msvc"
+$libDir = "$Env:PREFIX/lib"
 $config = @"
 [target.$TARGET]
-rustc-link-search = ["native=$Env:PREFIX/lib"]
-rustc-link-lib = ["static=botan-3", "static=json-c", "static=sexpp", "static=rnp-0", "static=bzip2", "static=zlib", "dylib=getopt"]
+rustflags = [
+    "-L", "native=$libDir",
+    "-l", "static=botan-3",
+    "-l", "static=json-c",
+    "-l", "static=sexpp",
+    "-l", "static=rnp-0",
+    "-l", "static=bzip2",
+    "-l", "static=zlib",
+]
 "@
 Set-Content -Path ".cargo\config" -Value $config
 
