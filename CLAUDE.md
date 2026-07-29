@@ -34,6 +34,12 @@ cargo fmt --all --check                                             # CI format 
 cargo clippy --all-targets -- -D warnings                           # CI lint gate
 ```
 
+On macOS with Homebrew librnp, test binaries need `DYLD_LIBRARY_PATH` to find `librnp.0.dylib` at runtime:
+
+```sh
+PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig" DYLD_LIBRARY_PATH="$(brew --prefix)/lib" cargo test
+```
+
 Integration tests in `tests/cli/*` invoke the built binary via `assert_cmd` (`Command::cargo_bin("enprot")`), so the binary must compile before tests run. Most tests copy a fixture out of `sample/` or `test-data/` into a tempdir before running.
 
 CI runs both `cargo fmt --all --check` and `cargo clippy --all-targets -- -D warnings` as required gates. Additional CI jobs: typos spell check (`typos.toml`), security audit (`cargo-audit` + `cargo-deny` via `deny.toml`), and concurrency cancellation to save CI minutes.
