@@ -27,6 +27,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = ["cli"]
 cli = ["dep:clap", "dep:clap_complete"]
+# Build librnp + json-c + sexpp from source via rnp-src. Use this in
+# CI and deploy for self-contained builds that don't need
+# system-installed librnp. For local dev, the default (system
+# librnp) is faster.
+vendored-rnp = ["rnp-rs/vendored"]
 
 [[bin]]
 name = "enprot"
@@ -52,15 +57,12 @@ toml           = "0.8"
 # Botan.
 aes-gcm-siv    = "0.11"
 zeroize        = { version = "1", features = ["alloc"] }
-# OpenPGP signature support. rnp-rs is the Rust binding to librnp
-# (the OpenPGP C library from Ribose). rnp-rs 0.1.7 declared
-# `rust-version = "1.88"` matching the actual code (let-chains), so
-# enprot's MSRV 1.88 aligns. Ship prebuilt static librnp + json-c
-# for the 4 major Linux/macOS targets under prebuilt/. CI still
-# builds librnp from source via ci/build-librnp.sh for full module
-# coverage; the prebuilt libs are a fallback for users who skip the
-# system-librnp install step.
-rnp-rs         = "0.1.7"
+# OpenPGP signature support via librnp (the OpenPGP C library from
+# Ribose). rnp-rs 0.1.10 + the `vendored` feature uses rnp-src to
+# build librnp + json-c + sexpp from source — eliminates the need
+# for system-installed librnp/json-c/bzip2/zlib in CI and deploy.
+# The `vendored-rnp` feature below exposes this as a build-time opt-in.
+rnp-rs         = "0.1.10"
 
 # botan-sys unconditionally calls `pkg-config` when its `pkg-config`
 # feature is on (build.rs:72 — `.unwrap()` on the probe). Windows

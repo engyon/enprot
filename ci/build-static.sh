@@ -12,7 +12,9 @@ EOF
 
 # install cross
 cargo install --version "$CROSS_VERSION" cross
-# build
+# build. NOTE: --features vendored-rnp is not used yet because rnp-src
+# 0.1.1 has a packaging-detection bug (rnpgp/rnp-rs#62). Once fixed,
+# vendored will eliminate the need for cross-compiled json-c/librnp.
 cross -vv build --target "$TARGET" --release
 
 . "ci/build-static/post/$TARGET.sh"
