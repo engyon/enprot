@@ -148,7 +148,7 @@ Same `(password, plaintext)` → same ciphertext → CAS dedup works for encrypt
 
 ## Release / packaging
 
-Releases are tag-driven. Pushing a tag matching `[0-9]+\.[0-9]+\.[0-9]+` triggers `.github/workflows/deploy.yml`, which **fails if `Cargo.toml`'s `version` doesn't match the tag** — bump the version first. The workflow cross-compiles, uploads archives, publishes to GitHub Releases + crates.io + Snap Store. Dependabot keeps cargo + GHA deps current.
+Releases are tag-driven. release-plz (`.github/workflows/release.yml`) runs on every push to `main` and creates a release PR with version bump + changelog. When that PR is merged, release-plz publishes to crates.io and pushes a `v`-prefixed tag (e.g., `v0.5.1`). The tag push triggers `.github/workflows/deploy.yml` which cross-compiles binaries for 6 targets (x86_64 + aarch64 × linux-musl/apple-darwin/windows), generates man page + shell completions, and publishes to GitHub Releases + Snap Store. The deploy workflow also supports `workflow_dispatch` for manually rebuilding a specific tag. Dependabot keeps cargo + GHA deps current.
 
 ## OHOS (OpenHarmony) cross-compile
 
