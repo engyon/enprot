@@ -1,5 +1,7 @@
 name: enprot
-base: core22
+# core24 (Ubuntu 24.04) has libbotan-3-dev and libbotan-3-1 in its
+# default repos. core22 (Ubuntu 22.04) only ships libbotan-2.
+base: core24
 version: 'RELEASE_TAG'
 summary: Enprot is a confidentiality processor for text and source code files.
 license: 'BSD-2-Clause'
