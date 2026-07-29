@@ -66,7 +66,7 @@ EOF
 chmod +x linker
 
 mkdir -p .cargo
-cat <<EOF > .cargo/config
+cat <<EOF >> .cargo/config.toml
 [target.$TARGET]
 rustflags = ["-C", "link-args=-s", "-L", "native=$PREFIX/lib"]
 EOF

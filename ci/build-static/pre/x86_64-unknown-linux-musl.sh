@@ -70,9 +70,12 @@ EOF
 chmod +x linker
 
 # Valid cargo config: link-search + strip. The old [target.X.botan-3]
-# subtable syntax was invalid and silently ignored by Cargo.
+# subtable syntax was invalid and silently ignored by Cargo. Append to
+# .cargo/config.toml (which is tracked) so the [build] remap-prefix
+# flag from TODO.completion/12 is preserved alongside the target-
+# specific link directives.
 mkdir -p .cargo
-cat <<EOF > .cargo/config
+cat <<EOF >> .cargo/config.toml
 [target.$TARGET]
 rustflags = ["-C", "link-args=-s", "-L", "native=$PREFIX/lib"]
 EOF

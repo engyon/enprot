@@ -59,7 +59,7 @@ EOF
 # (stack-smashing protector) are needed by mingw Botan.
 libstdcxx_path="$(docker run --rm "$img" bash -c "dirname \$($TARGET_CXX --print-file-name libstdc++.a)")"
 mkdir -p .cargo
-cat <<EOF > .cargo/config
+cat <<EOF >> .cargo/config.toml
 [target.$TARGET]
 rustflags = [
   "-C", "link-args=-s",
