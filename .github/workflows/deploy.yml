@@ -155,10 +155,12 @@ jobs:
         env: ${{ matrix.env }}
         run: |
           Set-StrictMode -Version 3.0
-          Set-PSDebug -Trace 2
           $Tag = $Env:DEPLOY_TAG.TrimStart('v')
           "RELEASE_TAG=$Tag" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
-          "PREFIX=$($($PWD -join 'installs').Replace('\', '/'))" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
+          # Join-Path produces a proper Windows path; convert to
+          # forward-slash form so it works in cargo/CMake/etc.
+          $Prefix = (Join-Path $PWD 'installs').Replace('\', '/')
+          "PREFIX=$Prefix" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
           "EXE_PATH=target/$Env:TARGET/release/$Env:EXE_NAME" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
 
       - name: Install rust toolchain
