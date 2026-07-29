@@ -1,5 +1,11 @@
 name: deploy
 
+# Prevent overlapping deploy runs for the same tag. Don't cancel
+# in-progress runs — a partially-built release is worse than waiting.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   push:
     tags:
