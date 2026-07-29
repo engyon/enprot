@@ -56,8 +56,13 @@ jobs:
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
+        env:
+          BOTAN_VERSION: ${{ env.BOTAN_VERSION }}
+          PREFIX: /usr
         run: ./ci/install.sh
       - name: Build enprot
+        env:
+          PKG_CONFIG_PATH: /usr/lib/pkgconfig
         run: cargo build --features cli --release
       - name: Generate man page
         run: cargo run --features cli --example gen-manpage > enprot.1
