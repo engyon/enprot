@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/engyon/enprot/compare/v0.5.0...v0.5.1) - 2026-07-29
+
+### Fixed
+
+- *(deploy)* accept v-prefixed tags from release-plz
+
+### Other
+
+- update CLAUDE.md release section to reflect release-plz flow
+- *(deploy)* add workflow_dispatch + unified DEPLOY_TAG for both triggers
+- derive CMAKE_SYSTEM_PROCESSOR from TARGET triple in cross-deps script
+- Release pipeline gap analysis: fix deploy CI, add LICENSE, aarch64, docs
+- document DYLD_LIBRARY_PATH requirement for macOS test runs
+- document Windows MSVC support in README installation section
+- update CLAUDE.md with Windows MSVC build pipeline
+- build zlib static so the test binary has no zlib1.dll dep
+- set RUSTFLAGS so botan-sys resolves botan-3.lib globally
+- split botan dep per target (drop pkg-config on MSVC)
+- use build.rs for link directives (not cargo rustflags which breaks deps)
+- use rustflags for linking (cargo config doesn't support rustc-link-lib key)
+- fix .cargo/config format (flat target section, not per-lib subtables)
+- link all deps (json-c, sexpp, bzip2, zlib) in cargo config
+- clear Error stream + global LASTEXITCODE after tolerated cmake install
+- reset LASTEXITCODE after tolerated cmake install error
+- tolerate cmake install error (rnp.exe not built is OK)
+- manually copy rnp headers + lib instead of cmake install
+- use full cmake install (component names don't match rnp's)
+- use tronkko/dirent for real POSIX dir API on MSVC
+- put getopt.h stub in PREFIX/include so compiler finds it
+- provide stub getopt.lib for cmake find_library
+- GitHub mirrors for deps, stub POSIX headers, build only librnp target
+- provide dirent.h + getopt.h from rnp src/common for MSVC
+- also build zlib from source for librnp find_package(ZLIB REQUIRED)
+- build bzip2 from source for librnp CMake find_package
+- Windows install: provide bzip2 dev for librnp CMake find_package
+- Windows install: disable bzip2/zlib compression in librnp build
+- Restore Windows CI: build botan + json-c + librnp from source
+
 ## [0.5.0](https://github.com/engyon/enprot/compare/v0.4.2...v0.5.0) - 2026-07-28
 
 ### Other
