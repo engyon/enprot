@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2](https://github.com/engyon/enprot/compare/v0.5.1...v0.5.2) - 2026-07-29
+
+### Other
+
+- switch base from core22 to core24
+- append to .cargo/config.toml instead of overwriting .cargo/config
+- *(deploy)* run sed BEFORE snapcore/action-build step in snap job
+- *(deploy)* pass BOTAN_VERSION + PREFIX to generate-extras install.sh
+
 ## [0.5.1](https://github.com/engyon/enprot/compare/v0.5.0...v0.5.1) - 2026-07-29
 
 ### Fixed
