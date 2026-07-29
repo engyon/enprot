@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.11](https://github.com/engyon/enprot/compare/v0.5.10...v0.5.11) - 2026-07-29
+
+### Fixed
+
+- *(deploy)* replace deprecated macos-13 with macos-15-intel
+
 ## [0.5.10](https://github.com/engyon/enprot/compare/v0.5.9...v0.5.10) - 2026-07-29
 
 ### Added
