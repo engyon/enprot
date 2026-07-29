@@ -183,10 +183,9 @@ jobs:
       - name: Build (windows)
         if: startsWith(matrix.os, 'windows')
         env: ${{ matrix.env }}
-        shell: powershell
+        shell: pwsh
         run: |
           Set-StrictMode -Version 3.0
-          Set-PSDebug -Trace 2
           . .\ci\build-static.ps1
 
       - name: Download extras
@@ -204,10 +203,9 @@ jobs:
       - name: Archive (windows)
         if: startsWith(matrix.os, 'windows')
         env: ${{ matrix.env }}
-        shell: powershell
+        shell: pwsh
         run: |
           Set-StrictMode -Version 3.0
-          Set-PSDebug -Trace 2
           . .\ci\archive.ps1
 
       - name: Upload artifacts
@@ -219,6 +217,10 @@ jobs:
   github-release:
     name: github release
     needs: [release-archive]
+    # Run even if some archive targets failed (e.g., Docker cross-compile
+    # targets blocked on upstream librnp). Publish whatever archives
+    # succeeded so users get macOS + Windows MSVC binaries.
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
