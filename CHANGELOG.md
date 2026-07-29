@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8](https://github.com/engyon/enprot/compare/v0.5.7...v0.5.8) - 2026-07-29
+
+### Fixed
+
+- *(deploy)* set PKG_CONFIG_PATH for macOS deploy builds
+- *(deploy)* use macos-13 (x86_64) runner for x86_64-apple-darwin
+
+### Other
+
+- EPT wire format + ExtField schema specs; deploy concurrency
+
 ## [0.5.7](https://github.com/engyon/enprot/compare/v0.5.6...v0.5.7) - 2026-07-29
 
 ### Fixed
