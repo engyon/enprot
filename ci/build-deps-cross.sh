@@ -18,9 +18,11 @@ NPROC="${NPROC:-$(nproc 2>/dev/null || echo 2)}"
 
 # CMake toolchain file for cross-compilation.
 TOOLCHAIN_FILE="$(mktemp /tmp/toolchain-XXXX.cmake)"
+# Derive processor arch from TARGET triple (first component).
+ARCH=$(echo "$TARGET" | cut -d- -f1)
 cat > "$TOOLCHAIN_FILE" <<TCM
 set(CMAKE_SYSTEM_NAME $CMAKE_SYSTEM_NAME)
-set(CMAKE_SYSTEM_PROCESSOR x86_64)
+set(CMAKE_SYSTEM_PROCESSOR $ARCH)
 set(CMAKE_C_COMPILER $TARGET_CC)
 set(CMAKE_CXX_COMPILER $TARGET_CXX)
 set(CMAKE_AR $TARGET_AR)
