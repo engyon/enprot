@@ -86,8 +86,16 @@ cargo install enprot
 
 ### From source
 
-Enprot requires [Botan 3.x](https://github.com/randombit/botan)
-(`brew install botan` on macOS; see `ci/install.sh` for Linux).
+Enprot requires [Botan 3.x](https://github.com/randombit/botan) and
+[librnp](https://github.com/rnpgp/rnp). Install via `brew install botan rnp`
+on macOS, your distro's package manager on Linux, or run the CI install
+scripts which build both from source:
+
+| Platform | Install script | Notes |
+|----------|---------------|-------|
+| macOS    | `ci/install.sh`  | Homebrew (`brew install botan rnp`) is simpler |
+| Linux    | `ci/install.sh`  | Builds Botan + librnp from source |
+| Windows  | `ci/install.ps1` | MSVC only — builds the full C dep stack from source (bzip2, zlib, Botan, json-c, librnp) |
 
 ```sh
 cargo install --git https://github.com/engyon/enprot
