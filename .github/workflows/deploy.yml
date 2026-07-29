@@ -2,7 +2,11 @@ name: deploy
 
 on:
   push:
-    tags: '[0-9]+.[0-9]+.[0-9]+'
+    tags:
+      # release-plz creates v-prefixed tags (v0.5.0).
+      # Also accept legacy bare-numeric tags (0.4.0) for back-compat.
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+      - '[0-9]*.[0-9]*.[0-9]*'
 
 env:
   CROSS_VERSION: 0.2.5
@@ -20,8 +24,12 @@ jobs:
       - name: Check version
         run: |
           set -euxo pipefail
-          if [ "$(grep '^version' Cargo.toml | cut -d '"' -f2)" != "${GITHUB_REF#refs/tags/}" ]; then
-            echo "Version tag does not match manifest"
+          # release-plz pushes v-prefixed tags (v0.5.0); strip the v
+          # so the comparison against Cargo.toml version (0.5.0) works.
+          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${TAG#v}"
+          if [ "$(grep '^version' Cargo.toml | cut -d '"' -f2)" != "$TAG" ]; then
+            echo "Version tag ($TAG) does not match manifest"
             exit 1
           fi
 
@@ -117,7 +125,9 @@ jobs:
         env: ${{ matrix.env }}
         run: |
           set -euxo pipefail
-          echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${TAG#v}"
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
           echo "PREFIX=${PREFIX-$GITHUB_WORKSPACE/installs}" >> $GITHUB_ENV
           echo "EXE_PATH=target/$TARGET/release/$EXE_NAME" >> $GITHUB_ENV
       - name: Set environment (windows)
@@ -126,7 +136,9 @@ jobs:
         run: |
           Set-StrictMode -Version 3.0
           Set-PSDebug -Trace 2
-          "RELEASE_TAG=$($Env:GITHUB_REF.Replace('refs/tags/', ''))" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
+          $Tag = $Env:GITHUB_REF.Replace('refs/tags/', '')
+          $Tag = $Tag.TrimStart('v')
+          "RELEASE_TAG=$Tag" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
           "PREFIX=$($($PWD -join 'installs').Replace('\', '/'))" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
           "EXE_PATH=target/$Env:TARGET/release/$Env:EXE_NAME" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
 
@@ -197,7 +209,8 @@ jobs:
           GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euxo pipefail
-          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          RELEASE_TAG="${RELEASE_TAG#v}"
           git clone https://github.com/riboseinc/create-github-release
           cd create-github-release
           sudo apt-get -y install ruby
@@ -209,20 +222,6 @@ jobs:
             ${{ github.repository }} \
             "$RELEASE_TAG" \
             ../archives/*
-
-  publish-crate:
-    name: crates.io
-    needs: [checks]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Publish
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          cargo publish --no-verify
 
   publish-snap:
     name: snap
@@ -239,6 +238,7 @@ jobs:
       - name: Build
         run: |
           RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          RELEASE_TAG="${RELEASE_TAG#v}"
           sed -i "s/RELEASE_TAG/${RELEASE_TAG}/g" snap/snapcraft.yaml
           sg lxd -c 'snapcraft --use-lxd'
       - name: Publish
