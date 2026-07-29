@@ -1,6 +1,9 @@
 name: enprot
-# core24 (Ubuntu 24.04) has libbotan-3-dev and libbotan-3-1 in its
-# default repos. core22 (Ubuntu 22.04) only ships libbotan-2.
+# core24 (Ubuntu 24.04) — no libbotan-3-dev in standard repos for any
+# Ubuntu release. Build enprot as a static binary that bundles all C
+# dependencies (botan, json-c, zlib, bzip2, librnp). No runtime libs
+# needed. The Rust binary is built with the musl target from CI and
+# downloaded here as a prebuilt artifact.
 base: core24
 version: 'RELEASE_TAG'
 summary: Enprot is a confidentiality processor for text and source code files.
@@ -15,14 +18,28 @@ confinement: strict
 
 parts:
   enprot:
-    plugin: rust
+    # nil plugin: build steps are 100% custom (no automatic Rust
+    # compilation, which would need system C libs). The prebuilt
+    # musl-linked static binary is downloaded from the GitHub Release
+    # tag.
+    plugin: nil
     source: .
-    build-packages:
-      - build-essential
-      - libbotan-3-dev
-    stage-packages:
-      - libbotan-3-1
+    override-build: |
+      # Download the prebuilt static Linux musl binary from the same
+      # release tag. The release-plz tag (e.g., v0.5.2) matches the
+      # snap version (RELEASE_TAG was substituted to 0.5.2 already).
+      curl -fsSL \
+        -o ${CRAFT_PART_INSTALL}/bin/enprot \
+        https://github.com/engyon/enprot/releases/download/v${SNAP_VERSION}/enprot-${SNAP_VERSION}-x86_64-unknown-linux-musl.tar.gz
+      # The archive contains a single binary at the root — extract.
+      mkdir -p ${CRAFT_PART_INSTALL}/bin
+      tar -xzf enprot-${SNAP_VERSION}-x86_64-unknown-linux-musl.tar.gz -C ${CRAFT_PART_INSTALL}/bin
+      chmod +x ${CRAFT_PART_INSTALL}/bin/enprot
+    # No build-packages — the binary is prebuilt and statically linked.
+    # No stage-packages — no runtime deps (static binary).
+    stage-packages: []
 
 apps:
   enprot:
     command: bin/enprot
+    extensions: []
