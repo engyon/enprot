@@ -1,6 +1,7 @@
 # Engyon: enprot
 
 [![Build Status](https://github.com/engyon/enprot/actions/workflows/tests.yml/badge.svg)](https://github.com/engyon/enprot/actions?workflow=tests)
+[![Coverage](https://codecov.io/gh/engyon/enprot/branch/main/graph/badge.svg)](https://codecov.io/gh/engyon/enprot)
 [![MSRV 1.88](https://img.shields.io/badge/MSRV-1.88-blue)](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0.html)
 [![crates.io](https://img.shields.io/crates/v/enprot)](https://crates.io/crates/enprot)
 

@@ -1,12 +1,11 @@
-# Build a Docker image with all cross-compiled deps:
+# Build a Docker image with all cross-compiled deps for Linux ARM64 musl:
 #   Botan + json-c + bzip2 + zlib + librnp
-# Then configure cross to use it.
+# Same structure as x86_64-unknown-linux-musl.sh.
 
 set -euxo pipefail
 
 img="$PROJECT_NAME/cross-build:$TARGET"
 
-# Create a build context so we can COPY the dep-build script in.
 ctx=$(mktemp -d)
 cp ci/build-deps-cross.sh "$ctx/"
 cat > "$ctx/Dockerfile" <<EOF
@@ -22,7 +21,6 @@ RUN apt-get -y update && \\
       python3 cmake curl git ca-certificates make && \\
     rm -rf /var/lib/apt/lists/*
 
-# Botan (static, cross-compiled)
 RUN git clone --depth 1 --branch $BOTAN_VERSION https://github.com/randombit/botan /tmp/botan && \\
     cd /tmp/botan && \\
     python3 ./configure.py --prefix=\$PREFIX \\
@@ -32,7 +30,6 @@ RUN git clone --depth 1 --branch $BOTAN_VERSION https://github.com/randombit/bot
     make -j2 install && \\
     cd / && rm -rf /tmp/botan
 
-# json-c + bzip2 + zlib + librnp (cross-compiled)
 COPY build-deps-cross.sh /tmp/build-deps-cross.sh
 RUN chmod +x /tmp/build-deps-cross.sh && /tmp/build-deps-cross.sh
 
@@ -50,7 +47,6 @@ cat <<EOF > Cross.toml
 image = "$img"
 EOF
 
-# Linker wrapper — see rust issue #36710 (static CRT piecing).
 cat <<EOF > linker
 #!/bin/bash -eux
 args=()
@@ -69,8 +65,6 @@ done
 EOF
 chmod +x linker
 
-# Valid cargo config: link-search + strip. The old [target.X.botan-3]
-# subtable syntax was invalid and silently ignored by Cargo.
 mkdir -p .cargo
 cat <<EOF > .cargo/config
 [target.$TARGET]

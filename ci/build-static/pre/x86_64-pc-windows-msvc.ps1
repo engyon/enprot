@@ -1,27 +1,13 @@
+# Build the full C dependency stack for Windows MSVC release.
+# Reuses ci/install.ps1 (same script as test CI — DRY). install.ps1
+# builds bzip2 + zlib + Botan + json-c + librnp from source and sets
+# RNP_INCLUDE_DIR / RNP_LIB_DIR / RUSTFLAGS / PREFIX via GITHUB_ENV.
+
 # setup msvc compiler environment
 $vswhere = "${Env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $vspath = & "$vswhere" -latest -property installationPath
 Import-Module "$vspath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
 Enter-VsDevShell -VsInstallPath "$vspath" -DevCmdArguments '-arch=x64 -no_logo' -SkipAutomaticLocation
 
-# build botan
-& git clone --depth 1 --branch "$Env:BOTAN_VERSION" https://github.com/randombit/botan
-Push-Location -LiteralPath botan
-& python .\configure.py --prefix="$Env:PREFIX" --without-documentation `
-  --without-openssl --build-targets=static --minimized-build `
-  --enable-modules="$BOTAN_MODULES" --msvc-runtime=MT `
-  --cc=msvc --os=windows --library-suffix=-3
-&{
-  $ErrorActionPreference = 'Continue'
-  nmake install
-}
-Pop-Location
-
-# override for static linking
-New-Item -ItemType Directory -Force -Path '.cargo'
-Write-Output @"
-[target.$Env:TARGET.botan-3]
-rustc-link-search = ["native=${Env:PREFIX}/lib"]
-rustc-link-lib = ["static=botan-3"]
-"@ | Out-File -Append -Encoding UTF8 -LiteralPath .cargo\config
-
+# Delegate to the unified install script (same as test CI).
+& ./ci/install.ps1

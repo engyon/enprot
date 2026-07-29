@@ -6,4 +6,14 @@
 /fuzz/corpus/*/!(*seed*)
 /fuzz/artifacts/
 /fuzz/target/
+
+# CAS blobs — content-addressed test artifacts. 64-char hex filenames.
 [0-9a-f]{64}
+
+# TODO files are conversation context, not shipped artifacts.
+/TODO.audit/
+/TODO.finalize/
+/TODO.completion/
+/TODO.issues/
+/TODO.roadmap/
+/TODO.upgrade/
