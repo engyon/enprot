@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.9](https://github.com/engyon/enprot/compare/v0.5.8...v0.5.9) - 2026-07-29
+
+### Fixed
+
+- *(deploy)* relax macOS post-build check + set DYLD_LIBRARY_PATH
+
 ## [0.5.8](https://github.com/engyon/enprot/compare/v0.5.7...v0.5.8) - 2026-07-29
 
 ### Fixed
