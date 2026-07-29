@@ -13,6 +13,7 @@ cp ci/build-deps-cross.sh "$ctx/"
 # For mingw, json-c and librnp need slightly different CMake settings.
 # The build-deps-cross.sh script handles Linux/musl; for mingw we
 # override the CMake system name via an env var.
+target_unix=$(echo "$TARGET" | tr 'a-z-' 'A-Z_')
 cat > "$ctx/Dockerfile" <<EOF
 FROM rustembedded/cross:$TARGET-$CROSS_VERSION
 
@@ -21,6 +22,10 @@ ENV TARGET_CC=$TARGET_CC
 ENV TARGET_CXX=$TARGET_CXX
 ENV TARGET_AR=$TARGET_AR
 ENV CMAKE_SYSTEM_NAME=Windows
+
+# Tell cargo to use the mingw cross-compiler (cross's default
+# linker config doesn't always pick the right one for our toolchain).
+ENV CARGO_TARGET_${target_unix}_LINKER \$TARGET_CXX
 
 RUN apt-get -y update && \\
     apt-get -y install --no-install-recommends \\

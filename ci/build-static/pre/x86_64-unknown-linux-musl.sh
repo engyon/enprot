@@ -9,6 +9,8 @@ img="$PROJECT_NAME/cross-build:$TARGET"
 # Create a build context so we can COPY the dep-build script in.
 ctx=$(mktemp -d)
 cp ci/build-deps-cross.sh "$ctx/"
+# target-unixified: replace dashes with underscores for the env var.
+target_unix=$(echo "$TARGET" | tr 'a-z-' 'A-Z_')
 cat > "$ctx/Dockerfile" <<EOF
 FROM rustembedded/cross:$TARGET-$CROSS_VERSION
 
@@ -16,6 +18,13 @@ ENV PREFIX=$PREFIX
 ENV TARGET_CC=$TARGET_CC
 ENV TARGET_CXX=$TARGET_CXX
 ENV TARGET_AR=$TARGET_AR
+
+# Tell cargo (running inside the container) which linker to use. The
+# `linker` wrapper handles musl's static CRT piecing (rust-lang/rust
+# issue #36710). The linker script itself is mounted into the
+# container by cross at \$WORKDIR (the project root), so we don't
+# COPY it into the image.
+ENV CARGO_TARGET_${target_unix}_LINKER ./linker
 
 RUN apt-get -y update && \\
     apt-get -y install --no-install-recommends \\

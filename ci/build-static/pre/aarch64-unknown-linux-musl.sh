@@ -8,6 +8,7 @@ img="$PROJECT_NAME/cross-build:$TARGET"
 
 ctx=$(mktemp -d)
 cp ci/build-deps-cross.sh "$ctx/"
+target_unix=$(echo "$TARGET" | tr 'a-z-' 'A-Z_')
 cat > "$ctx/Dockerfile" <<EOF
 FROM rustembedded/cross:$TARGET-$CROSS_VERSION
 
@@ -15,6 +16,10 @@ ENV PREFIX=$PREFIX
 ENV TARGET_CC=$TARGET_CC
 ENV TARGET_CXX=$TARGET_CXX
 ENV TARGET_AR=$TARGET_AR
+
+# Tell cargo which linker to use. See musl static CRT piecing note
+# in x86_64-unknown-linux-musl.sh.
+ENV CARGO_TARGET_${target_unix}_LINKER ./linker
 
 RUN apt-get -y update && \\
     apt-get -y install --no-install-recommends \\
