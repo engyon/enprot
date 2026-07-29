@@ -8,7 +8,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 It depends on **Botan 3** (CI builds against 3.7.0; Homebrew ships 3.12.0) as the underlying crypto provider via the `botan` crate (`botan3` + `pkg-config` features). The `aes-256-gcm-siv` cipher is provided by the RustCrypto `aes-gcm-siv` crate because Botan does not implement RFC 8452. AES-256-SIV is the default AEAD; SHA-3 / Argon2 / Scrypt / PBKDF2 are used for hashing and KDF. Deterministic AEAD variants (`aes-256-gcm-det`, `aes-256-gcm-siv-det`) derive the nonce from plaintext via HKDF + HMAC so identical plaintexts produce identical ciphertexts (CAS dedup).
 
-It also depends on **librnp** (the OpenPGP C library from Ribose) via `rnp-rs` for OpenPGP signature support. Install via `brew install rnp` (macOS), `apt install librnp-dev` (Debian/Ubuntu), or build from source. `ci/install.sh` handles Linux + macOS; Windows builds librnp via vcpkg (TBD). If `brew install rnp` reports conflicts, run `brew link --overwrite rnp` to expose headers under `$(brew --prefix)/include/rnp/`.
+It also depends on **librnp** (the OpenPGP C library from Ribose) via `rnp-rs` for OpenPGP signature support. Install via `brew install rnp` (macOS), `apt install librnp-dev` (Debian/Ubuntu), or build from source. `ci/install.sh` handles Linux + macOS; `ci/install.ps1` builds Botan + json-c + librnp (and their transitive deps bzip2, zlib) from source on Windows MSVC. If `brew install rnp` reports conflicts, run `brew link --overwrite rnp` to expose headers under `$(brew --prefix)/include/rnp/`.
+
+### Windows MSVC build notes
+
+`ci/install.ps1` builds the full C dependency stack from source:
+- **bzip2 1.0.8** — compiled with `cl /MT` + `lib /OUT:bzip2.lib` (Chocolatey's bzip2 ships only the exe + DLL, not a `.lib`).
+- **zlib 1.3.1** — CMake with `BUILD_SHARED_LIBS=OFF`; `zlibstatic.lib` is renamed to `zlib.lib` so both rnp's `find_package(ZLIB)` and enprot's `static=zlib` link directive resolve.
+- **Botan 3** — `configure.py --build-targets=static --msvc-runtime=MT` (static archive, no `botan-3.dll`).
+- **json-c 0.17** — CMake with `BUILD_SHARED_LIBS=OFF`.
+- **librnp 0.18.1** — CMake, `--target librnp` only (CLI tools skipped). Uses tronkko/dirent for POSIX dir API on MSVC. `cmake --install` partially fails (tries to install unbuilt `rnp.exe`) — tolerated.
+
+The `botan` crate dependency is split per target in `Cargo.toml`: Unix uses `pkg-config`, Windows uses `static` (no pkg-config, which isn't available on Windows runners). `build.rs` emits `cargo:rustc-link-lib` for json-c/sexpp/bzip2/zlib. `RUSTFLAGS=-L native=$PREFIX/lib` is set globally via `GITHUB_ENV` so botan-sys can resolve `botan-3.lib` during its own build script.
 
 ## Build & test
 
