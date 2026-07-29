@@ -1,54 +1,23 @@
-# Build a Docker image with all cross-compiled deps:
-#   Botan + json-c + bzip2 + zlib + librnp
-# Then configure cross to use it.
+# Docker cross-compile image for x86_64-unknown-linux-musl.
+# With vendored-rnp, rnp-src builds Botan + json-c + librnp + zlib +
+# bzip2 from source inside the container. The image only needs build
+# tools + the cross-compile toolchain.
 
 set -euxo pipefail
 
 img="$PROJECT_NAME/cross-build:$TARGET"
 
-# Create a build context so we can COPY the dep-build script in.
 ctx=$(mktemp -d)
-cp ci/build-deps-cross.sh "$ctx/"
-# target-unixified: replace dashes with underscores for the env var.
 target_unix=$(echo "$TARGET" | tr 'a-z-' 'A-Z_')
+
 cat > "$ctx/Dockerfile" <<EOF
 FROM rustembedded/cross:$TARGET
 
-ENV PREFIX=$PREFIX
-ENV TARGET_CC=$TARGET_CC
-ENV TARGET_CXX=$TARGET_CXX
-ENV TARGET_AR=$TARGET_AR
-
-# Tell cargo (running inside the container) which linker to use. The
-# `linker` wrapper handles musl's static CRT piecing (rust-lang/rust
-# issue #36710). The linker script itself is mounted into the
-# container by cross at \$WORKDIR (the project root), so we don't
-# COPY it into the image.
-ENV CARGO_TARGET_${target_unix}_LINKER ./linker
-
+# Build tools for rnp-src's CMake-based build of librnp + deps.
 RUN apt-get -y update && \\
     apt-get -y install --no-install-recommends \\
-      python3 cmake curl git ca-certificates make && \\
+      python3 cmake git ca-certificates make && \\
     rm -rf /var/lib/apt/lists/*
-
-# Botan (static, cross-compiled)
-RUN git clone --depth 1 --branch $BOTAN_VERSION https://github.com/randombit/botan /tmp/botan && \\
-    cd /tmp/botan && \\
-    python3 ./configure.py --prefix=\$PREFIX \\
-      --cc-bin=\$TARGET_CXX --ar-command=\$TARGET_AR \\
-      --without-documentation --build-targets=static --minimized-build \\
-      --enable-modules=$BOTAN_MODULES && \\
-    make -j2 install && \\
-    cd / && rm -rf /tmp/botan
-
-# json-c + bzip2 + zlib + librnp (cross-compiled)
-COPY build-deps-cross.sh /tmp/build-deps-cross.sh
-RUN chmod +x /tmp/build-deps-cross.sh && /tmp/build-deps-cross.sh
-
-ENV RNP_INCLUDE_DIR=\$PREFIX/include
-ENV RNP_LIB_DIR=\$PREFIX/lib
-ENV PKG_CONFIG_PATH=\$PREFIX/lib/pkgconfig
-ENV ENPRO_STATIC_LINK=1
 EOF
 
 docker build -t "$img" "$ctx"
@@ -59,7 +28,9 @@ cat <<EOF > Cross.toml
 image = "$img"
 EOF
 
-# Linker wrapper — see rust issue #36710 (static CRT piecing).
+# Linker wrapper for musl static CRT piecing (rust-lang/rust #36710).
+# cross mounts the project root into the container, so ./linker is
+# available at runtime.
 cat <<EOF > linker
 #!/bin/bash -eux
 args=()
@@ -78,13 +49,9 @@ done
 EOF
 chmod +x linker
 
-# Valid cargo config: link-search + strip. The old [target.X.botan-3]
-# subtable syntax was invalid and silently ignored by Cargo. Append to
-# .cargo/config.toml (which is tracked) so the [build] remap-prefix
-# flag from TODO.completion/12 is preserved alongside the target-
-# specific link directives.
+# Strip flag appended to existing .cargo/config.toml.
 mkdir -p .cargo
 cat <<EOF >> .cargo/config.toml
 [target.$TARGET]
-rustflags = ["-C", "link-args=-s", "-L", "native=$PREFIX/lib"]
+rustflags = ["-C", "link-args=-s"]
 EOF

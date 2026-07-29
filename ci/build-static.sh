@@ -12,10 +12,16 @@ EOF
 
 # install cross
 cargo install --version "$CROSS_VERSION" cross
-# build. NOTE: --features vendored-rnp is not used yet because rnp-src
-# 0.1.1 has a packaging-detection bug (rnpgp/rnp-rs#62). Once fixed,
-# vendored will eliminate the need for cross-compiled json-c/librnp.
-cross -vv build --target "$TARGET" --release
+
+# Populate the cargo registry on the host so we can apply the
+# rnp-src workaround. cross mounts $CARGO_HOME into the container,
+# so the patched registry is shared.
+cargo fetch --features vendored-rnp 2>/dev/null || true
+ci/rnp-src-workaround.sh
+
+# Build with vendored librnp. rnp-src builds librnp + Botan + json-c
+# + zlib + bzip2 from source inside the container. Only Botan needs
+# to be pre-built for the target arch (via the Docker image).
+cross -vv build --target "$TARGET" --release --features vendored-rnp
 
 . "ci/build-static/post/$TARGET.sh"
-
