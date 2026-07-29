@@ -10,7 +10,7 @@ ctx=$(mktemp -d)
 cp ci/build-deps-cross.sh "$ctx/"
 target_unix=$(echo "$TARGET" | tr 'a-z-' 'A-Z_')
 cat > "$ctx/Dockerfile" <<EOF
-FROM rustembedded/cross:$TARGET-$CROSS_VERSION
+FROM rustembedded/cross:$TARGET
 
 ENV PREFIX=$PREFIX
 ENV TARGET_CC=$TARGET_CC
