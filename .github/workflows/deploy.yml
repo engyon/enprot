@@ -85,6 +85,9 @@ jobs:
     name: archive
     timeout-minutes: 20
     strategy:
+      # Don't cancel native builds (macOS, Windows MSVC) when Docker
+      # cross-compile targets fail (blocked on upstream librnp).
+      fail-fast: false
       matrix:
         target:
           - x86_64-unknown-linux-musl
