@@ -119,7 +119,10 @@ jobs:
               TARGET_CC: aarch64-linux-musl-gcc
               TARGET_CXX: aarch64-linux-musl-g++
               TARGET_AR: aarch64-linux-musl-gcc-ar
-          - os: macos-latest
+          # macos-13 is the last x86_64 runner. macos-latest (14+) is
+          # Apple Silicon — building x86_64 there is a cross-compile
+          # that needs x86_64 C libs (botan, json-c, librnp).
+          - os: macos-13
             target: x86_64-apple-darwin
             env:
               TARGET: x86_64-apple-darwin
