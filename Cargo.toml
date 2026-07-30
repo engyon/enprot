@@ -33,6 +33,9 @@ cli = ["dep:clap", "dep:clap_complete"]
 # librnp) is faster.
 vendored-rnp = ["rnp-rs/vendored"]
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [[bin]]
 name = "enprot"
 path = "src/main.rs"
