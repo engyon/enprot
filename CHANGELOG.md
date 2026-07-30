@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.11](https://github.com/engyon/enprot/compare/v0.5.10...v0.5.11) - 2026-07-30
+
+### Added
+
+- full Windows CI via vendored-rnp + vendored botan
+
+### Fixed
+
+- *(ci)* vendored-rnp for Unix, keep install.ps1 for Windows
+- *(deploy)* replace deprecated macos-13 with macos-15-intel
+
+### Other
+
+- *(deploy)* add Windows binary verification step
+
 ## [0.5.10](https://github.com/engyon/enprot/compare/v0.5.9...v0.5.10) - 2026-07-29
 
 ### Added
