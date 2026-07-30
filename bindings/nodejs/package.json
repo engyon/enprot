@@ -1,0 +1,32 @@
+{
+  "name": "@engyon/enprot",
+  "version": "0.1.0",
+  "description": "Node.js bindings for enprot — Engyon Protected Text confidentiality processor",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "BSD-2-Clause",
+  "author": "Ribose Inc. <open.source@ribose.com>",
+  "homepage": "https://github.com/engyon/enprot",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/engyon/enprot.git",
+    "directory": "bindings/nodejs"
+  },
+  "keywords": [
+    "encryption",
+    "engyon",
+    "ept",
+    "cryptography",
+    "content-addressed",
+    "ffi"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/test_bindings.js"
+  },
+  "dependencies": {
+    "koffi": "^2.9.0"
+  }
+}
