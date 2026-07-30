@@ -626,6 +626,34 @@ The `default-features = false` build excludes `clap` and `clap_complete`.
 All library modules (crypto, parsing, capability model, chain anchors,
 Merkle trees, merge driver, provenance, SCM) are available.
 
+### Bindings & integrations
+
+Beyond Rust, enprot ships a C FFI (`include/enprot.h`) and the
+following language bindings / integrations:
+
+| Integration | Where | Use case |
+|---|---|---|
+| **Python (`pyenprot`)** | [`bindings/python/`](bindings/python/) | Encrypt/decrypt/store from Python scripts and Jupyter notebooks |
+| **GitHub Action** | [`action/`](action/) | Run enprot as a CI step (`uses: engyon/enprot/action@v0.5`) |
+| **Pre-commit hook** | [`hooks/pre-commit/`](hooks/pre-commit/) | Block commits that contain plaintext inside `BEGIN` blocks |
+| **Docker image** | [`Dockerfile`](Dockerfile) | `docker run ghcr.io/engyon/enprot:latest encrypt ...` |
+| **Homebrew formula** | [`Formula/enprot.rb`](Formula/enprot.rb) | `brew install enprot` (after the tap is published) |
+| **C FFI** | [`include/enprot.h`](include/enprot.h) + [`src/ffi.rs`](src/ffi.rs) | Build your own bindings in Node, Go, Ruby, etc. |
+
+Quick start with Python:
+
+```sh
+cargo build --release --lib
+cd bindings/python && pip install -e .
+ENPROT_LIB=target/release/libenprot.dylib python3 -c "
+import pyenprot
+pyenprot.encrypt('config.toml', words={'SECRET': 'pw'}, casdir='.cas')
+"
+```
+
+See [`bindings/README.md`](bindings/README.md) for the FFI surface and
+how to add a new language binding.
+
 ## Development
 
 See `CONTRIBUTING.md` for the full guide. Quick reference:
