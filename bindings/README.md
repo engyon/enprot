@@ -8,11 +8,14 @@ includes `cdylib`).
 | Language | Package | Status |
 |---|---|---|
 | **Python** | [`bindings/python/`](python/) (`pyenprot`) | Beta — ctypes wrapper |
+| **Node.js** | [`bindings/nodejs/`](nodejs/) (`@engyon/enprot`) | Beta — koffi wrapper |
 | **GitHub Actions** | [`action/`](../action/) | Beta — composite action |
 | **Pre-commit hook** | [`hooks/pre-commit/`](../hooks/pre-commit/) | Beta — plaintext-leak detector |
-| Node.js (napi-rs) | planned | — |
+| **SOPS importer** | [`tools/import-sops.py`](../tools/import-sops.py) | Beta — migration from SOPS |
+| **Quickstart cookbook** | [`docs/cookbooks/quickstart.md`](../docs/cookbooks/quickstart.md) | 14 end-to-end recipes |
 | Go (cgo) | planned | — |
 | Ruby (ffi gem) | planned | — |
+| WASM build | planned | — |
 
 ## Build the shared library
 
@@ -57,5 +60,6 @@ void            enprot_free_error(char *ptr);
    `enprot_process`.
 4. Free `error` with `enprot_free_error` if non-NULL.
 
-The Python bindings (`bindings/python/pyenprot/__init__.py`) are a
-~200-line reference implementation.
+The Python bindings (`bindings/python/pyenprot/__init__.py`) and Node
+bindings (`bindings/nodejs/index.js`) are both ~200-line reference
+implementations.

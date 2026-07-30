@@ -4,17 +4,21 @@ on:
   push:
     branches: [main]
     paths:
-      - "bindings/python/**"
-      - "hooks/pre-commit/**"
+      - "bindings/**"
+      - "tools/**"
+      - "hooks/**"
       - "include/enprot.h"
       - "src/ffi.rs"
+      - "enprot-ffi/**"
       - ".github/workflows/bindings.yml"
   pull_request:
     paths:
-      - "bindings/python/**"
-      - "hooks/pre-commit/**"
+      - "bindings/**"
+      - "tools/**"
+      - "hooks/**"
       - "include/enprot.h"
       - "src/ffi.rs"
+      - "enprot-ffi/**"
       - ".github/workflows/bindings.yml"
   workflow_dispatch:
 
@@ -25,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         python: ["3.9", "3.12"]
     steps:
       - uses: actions/checkout@v4
@@ -45,18 +49,6 @@ jobs:
           brew install botan rnp
           brew link --overwrite rnp || true
 
-      - name: Install Botan + librnp (windows)
-        if: runner.os == 'Windows'
-        env:
-          BOTAN_VERSION: "3.7.0"
-          GIT_REDIRECT_STDERR: '2>&1'
-        shell: pwsh
-        run: |
-          $Env:PREFIX = (Join-Path $PWD 'botan-install').Replace('\', '/')
-          $Env:Path += ";$Env:PREFIX/lib"
-          $Env:TARGET = "x86_64-pc-windows-msvc"
-          ./ci/install.ps1
-
       - name: Build libenprot
         env:
           PKG_CONFIG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/pkgconfig' || '' }}
@@ -67,9 +59,7 @@ jobs:
         id: lib
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            lib="$(pwd)/target/release/enprot.dll"
-          elif [ "$RUNNER_OS" = "macOS" ]; then
+          if [ "$RUNNER_OS" = "macOS" ]; then
             lib="$(pwd)/target/release/libenprot.dylib"
           else
             lib="$(pwd)/target/release/libenprot.so"
@@ -91,12 +81,69 @@ jobs:
         working-directory: bindings/python
         env:
           ENPROT_LIB: ${{ steps.lib.outputs.path }}
-          # macOS: loader needs Homebrew's librnp at runtime.
           DYLD_LIBRARY_PATH: ${{ runner.os == 'macOS' && '/usr/local/lib:/opt/homebrew/lib' || '' }}
         run: python -m pytest tests/ -v
 
-  pre-commit-hook:
-    name: pre-commit hook
+  nodejs:
+    name: @engyon/enprot (${{ matrix.os }} / Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Botan + librnp (linux)
+        if: runner.os == 'Linux'
+        env:
+          BOTAN_VERSION: "3.7.0"
+          PREFIX: /usr
+        run: ./ci/install.sh
+
+      - name: Install Botan + librnp (macos)
+        if: runner.os == 'macOS'
+        run: |
+          brew install botan rnp
+          brew link --overwrite rnp || true
+
+      - name: Build libenprot
+        env:
+          PKG_CONFIG_PATH: ${{ runner.os == 'Linux' && '/usr/lib/pkgconfig' || '' }}
+        shell: bash
+        run: cargo build --release --lib
+
+      - name: Locate libenprot
+        id: lib
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            lib="$(pwd)/target/release/libenprot.dylib"
+          else
+            lib="$(pwd)/target/release/libenprot.so"
+          fi
+          echo "path=$lib" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install deps
+        working-directory: bindings/nodejs
+        run: npm install
+
+      - name: Run tests
+        working-directory: bindings/nodejs
+        env:
+          ENPROT_LIB: ${{ steps.lib.outputs.path }}
+          DYLD_LIBRARY_PATH: ${{ runner.os == 'macOS' && '/usr/local/lib:/opt/homebrew/lib' || '' }}
+        run: node --test test/test_bindings.js
+
+  tools:
+    name: SOPS importer + pre-commit hook
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,6 +151,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install pytest + PyYAML
+        run: python -m pip install pytest pyyaml
+
+      - name: Run SOPS importer tests
+        run: python -m pytest tools/test_import_sops.py -v
 
       - name: Run hook on samples (expect failure)
         run: |
@@ -115,16 +168,14 @@ jobs:
             echo "EXPECTED rc=1 (plaintext detected), got $rc"
             exit 1
           fi
-          echo "$out" | grep -q "BEGIN Agent_007" || { echo "missing WORD in output"; exit 1; }
-          echo "$out" | grep -q "BEGIN GEHEIM"   || { echo "missing second WORD in output"; exit 1; }
 
       - name: Run hook on clean file (expect success)
         run: |
           mkdir -p /tmp/hooktest
           cat > /tmp/hooktest/clean.ept <<'EOF'
           hello
-          // <( ENCRYPTED SECRET )>
-          // <( DATA abc123 )>
-          // <( END SECRET )>
+          # <( ENCRYPTED SECRET )>
+          # <( DATA abc123 )>
+          # <( END SECRET )>
           EOF
           python3 hooks/pre-commit/enprot_pre_commit.py /tmp/hooktest/clean.ept

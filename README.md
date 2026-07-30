@@ -634,11 +634,14 @@ following language bindings / integrations:
 | Integration | Where | Use case |
 |---|---|---|
 | **Python (`pyenprot`)** | [`bindings/python/`](bindings/python/) | Encrypt/decrypt/store from Python scripts and Jupyter notebooks |
+| **Node.js (`@engyon/enprot`)** | [`bindings/nodejs/`](bindings/nodejs/) | Same surface for Node scripts, Electron, VS Code extensions |
 | **GitHub Action** | [`action/`](action/) | Run enprot as a CI step (`uses: engyon/enprot/action@v0.5`) |
 | **Pre-commit hook** | [`hooks/pre-commit/`](hooks/pre-commit/) | Block commits that contain plaintext inside `BEGIN` blocks |
+| **SOPS importer** | [`tools/import-sops.py`](tools/import-sops.py) | Migrate existing SOPS-encrypted YAML/JSON to EPT |
+| **Quickstart cookbook** | [`docs/cookbooks/quickstart.md`](docs/cookbooks/quickstart.md) | 14 end-to-end recipes for real-world use |
 | **Docker image** | [`Dockerfile`](Dockerfile) | `docker run ghcr.io/engyon/enprot:latest encrypt ...` |
 | **Homebrew formula** | [`Formula/enprot.rb`](Formula/enprot.rb) | `brew install enprot` (after the tap is published) |
-| **C FFI** | [`include/enprot.h`](include/enprot.h) + [`src/ffi.rs`](src/ffi.rs) | Build your own bindings in Node, Go, Ruby, etc. |
+| **C FFI** | [`include/enprot.h`](include/enprot.h) + [`enprot-ffi/src/lib.rs`](enprot-ffi/src/lib.rs) | Build your own bindings in Go, Ruby, etc. |
 
 Quick start with Python:
 
@@ -648,6 +651,16 @@ cd bindings/python && pip install -e .
 ENPROT_LIB=target/release/libenprot.dylib python3 -c "
 import pyenprot
 pyenprot.encrypt('config.toml', words={'SECRET': 'pw'}, casdir='.cas')
+"
+```
+
+Or Node.js:
+
+```sh
+cd bindings/nodejs && npm install
+ENPROT_LIB=../target/release/libenprot.dylib node -e "
+const e = require('@engyon/enprot');
+e.encrypt('config.toml', { words: { SECRET: 'pw' }, casdir: '.cas' });
 "
 ```
 
