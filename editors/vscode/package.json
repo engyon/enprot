@@ -1,0 +1,124 @@
+{
+  "name": "enprot",
+  "displayName": "enprot — Engyon Protected Text",
+  "description": "Syntax highlighting and warnings for EPT (Engyon Protected Text) directives embedded in source comments.",
+  "version": "0.1.0",
+  "publisher": "engyon",
+  "license": "BSD-2-Clause",
+  "homepage": "https://github.com/engyon/enprot",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/engyon/enprot.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "encryption",
+    "engyon",
+    "ept",
+    "cryptography",
+    "security"
+  ],
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#1e3a5f",
+    "theme": "dark"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "ept",
+        "aliases": [
+          "Engyon Protected Text",
+          "EPT",
+          "ept"
+        ],
+        "extensions": [
+          ".ept"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ept",
+        "scopeName": "source.ept",
+        "path": "./syntaxes/ept.tmLanguage.json"
+      },
+      {
+        "injectTo": [
+          "source.python",
+          "source.rust",
+          "source.go",
+          "source.shell",
+          "source.toml",
+          "source.yaml",
+          "source.json"
+        ],
+        "scopeName": "injection.ept",
+        "path": "./syntaxes/ept-injection.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "enprot.encryptFile",
+        "title": "enprot: Encrypt file",
+        "category": "enprot",
+        "enablement": "resourceScheme == file"
+      },
+      {
+        "command": "enprot.decryptFile",
+        "title": "enprot: Decrypt file",
+        "category": "enprot",
+        "enablement": "resourceScheme == file"
+      },
+      {
+        "command": "enprot.storeFile",
+        "title": "enprot: Store (CAS-sanitize) file",
+        "category": "enprot",
+        "enablement": "resourceScheme == file"
+      },
+      {
+        "command": "enprot.verifyFile",
+        "title": "enprot: Verify chain anchors",
+        "category": "enprot",
+        "enablement": "resourceScheme == file"
+      }
+    ],
+    "configuration": {
+      "title": "enprot",
+      "properties": {
+        "enprot.binaryPath": {
+          "type": "string",
+          "default": "enprot",
+          "description": "Path to the enprot binary. Defaults to enprot on $PATH."
+        },
+        "enprot.warnOnPlaintextBeginBlock": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a warning decoration when a BEGIN WORD ... END WORD block contains plaintext (likely a committed secret)."
+        },
+        "enprot.defaultCasdir": {
+          "type": "string",
+          "default": ".cas",
+          "description": "CAS directory used by the encrypt/decrypt/store commands."
+        }
+      }
+    }
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:ept",
+    "onCommand:enprot.encryptFile"
+  ],
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0"
+  }
+}

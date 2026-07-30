@@ -1,0 +1,80 @@
+{
+  "scopeName": "source.ept",
+  "name": "Engyon Protected Text",
+  "patterns": [
+    { "include": "#directive-begin" },
+    { "include": "#directive-end" },
+    { "include": "#directive-encrypted" },
+    { "include": "#directive-stored" },
+    { "include": "#directive-data" },
+    { "include": "#directive-immutable" },
+    { "include": "#directive-mutable" },
+    { "include": "#directive-chain" },
+    { "include": "#directive-conflict" },
+    { "include": "#comment-leader" }
+  ],
+  "repository": {
+    "directive-begin": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*BEGIN\\s+(\\w+)\\s*\\)?>?$",
+      "captures": {
+        "1": { "name": "punctuation.whitespace.ept" },
+        "2": { "name": "comment.line.ept" },
+        "3": { "name": "entity.name.tag.begin.ept keyword.control.begin.ept" }
+      },
+      "name": "meta.directive.begin.ept"
+    },
+    "directive-end": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*END\\s+(\\w+)\\s*\\)?>?$",
+      "captures": {
+        "3": { "name": "entity.name.tag.end.ept keyword.control.end.ept" }
+      }
+    },
+    "directive-encrypted": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*ENCRYPTED\\s+(\\w+)\\s*\\)?>?$",
+      "captures": {
+        "3": { "name": "entity.name.tag.encrypted.ept storage.type.encrypted.ept" }
+      }
+    },
+    "directive-stored": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*STORED\\s+(\\w+)\\s+(.*?)\\s*\\)?>?$",
+      "captures": {
+        "3": { "name": "entity.name.tag.stored.ept storage.type.stored.ept" },
+        "4": { "name": "string.unquoted.key.ept" }
+      }
+    },
+    "directive-data": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*DATA\\s+([0-9A-Za-z+/=]*)\\s*\\)?>?$",
+      "captures": {
+        "3": { "name": "constant.numeric.base64.ept" }
+      }
+    },
+    "directive-immutable": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*(IMMUTABLE)\\s+(\\w+)\\s*\\)?>?$",
+      "captures": {
+        "3": { "name": "entity.name.tag.immutable.ept storage.modifier.immutable.ept" }
+      }
+    },
+    "directive-mutable": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*(MUTABLE)\\s+(\\w+)\\s*\\)?>?$",
+      "captures": {
+        "3": { "name": "entity.name.tag.mutable.ept storage.modifier.mutable.ept" }
+      }
+    },
+    "directive-chain": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*CHAIN\\s+(\\w+)\\s*\\)?>?$",
+      "captures": {
+        "3": { "name": "entity.name.tag.chain.ept keyword.other.chain.ept" }
+      }
+    },
+    "directive-conflict": {
+      "match": "^(\\s*)([#/]{1,2}|--)\\s*<?\\(?\\s*(CONFLICT)\\s+(\\w+)\\s*\\)?>?$",
+      "captures": {
+        "3": { "name": "entity.name.tag.conflict.ept invalid.illegal.conflict.ept" }
+      }
+    },
+    "comment-leader": {
+      "match": "^(\\s*)([#/]{1,2}|--)(.*)$",
+      "name": "comment.line.ept"
+    }
+  }
+}
