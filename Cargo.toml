@@ -65,17 +65,16 @@ zeroize        = { version = "1", features = ["alloc"] }
 rnp-rs         = "0.1.10"
 
 # botan-sys unconditionally calls `pkg-config` when its `pkg-config`
-# feature is on (build.rs:72 — `.unwrap()` on the probe). Windows
-# runners don't ship pkg-config. Split the dep per target:
-#   - Unix: keep `pkg-config` so `cargo build` finds the system Botan.
-#   - Windows: drop `pkg-config`, enable `static`. botan-sys then just
-#     emits `cargo:rustc-link-lib=static=botan-3`; enprot's build.rs
-#     points cargo at $PREFIX/lib via `cargo:rustc-link-search`.
+# feature is on. Windows runners don't ship pkg-config. Split per
+# target:
+#   - Unix: keep `pkg-config` for fast system-Botan discovery.
+#   - Windows: use `vendored` so botan-src builds Botan from source.
+#     Combined with vendored-rnp, Windows CI needs ZERO system C deps.
 [target.'cfg(not(windows))'.dependencies]
 botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
 
 [target.'cfg(windows)'.dependencies]
-botan          = { version = "0.11", default-features = false, features = ["botan3", "static"] }
+botan          = { version = "0.11", default-features = false, features = ["botan3", "vendored"] }
 
 [dev-dependencies]
 tempfile    = "3"

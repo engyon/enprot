@@ -197,6 +197,12 @@ dependencies = [
 
 [[package]]
 name = "botan-src"
+version = "0.30701.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c4e1c7910f3b4712aed10e4259eca77e79ed84c1b023098c8eac596b993fc44"
+
+[[package]]
+name = "botan-src"
 version = "0.31200.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dce062ff9328d757ea205177cab939e6ce2aeb7a64bb559263fbe9251c5b1f5b"
@@ -212,6 +218,7 @@ version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04285fa0c094cc9961fe435b1b279183db9394844ad82ce483aa6196c0e6da38"
 dependencies = [
+ "botan-src 0.30701.2",
  "pkg-config",
 ]
 
@@ -1264,11 +1271,11 @@ dependencies = [
 
 [[package]]
 name = "rnp-src"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8db6c44f4c62d7060aedcf55c795d4e7cee7634aeb644cba0a90accabfdf173e"
+checksum = "852eede0415d60b1b5b586a330b94ce014bd83df69f7388205f8cfee62840f49"
 dependencies = [
- "botan-src",
+ "botan-src 0.31200.0",
  "cmake",
  "flate2",
  "tar",
