@@ -1,0 +1,24 @@
+[package]
+name = "enprot-ffi"
+version = "0.5.11"
+edition = "2024"
+rust-version = "1.88"
+license = "BSD-2-Clause"
+description = "C FFI for enprot — shared library (libenprot) for Python, Node.js, Go, Ruby bindings"
+repository = "https://github.com/engyon/enprot"
+homepage = "https://github.com/engyon/enprot"
+keywords = ["encryption", "engyon", "ept", "ffi", "bindings"]
+categories = ["cryptography", "api-bindings", "no-std::std"]
+
+[lib]
+name = "enprot"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+enprot = { path = "..", version = "0.5.11", default-features = false }
+serde_json = "1"
+
+[features]
+default = ["cli"]
+cli = ["enprot/cli"]
+vendored-rnp = ["enprot/vendored-rnp"]

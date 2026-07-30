@@ -20,7 +20,10 @@ pub struct EnprotResult {
 
 impl EnprotResult {
     fn ok() -> Self {
-        EnprotResult { code: ENPROT_OK, error: ptr::null() }
+        EnprotResult {
+            code: ENPROT_OK,
+            error: ptr::null(),
+        }
     }
 
     fn err(code: c_int, msg: &str) -> Self {

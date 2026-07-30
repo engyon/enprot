@@ -59,9 +59,6 @@ pub mod resolve;
 pub mod scm;
 pub mod utils;
 
-/// C FFI — enables bindings in Python, Node.js, Go, Ruby, etc.
-pub mod ffi;
-
 pub use error::{Error, Result};
 
 /// CLI dispatch layer — all clap-dependent types and the

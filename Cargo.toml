@@ -14,6 +14,11 @@ edition     = "2024"
 rust-version = "1.88"
 autotests   = false
 
+[workspace]
+members = [".", "enprot-ffi"]
+default-members = [".", "enprot-ffi"]
+resolver = "2"
+
 [package.metadata.docs.rs]
 # Build all features so docs.rs shows the full API surface.
 all-features = true
@@ -34,7 +39,7 @@ cli = ["dep:clap", "dep:clap_complete"]
 vendored-rnp = ["rnp-rs/vendored"]
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [[bin]]
 name = "enprot"
