@@ -667,6 +667,16 @@ e.encrypt('config.toml', { words: { SECRET: 'pw' }, casdir: '.cas' });
 See [`bindings/README.md`](bindings/README.md) for the FFI surface and
 how to add a new language binding.
 
+### Editor support
+
+| Editor | Where | Status |
+|---|---|---|
+| **VS Code** | [`editors/vscode/`](editors/vscode/) | Beta — syntax highlighting + plaintext-in-BEGIN warning + encrypt/decrypt/store/verify commands |
+
+The VS Code extension injects an EPT grammar into comments of
+Python, Rust, Go, shell, TOML, YAML, and JSON files, so directives
+are highlighted without taking over the host-language grammar.
+
 ## Development
 
 See `CONTRIBUTING.md` for the full guide. Quick reference:

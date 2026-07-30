@@ -1,0 +1,17 @@
+{
+  "scopeName": "injection.ept",
+  "injectionSelector": "L:comment",
+  "patterns": [
+    { "include": "#ept-directive" }
+  ],
+  "repository": {
+    "ept-directive": {
+      "match": "(?x)\n  \\b\n  (BEGIN|END|ENCRYPTED|STORED|DATA|IMMUTABLE|MUTABLE|CHAIN|CONFLICT)\n  \\b\n  (?:\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+      "captures": {
+        "1": { "name": "keyword.control.ept" },
+        "3": { "name": "entity.name.tag.ept" }
+      },
+      "name": "meta.ept.injection"
+    }
+  }
+}
