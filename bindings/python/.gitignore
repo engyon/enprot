@@ -1,0 +1,10 @@
+# Python build artifacts — keep these out of the enprot repo.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+*.egg
+build/
+dist/
+.venv/
+venv/
