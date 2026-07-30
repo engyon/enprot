@@ -85,7 +85,7 @@ jobs:
         run: python -m pytest tests/ -v
 
   nodejs:
-    name: @engyon/enprot (${{ matrix.os }} / Node ${{ matrix.node }})
+    name: enprot-nodejs (${{ matrix.os }} / Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
