@@ -577,6 +577,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "enprot-ffi"
+version = "0.5.11"
+dependencies = [
+ "enprot",
+ "serde_json",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
