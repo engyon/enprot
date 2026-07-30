@@ -192,6 +192,13 @@ jobs:
         shell: pwsh
         run: cargo build --release --features vendored-rnp
 
+      - name: Verify binary (windows)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          $v = & target/release/$Env:EXE_NAME --version
+          if ($v -notmatch "enprot") { throw "Binary verification failed: $v" }
+
       - name: Download extras
         uses: actions/download-artifact@v8
         with:
