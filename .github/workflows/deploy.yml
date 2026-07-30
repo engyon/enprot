@@ -166,6 +166,8 @@ jobs:
         run: |
           $Tag = $Env:DEPLOY_TAG.TrimStart('v')
           "RELEASE_TAG=$Tag" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
+          $Prefix = (Join-Path $PWD 'installs').Replace('\', '/')
+          "PREFIX=$Prefix" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
           "EXE_PATH=target/release/$Env:EXE_NAME" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
 
       - name: Install rust toolchain
@@ -179,24 +181,34 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install dependencies (windows)
+        if: startsWith(matrix.os, 'windows')
+        env:
+          GIT_REDIRECT_STDERR: '2>&1'
+        shell: pwsh
+        run: |
+          $Env:Path += ";$Env:PREFIX/lib"
+          $Env:TARGET = "x86_64-pc-windows-msvc"
+          ./ci/install.ps1
+
       - name: Build (unix)
         if: "!startsWith(matrix.os, 'windows')"
         env: ${{ matrix.env }}
         run: |
           set -euxo pipefail
           . ci/build-static.sh
-      # Windows: vendored-rnp + vendored botan build everything from
-      # source. No install.ps1, no system C deps needed.
       - name: Build (windows)
         if: startsWith(matrix.os, 'windows')
+        env: ${{ matrix.env }}
         shell: pwsh
-        run: cargo build --release --features vendored-rnp
+        run: |
+          . .\ci\build-static.ps1
 
       - name: Verify binary (windows)
         if: startsWith(matrix.os, 'windows')
         shell: pwsh
         run: |
-          $v = & target/release/$Env:EXE_NAME --version
+          $v = & "$Env:EXE_PATH" --version
           if ($v -notmatch "enprot") { throw "Binary verification failed: $v" }
 
       - name: Download extras

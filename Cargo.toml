@@ -74,7 +74,7 @@ rnp-rs         = "0.1.10"
 botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
 
 [target.'cfg(windows)'.dependencies]
-botan          = { version = "0.11", default-features = false, features = ["botan3", "vendored"] }
+botan          = { version = "0.11", default-features = false, features = ["botan3", "static"] }
 
 [dev-dependencies]
 tempfile    = "3"

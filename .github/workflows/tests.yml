@@ -64,23 +64,39 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-      - name: Install dependencies
-        if: "!startsWith(matrix.os, 'windows')"
+      - name: Install dependencies (linux)
+        if: "startsWith(matrix.os, 'ubuntu')"
         run: ./ci/install.sh
-      - name: Build
+      - name: Install Botan (macos)
+        if: "startsWith(matrix.os, 'macos')"
+        run: brew install botan
+      # Unix: vendored-rnp builds librnp from source via rnp-src.
+      # No system librnp/json-c/sexpp needed — fixes rnp-rs 0.1.10
+      # linking issues where extra link directives can't find libs.
+      - name: Build (unix)
         if: "!startsWith(matrix.os, 'windows')"
-        run: cargo build --verbose
-      - name: Run tests
+        run: cargo build --verbose --features vendored-rnp
+      - name: Run tests (unix)
         if: "!startsWith(matrix.os, 'windows')"
-        run: cargo test --verbose -- --nocapture
-      # Windows: vendored-rnp builds librnp + Botan from source via
-      # rnp-src + botan-src. No system C deps needed — no install.ps1.
+        run: cargo test --verbose --features vendored-rnp -- --nocapture
+      # Windows: install.ps1 builds the full C dep stack from source.
+      # vendored-rnp isn't ready on Windows yet (rnp-src 0.1.3 pending).
+      - name: Install dependencies (windows)
+        if: "startsWith(matrix.os, 'windows')"
+        env:
+          GIT_REDIRECT_STDERR: '2>&1'
+        shell: pwsh
+        run: |
+          $Env:PREFIX = (Join-Path $PWD 'botan-install').Replace('\', '/')
+          $Env:Path += ";$Env:PREFIX/lib"
+          $Env:TARGET = "x86_64-pc-windows-msvc"
+          ./ci/install.ps1
       - name: Build (windows)
         if: "startsWith(matrix.os, 'windows')"
-        run: cargo build --verbose --features vendored-rnp
+        run: cargo build --verbose
       - name: Run tests (windows)
         if: "startsWith(matrix.os, 'windows')"
-        run: cargo test --verbose --features vendored-rnp -- --nocapture
+        run: cargo test --verbose -- --nocapture
 
   coverage:
     name: Code coverage
