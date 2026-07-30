@@ -197,12 +197,6 @@ dependencies = [
 
 [[package]]
 name = "botan-src"
-version = "0.30701.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c4e1c7910f3b4712aed10e4259eca77e79ed84c1b023098c8eac596b993fc44"
-
-[[package]]
-name = "botan-src"
 version = "0.31200.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dce062ff9328d757ea205177cab939e6ce2aeb7a64bb559263fbe9251c5b1f5b"
@@ -218,7 +212,6 @@ version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04285fa0c094cc9961fe435b1b279183db9394844ad82ce483aa6196c0e6da38"
 dependencies = [
- "botan-src 0.30701.2",
  "pkg-config",
 ]
 
@@ -559,7 +552,7 @@ checksum = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d"
 
 [[package]]
 name = "enprot"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "aes-gcm-siv",
  "assert_cmd",
@@ -1275,7 +1268,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "852eede0415d60b1b5b586a330b94ce014bd83df69f7388205f8cfee62840f49"
 dependencies = [
- "botan-src 0.31200.0",
+ "botan-src",
  "cmake",
  "flate2",
  "tar",
