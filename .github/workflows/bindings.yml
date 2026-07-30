@@ -48,6 +48,7 @@ jobs:
       - name: Install Botan + librnp (windows)
         if: runner.os == 'Windows'
         env:
+          BOTAN_VERSION: "3.7.0"
           GIT_REDIRECT_STDERR: '2>&1'
         shell: pwsh
         run: |
