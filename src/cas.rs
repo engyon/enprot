@@ -279,3 +279,82 @@ mod tests {
         assert_eq!(h1, h2);
     }
 }
+
+// ---------------------------------------------------------------------------
+// CAS backend dispatch (TODO.complete/06-cas-backends).
+//
+// The enum below is the entry point for multi-backend CAS selection.
+// Callers pass a URL-like spec (e.g., "s3://bucket/prefix",
+// "rekor:", "/local/path") and receive a boxed `CasStore`. Today only
+// `LocalCas` is implemented; S3 / IPFS / Rekor are stubs that return
+// a clear "not yet implemented" error.
+// ---------------------------------------------------------------------------
+
+/// Dispatch a CAS specification string into a concrete backend.
+///
+/// Recognized schemes:
+/// - No scheme (bare path): `LocalCas` at that directory.
+/// - `s3://bucket/prefix`: S3-backed CAS (TODO: not yet implemented).
+/// - `ipfs://gateway`: IPFS-backed CAS (TODO: not yet implemented).
+/// - `rekor:`: Rekor transparency-log CAS (TODO: gated on #03 Sigstore).
+pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
+    if let Some(rest) = spec.strip_prefix("s3://") {
+        return Err(crate::error::Error::msg(format!(
+            "S3 CAS backend not yet implemented (spec: s3://{rest}); see TODO.complete/06"
+        )));
+    }
+    if let Some(rest) = spec.strip_prefix("ipfs://") {
+        return Err(crate::error::Error::msg(format!(
+            "IPFS CAS backend not yet implemented (spec: ipfs://{rest}); see TODO.complete/06"
+        )));
+    }
+    if spec == "rekor:" || spec.starts_with("rekor://") {
+        return Err(crate::error::Error::msg(
+            "Rekor CAS backend not yet implemented; see TODO.complete/06 (gated on #03 Sigstore)",
+        ));
+    }
+    // Default: treat as local path.
+    Ok(Box::new(LocalCas {
+        root: PathBuf::from(spec),
+        verbose: false,
+    }))
+}
+
+#[cfg(test)]
+mod backend_tests {
+    use super::*;
+
+    #[test]
+    fn open_cas_local_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open_cas(dir.path().to_str().unwrap()).unwrap();
+        let policy = crate::crypto::default_policy();
+        let h = store.save(b"hello", &*policy).unwrap();
+        assert_eq!(h.len(), 64);
+        let loaded = store.load(&h, &*policy).unwrap();
+        assert_eq!(loaded, b"hello");
+    }
+
+    #[test]
+    fn open_cas_s3_not_yet_implemented() {
+        match open_cas("s3://my-bucket/cas/") {
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(msg.contains("not yet implemented"), "msg: {msg}");
+                assert!(msg.contains("TODO.complete/06"), "msg: {msg}");
+            }
+            Ok(_) => panic!("S3 backend should not be available yet"),
+        }
+    }
+
+    #[test]
+    fn open_cas_rekor_not_yet_implemented() {
+        match open_cas("rekor:") {
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(msg.contains("not yet implemented"), "msg: {msg}");
+            }
+            Ok(_) => panic!("Rekor backend should not be available yet"),
+        }
+    }
+}
