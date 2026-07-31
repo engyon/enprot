@@ -175,36 +175,31 @@ fn json_to_argv(config: &serde_json::Value) -> Result<Vec<String>, String> {
 
 /// Map an [`enprot::Error`] to an FFI status code.
 ///
-/// Heuristic until typed-error variants land ([TODO.complete/02-typed-errors]).
-/// Inspects the error's `Display` output for known substrings; defaults
-/// to `ENPROT_ERR_INVALID`.
+/// Dispatches on the typed enum variants of `enprot::Error`. Every
+/// variant maps to exactly one FFI code — exhaustive `match`, no
+/// string matching, no defaults. New variants added upstream trigger
+/// a compile error here so the FFI stays in sync with the library's
+/// error model.
+///
+/// Mapping table (see also `include/enprot.h`):
+///
+/// | `enprot::Error` variant        | FFI code               |
+/// |--------------------------------|------------------------|
+/// | `Io`, `Cas`                    | `ENPROT_ERR_IO`        |
+/// | `Botan`, `Cipher`, `Pbkdf`, `Policy`, `PolicyViolation` | `ENPROT_ERR_CRYPTO` |
+/// | `Parse`, `Phc`, `Hex`, `Base64` | `ENPROT_ERR_PARSE`    |
+/// | `Json`, `Msg`                  | `ENPROT_ERR_INVALID`   |
 fn classify_error(err: &enprot::Error) -> c_int {
-    let msg = err.to_string();
-    let lower = msg.to_lowercase();
-    if lower.contains("failed to open")
-        || lower.contains("failed to read")
-        || lower.contains("failed to write")
-        || lower.contains("no such file")
-        || lower.contains("permission denied")
-        || lower.contains("cas")
-    {
-        ENPROT_ERR_IO
-    } else if lower.contains("botan")
-        || lower.contains("cipher")
-        || lower.contains("pbkdf")
-        || lower.contains("signature")
-        || lower.contains("decrypt")
-        || lower.contains("encrypt")
-    {
-        ENPROT_ERR_CRYPTO
-    } else if lower.contains("parse")
-        || lower.contains("directive")
-        || lower.contains("data:")
-        || lower.contains("extfield")
-    {
-        ENPROT_ERR_PARSE
-    } else {
-        ENPROT_ERR_INVALID
+    use enprot::Error;
+    match err {
+        Error::Io(_) | Error::Cas(_) => ENPROT_ERR_IO,
+        Error::Botan(_)
+        | Error::Cipher(_)
+        | Error::Pbkdf(_)
+        | Error::Policy(_)
+        | Error::PolicyViolation { .. } => ENPROT_ERR_CRYPTO,
+        Error::Parse { .. } | Error::Phc(_) | Error::Hex(_) | Error::Base64(_) => ENPROT_ERR_PARSE,
+        Error::Json(_) | Error::Msg(_) => ENPROT_ERR_INVALID,
     }
 }
 
@@ -353,30 +348,83 @@ mod tests {
     }
 
     #[test]
-    fn classify_error_io_substring() {
+    fn classify_error_io() {
         use enprot::Error;
-        let e = Error::Msg("Failed to open /tmp/x".into());
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
+        let e = Error::Io(io_err);
         assert_eq!(classify_error(&e), ENPROT_ERR_IO);
     }
 
     #[test]
-    fn classify_error_crypto_substring() {
+    fn classify_error_cas() {
         use enprot::Error;
-        let e = Error::Msg("botan cipher rejected".into());
-        assert_eq!(classify_error(&e), ENPROT_ERR_CRYPTO);
+        let e = Error::Cas("hash mismatch".into());
+        assert_eq!(classify_error(&e), ENPROT_ERR_IO);
     }
 
     #[test]
-    fn classify_error_parse_substring() {
+    fn classify_error_crypto_variants() {
         use enprot::Error;
-        let e = Error::Msg("parse error at line 3".into());
-        assert_eq!(classify_error(&e), ENPROT_ERR_PARSE);
+        assert_eq!(
+            classify_error(&Error::Botan("rng fail".into())),
+            ENPROT_ERR_CRYPTO
+        );
+        assert_eq!(
+            classify_error(&Error::Cipher("bad key".into())),
+            ENPROT_ERR_CRYPTO
+        );
+        assert_eq!(
+            classify_error(&Error::Pbkdf("weak".into())),
+            ENPROT_ERR_CRYPTO
+        );
+        assert_eq!(
+            classify_error(&Error::Policy("reject".into())),
+            ENPROT_ERR_CRYPTO
+        );
+        assert_eq!(
+            classify_error(&Error::PolicyViolation {
+                rule: "r1".into(),
+                context: "ctx".into()
+            }),
+            ENPROT_ERR_CRYPTO
+        );
     }
 
     #[test]
-    fn classify_error_unknown_is_invalid() {
+    fn classify_error_parse_variants() {
         use enprot::Error;
-        let e = Error::Msg("something else".into());
-        assert_eq!(classify_error(&e), ENPROT_ERR_INVALID);
+        assert_eq!(
+            classify_error(&Error::Parse {
+                file: "x.ept".into(),
+                lineno: 3,
+                msg: "bad".into()
+            }),
+            ENPROT_ERR_PARSE
+        );
+        assert_eq!(
+            classify_error(&Error::Phc("bad phc".into())),
+            ENPROT_ERR_PARSE
+        );
+        assert_eq!(
+            classify_error(&Error::Hex("bad hex".into())),
+            ENPROT_ERR_PARSE
+        );
+        assert_eq!(
+            classify_error(&Error::Base64("bad b64".into())),
+            ENPROT_ERR_PARSE
+        );
+    }
+
+    #[test]
+    fn classify_error_invalid_variants() {
+        use enprot::Error;
+        assert_eq!(
+            classify_error(&Error::Json("bad json".into())),
+            ENPROT_ERR_INVALID
+        );
+        assert_eq!(
+            classify_error(&Error::Msg("anything".into())),
+            ENPROT_ERR_INVALID
+        );
     }
 }
