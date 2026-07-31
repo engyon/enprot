@@ -39,7 +39,7 @@ use std::io::IsTerminal;
 /// the two values must match (with retry on mismatch). When stdin is
 /// not a TTY, repetition is skipped — piped input is trusted by the
 /// caller.
-pub fn get_password(name: &str, rep: bool) -> Result<String> {
+pub(crate) fn get_password(name: &str, rep: bool) -> Result<String> {
     let prompt = format!("Password for {}: ", name);
     let pass = read_password(&prompt)?;
     if rep && std::io::stdin().is_terminal() {

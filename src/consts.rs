@@ -21,7 +21,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub const VALID_CIPHER_ALGS: &[&str] = &[
+pub(crate) const VALID_CIPHER_ALGS: &[&str] = &[
     "aes-256-siv",
     "aes-256-gcm",
     "aes-256-gcm-siv",
@@ -29,12 +29,12 @@ pub const VALID_CIPHER_ALGS: &[&str] = &[
     "aes-256-gcm-siv-det",
 ];
 
-pub const DEFAULT_MAX_DEPTH: usize = 100;
+pub(crate) const DEFAULT_MAX_DEPTH: usize = 100;
 
-pub const DEFAULT_LEFT_SEP: &str = "// <(";
-pub const DEFAULT_RIGHT_SEP: &str = ")>";
+pub(crate) const DEFAULT_LEFT_SEP: &str = "// <(";
+pub(crate) const DEFAULT_RIGHT_SEP: &str = ")>";
 
-pub const VALID_PBKDF_ALGS: &[&str] = &[
+pub(crate) const VALID_PBKDF_ALGS: &[&str] = &[
     "argon2",
     "scrypt",
     "pbkdf2-sha256",
@@ -42,11 +42,11 @@ pub const VALID_PBKDF_ALGS: &[&str] = &[
     "legacy",
 ];
 
-pub const VALID_POLICIES: &[&str] = &["default", "nist"];
-pub const DEFAULT_POLICY: &str = "default";
+pub(crate) const VALID_POLICIES: &[&str] = &["default", "nist"];
+pub(crate) const DEFAULT_POLICY: &str = "default";
 
 /// Separator presets for common host languages. Selected via `--lang`.
-pub static LANG_SEPARATORS: &[(&str, &str, &str)] = &[
+pub(crate) static LANG_SEPARATORS: &[(&str, &str, &str)] = &[
     ("raw", "<(", ")>"),
     ("c", "// <(", ")>"),
     ("python", "# <(", ")>"),
@@ -54,7 +54,7 @@ pub static LANG_SEPARATORS: &[(&str, &str, &str)] = &[
     ("latex", "% <(", ")>"),
 ];
 
-pub fn lang_separators(lang: &str) -> Option<(&'static str, &'static str)> {
+pub(crate) fn lang_separators(lang: &str) -> Option<(&'static str, &'static str)> {
     LANG_SEPARATORS
         .iter()
         .find(|(name, _, _)| *name == lang)
