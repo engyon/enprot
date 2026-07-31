@@ -35,7 +35,7 @@ use crate::utils;
 /// returns (in the order Botan produces them), the second is what
 /// `derive_key_from_password` consumes when reading them back from a PHC
 /// string.
-pub static BOTAN_PBKDF_PARAM_MAP: phf::Map<&'static str, &[&[&str; 3]; 2]> = phf_map! {
+pub(crate) static BOTAN_PBKDF_PARAM_MAP: phf::Map<&'static str, &[&[&str; 3]; 2]> = phf_map! {
     // alg              timed()                        manual()
     "argon2"        => &[&["t", "p", "m"],            &["m", "t", "p"]],
     "scrypt"        => &[&["r", "p", "ln"],           &["ln", "r", "p"]],
@@ -51,7 +51,7 @@ pub struct PBKDFCacheEntry {
     pub key: Vec<u8>,
     pub params: BTreeMap<String, usize>,
 }
-pub type PBKDFCache = Vec<PBKDFCacheEntry>;
+pub(crate) type PBKDFCache = Vec<PBKDFCacheEntry>;
 
 fn pbkdf_legacy(password: &str, key_len: usize, policy: &dyn CryptoPolicy) -> Result<Vec<u8>> {
     policy
@@ -104,7 +104,11 @@ fn pbkdf_manual(
 
 /// Serialize a PHC-format string. Layout: `$<id>$<k=v,k=v>$<b64-salt>`.
 /// `params` must be sorted by the BTreeMap iteration order (alphabetical).
-pub fn format_phc(alg: &str, params: &BTreeMap<String, usize>, salt: &[u8]) -> Result<String> {
+pub(crate) fn format_phc(
+    alg: &str,
+    params: &BTreeMap<String, usize>,
+    salt: &[u8],
+) -> Result<String> {
     let body = params
         .iter()
         .map(|(k, v)| format!("{}={}", k, v))
@@ -118,7 +122,7 @@ pub fn format_phc(alg: &str, params: &BTreeMap<String, usize>, salt: &[u8]) -> R
 /// (including `=` padding); we round-trip through Botan's base64 codec.
 ///
 /// Layout: `$<id>$<k=v,k=v,...>$<b64-salt>`
-pub fn parse_phc(s: &str) -> Result<(String, BTreeMap<String, usize>, Vec<u8>)> {
+pub(crate) fn parse_phc(s: &str) -> Result<(String, BTreeMap<String, usize>, Vec<u8>)> {
     let body = s
         .strip_prefix('$')
         .ok_or_else(|| Error::Phc("PHC string must start with '$'".into()))?;
@@ -147,7 +151,7 @@ pub fn parse_phc(s: &str) -> Result<(String, BTreeMap<String, usize>, Vec<u8>)> 
     Ok((id.to_string(), params, salt))
 }
 
-pub fn derive_key(
+pub(crate) fn derive_key(
     password: &str,
     key_len: usize,
     rng: &mut Option<botan::RandomNumberGenerator>,

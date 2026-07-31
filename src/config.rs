@@ -49,7 +49,7 @@ use crate::error::{Error, Result};
 /// default".
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct Config {
+pub(crate) struct Config {
     pub casdir: Option<PathBuf>,
     pub lang: Option<String>,
     pub policy: Option<String>,
@@ -66,7 +66,7 @@ pub struct Config {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct EncryptConfig {
+pub(crate) struct EncryptConfig {
     pub cipher: Option<String>,
     pub pbkdf: Option<String>,
     pub pbkdf_msec: Option<u32>,
@@ -75,7 +75,7 @@ pub struct EncryptConfig {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct ChainConfig {
+pub(crate) struct ChainConfig {
     /// URI form: bare path, `confium://...`, or `pkcs11://...`.
     pub signer: Option<String>,
     /// If true, every transforming subcommand appends a chain anchor
@@ -308,7 +308,7 @@ fn walk_up(start: &Path) -> impl Iterator<Item = PathBuf> {
 }
 
 /// Resolve the user-level config path. Honours `XDG_CONFIG_HOME`.
-pub fn user_config_path() -> Option<PathBuf> {
+pub(crate) fn user_config_path() -> Option<PathBuf> {
     if let Some(xdg) = env::var_os("XDG_CONFIG_HOME")
         && !xdg.is_empty()
     {

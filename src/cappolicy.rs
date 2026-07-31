@@ -48,7 +48,7 @@ use crate::ledger::anchor::SignerId;
 /// Parsed `.enprot/policy.toml`.
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct CapPolicy {
+pub(crate) struct CapPolicy {
     #[serde(default)]
     pub chain: ChainPolicy,
     /// Per-WORD requirements. Renamed to `word` on the wire so the
@@ -60,7 +60,7 @@ pub struct CapPolicy {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct ChainPolicy {
+pub(crate) struct ChainPolicy {
     /// `<alg>:<fp-hex>` strings. When non-empty, `verify-chain` rejects
     /// any anchor whose signer isn't in this list.
     #[serde(default)]
@@ -73,7 +73,7 @@ pub struct ChainPolicy {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
-pub struct WordPolicy {
+pub(crate) struct WordPolicy {
     pub name: String,
     /// `viewer`, `reader`, `decryptor`, `signer`, `verifier`.
     pub required_capability: String,
