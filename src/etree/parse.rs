@@ -80,7 +80,11 @@ where
     R: BufRead,
 {
     if paops.max_depth != 0 && paops.runtime.level > paops.max_depth {
-        return Err(Error::Msg("Maximum recursion depth!".into()));
+        return Err(Error::Parse {
+            file: paops.runtime.fname.clone(),
+            lineno: 0,
+            msg: format!("maximum recursion depth ({}) exceeded", paops.max_depth),
+        });
     }
 
     let mut text = Vec::new();
