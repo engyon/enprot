@@ -160,6 +160,60 @@ pub struct ConflictsOutput {
     pub conflicts: Vec<ConflictEntry>,
 }
 
+/// One block in an `inspect --format json` payload. Variant tag is
+/// the same vocabulary the text renderer uses, lowercased.
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum InspectBlock {
+    Plain,
+    Begin {
+        word: String,
+    },
+    End {
+        word: String,
+    },
+    Encrypted {
+        word: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cipher: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pbkdf: Option<String>,
+    },
+    Stored {
+        word: String,
+        hash: String,
+    },
+    Data,
+    Chain {
+        index: u64,
+        signer: String,
+    },
+    Immutable {
+        word: String,
+    },
+    Mutable {
+        word: String,
+    },
+    Conflict {
+        word: String,
+    },
+}
+
+#[derive(Serialize)]
+pub struct InspectChainAnchor {
+    pub id: String,
+    pub signer: String,
+}
+
+#[derive(Serialize)]
+pub struct InspectOutput {
+    pub file: String,
+    pub blocks: Vec<InspectBlock>,
+    pub chain_anchors: Vec<InspectChainAnchor>,
+    pub conflict_count: usize,
+    pub capabilities: Vec<CapabilityDto>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,5 +277,55 @@ mod tests {
         let s = to_json(&out).unwrap();
         assert!(s.contains("\"ok\": true"));
         assert!(s.contains("\"anchors_total\": 1"));
+    }
+
+    #[test]
+    fn inspect_output_renders_all_block_kinds() {
+        let out = InspectOutput {
+            file: "sample.ept".into(),
+            blocks: vec![
+                InspectBlock::Plain,
+                InspectBlock::Begin {
+                    word: "SECRET".into(),
+                },
+                InspectBlock::Encrypted {
+                    word: "SECRET".into(),
+                    cipher: Some("aes-256-siv".into()),
+                    pbkdf: None,
+                },
+                InspectBlock::Data,
+                InspectBlock::End {
+                    word: "SECRET".into(),
+                },
+                InspectBlock::Stored {
+                    word: "SECRET".into(),
+                    hash: "abc123".into(),
+                },
+            ],
+            chain_anchors: vec![InspectChainAnchor {
+                id: "deadbeef".into(),
+                signer: "ed25519:9f3a7b".into(),
+            }],
+            conflict_count: 0,
+            capabilities: vec![CapabilityDto {
+                tier: "reader",
+                word: None,
+                key_fp: None,
+            }],
+        };
+        let s = to_json(&out).unwrap();
+        // Envelope
+        assert!(s.contains("\"$schema\": \"enprot/v1\""));
+        // Variant tag is the lowercase kind
+        assert!(s.contains("\"kind\": \"plain\""));
+        assert!(s.contains("\"kind\": \"begin\""));
+        assert!(s.contains("\"kind\": \"encrypted\""));
+        assert!(s.contains("\"kind\": \"data\""));
+        assert!(s.contains("\"kind\": \"end\""));
+        assert!(s.contains("\"kind\": \"stored\""));
+        // Optional fields skip when None
+        assert!(!s.contains("\"pbkdf\""));
+        // Chain anchor
+        assert!(s.contains("\"signer\": \"ed25519:9f3a7b\""));
     }
 }
