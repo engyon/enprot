@@ -43,6 +43,7 @@ use crate::{
     merge, output, pbkdf, pki, prot, provenance, resolve, scm,
 };
 
+mod cap;
 /// Per-subcommand modules. Each one exposes a `pub fn run(args)` entry
 /// point that `app_main`'s match dispatches to. Decomposition tracked
 /// in TODO.complete/07-cli-rs-decomposition.
@@ -171,6 +172,9 @@ pub enum Command {
     /// in one pass (TODO.finalize/42). Useful for debugging
     /// "what is this file and what can I do with it?".
     Inspect(InspectSubcmd),
+    /// Capability policy queries: list declared WORDs, check access,
+    /// explain decisions (TODO.complete/25).
+    Cap(cap::CapArgs),
     /// Git `clean` filter (TODO.roadmap/45): read plaintext from
     /// stdin, write ciphertext to stdout. Used by `.gitattributes`
     /// `filter=enprot`. Defaults to `aes-256-gcm-siv-det` so the
@@ -859,6 +863,7 @@ where
         Command::Resolve(a) => run_resolve(a),
         Command::Conflicts(a) => run_conflicts(a),
         Command::Inspect(a) => run_inspect(a, cli.common),
+        Command::Cap(args) => cap::run(args, &cli.common),
         Command::Clean(a) => run_smudge_clean(SmudgeMode::Clean, a, cli.common),
         Command::Smudge(a) => run_smudge_clean(SmudgeMode::Smudge, a, cli.common),
         Command::Textconv(a) => run_smudge_clean(SmudgeMode::Smudge, a, cli.common),
