@@ -47,6 +47,11 @@ mod parse;
 mod transform;
 mod write;
 
+/// Streaming parser scaffold (TODO.complete/05-streaming-io).
+/// Defines ParseEvent + Parser<R> but is not yet wired into the
+/// production pipeline.
+pub mod streaming;
+
 mod blob;
 
 pub use blob::{blob_to_tree, tree_to_blob};
