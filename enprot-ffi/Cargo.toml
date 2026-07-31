@@ -8,7 +8,7 @@ description = "C FFI for enprot — shared library (libenprot) for Python, Node.
 repository = "https://github.com/engyon/enprot"
 homepage = "https://github.com/engyon/enprot"
 keywords = ["encryption", "engyon", "ept", "ffi", "bindings"]
-categories = ["cryptography", "api-bindings", "no-std::std"]
+categories = ["cryptography", "api-bindings"]
 
 [lib]
 name = "enprot"
