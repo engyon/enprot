@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.13](https://github.com/engyon/enprot/compare/enprot-v0.5.12...enprot-v0.5.13) - 2026-07-31
+
+### Other
+
+- bump actions/deploy-pages from 4 to 5
+
 ## [0.5.12](https://github.com/engyon/enprot/compare/enprot-v0.5.11...enprot-v0.5.12) - 2026-07-31
 
 ### Added
