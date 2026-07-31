@@ -26,7 +26,18 @@ use std::collections::BTreeMap;
 pub mod default;
 pub mod nist;
 
-pub trait CryptoPolicy {
+/// Cryptographic policy: gates every cipher/pbkdf/hash call and
+/// supplies defaults.
+///
+/// The `Send + Sync` bounds are required so that [`crate::etree::ParseOps`]
+/// can move across thread boundaries — needed for the rayon-based
+/// parallel multi-file processing planned in
+/// `TODO.complete/04-parallel-multi-file`. Existing implementations
+/// (`DefaultPolicy`, `NistPolicy`) are already `Send + Sync` in
+/// practice because they hold only plain data; this trait declaration
+/// just makes the requirement compile-time explicit so future impls
+/// can't accidentally break it.
+pub trait CryptoPolicy: Send + Sync {
     fn check_hash(&self, alg: &str) -> Result<(), String>;
 
     fn check_pbkdf(
@@ -60,4 +71,18 @@ pub trait CryptoPolicy {
     fn default_pbkdf_salt_length(&self) -> usize;
     fn default_pbkdf_millis(&self) -> u32;
     fn default_cipher_alg(&self) -> String;
+}
+
+/// Compile-time assertion that the known policy implementations are
+/// `Send + Sync`. If a future change breaks the bounds, this function
+/// stops compiling.
+#[doc(hidden)]
+fn _assert_policy_send_sync() {
+    fn _assert<T: Send + Sync>() {}
+    _assert::<crate::policy::default::CryptoPolicyDefault>();
+    _assert::<crate::policy::nist::CryptoPolicyNIST>();
+    // The trait object itself must also be `Send + Sync` so that
+    // `Box<dyn CryptoPolicy>` is usable from worker threads.
+    fn _assert_dyn_send_sync(_: Box<dyn CryptoPolicy>) {}
+    _assert::<Box<dyn CryptoPolicy>>();
 }
