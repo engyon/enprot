@@ -114,6 +114,10 @@ harness = false
 name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip.rs"
 
+[[test]]
+name = "proptest_invariants"
+path = "tests/proptest_invariants.rs"
+
 [profile.release]
 opt-level = 3
 lto = true
