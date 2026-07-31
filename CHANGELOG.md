@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.12](https://github.com/engyon/enprot/compare/enprot-v0.5.11...enprot-v0.5.12) - 2026-07-31
+
+### Added
+
+- *(bindings+distro)* Go + Ruby bindings, AUR package, Nix flake
+- *(editor)* VS Code extension skeleton for EPT
+- *(bindings)* Node.js bindings + quickstart cookbook + SOPS importer
+- *(bindings)* pyenprot + GitHub Action + pre-commit hook
+- *(ffi)* split libenprot into a separate workspace member
+- Docker image, Homebrew formula, C FFI API, GHCR workflow
+
+### Fixed
+
+- *(deploy)* idempotent [target.$TARGET] block in .cargo/config.toml
+
+### Other
+
+- bump clap_mangen from 0.2.33 to 0.3.0
+- bump actions/cache from 4 to 6
+- bump docker/build-push-action from 6 to 7
+- bump taiki-e/install-action from 2 to 2.85.3
+- bump actions/upload-pages-artifact from 3 to 5
+- bump clap_complete from 4.6.7 to 4.6.8
+- *(bindings)* quote job name to avoid YAML reserved-char error
+- *(bindings)* set BOTAN_VERSION for windows install.ps1
+- *(bindings)* set PREFIX before install.ps1 on windows
+
 ## [0.5.11](https://github.com/engyon/enprot/compare/v0.5.10...v0.5.11) - 2026-07-30
 
 ### Added
