@@ -1,7 +1,28 @@
-/// C FFI for enprot — enables bindings in Python, Node.js, Go, Ruby.
-/// Each function takes a JSON config string and returns a result code.
-/// Future bindings: pyenprot (PyO3), @engyon/enprot (napi-rs),
-/// go-enprot (cgo), enprot gem (ffi).
+//! C FFI for enprot — shared library (`libenprot.{so,dylib,dll}`) for
+//! Python, Node.js, Go, Ruby bindings.
+//!
+//! The wire format is JSON. See [`include/enprot.h`](https://github.com/engyon/enprot/blob/main/include/enprot.h)
+//! for the C-side contract.
+//!
+//! # Wire format
+//!
+//! ```json
+//! {
+//!   "operation": "encrypt",
+//!   "file": "/path/to/file.txt",
+//!   "words": {"SECRET": "password"},
+//!   "cipher": "aes-256-siv",
+//!   "casdir": ".cas"
+//! }
+//! ```
+//!
+//! The FFI bridges JSON config → argv → [`enprot::app_main`]. Every
+//! CLI subcommand and option is therefore available to bindings for
+//! free, with no second implementation to maintain. See
+//! [`TODO.complete/01-ffi-pipeline-execution`] for the design rationale
+//! and [`TODO.complete/16-ff-enprot-pipeline-ffi`] for the future
+//! typed-config refactor that will bypass clap.
+
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::ptr;
@@ -34,6 +55,159 @@ impl EnprotResult {
     }
 }
 
+/// JSON config keys that map to enprot CLI flags.
+///
+/// Each entry is `(json_key, cli_flag, takes_value)`. Order matters:
+/// words / recipients must come before the positional file argument
+/// so that clap doesn't try to interpret flags as input files.
+const SCALAR_FLAGS: &[(&str, &str)] = &[
+    ("cipher", "--cipher"),
+    ("policy", "--policy"),
+    ("casdir", "-c"),
+    ("separators", "--separators"),
+    ("max_depth", "--max-depth"),
+    ("pbkdf", "--pbkdf"),
+    ("pbkdf_params", "--pbkdf-params"),
+    ("anchor_signer", "--signer"),
+    ("anchor_chain", "--anchor"),
+];
+
+/// Translate a JSON config object into an `argv` vector that
+/// [`enprot::app_main`] can consume.
+///
+/// The first element is always `enprot` (the program name clap
+/// strips off). The operation follows. Scalar flags are appended in
+/// `SCALAR_FLAGS` order. Multi-value fields (`words`, `recipients`)
+/// are appended as repeatable flags. The file is the last positional.
+fn json_to_argv(config: &serde_json::Value) -> Result<Vec<String>, String> {
+    let op = config["operation"].as_str().ok_or("missing 'operation'")?;
+    let file = config["file"].as_str().ok_or("missing 'file'")?;
+
+    let mut argv: Vec<String> = vec!["enprot".into(), op.into()];
+
+    // WORD + password pairs. enprot's CLI uses two flags:
+    //   -w/--word       — names the WORD to operate on (no password)
+    //   -k/--key        — binds WORD=PASSWORD (the actual secret)
+    // For each {WORD: PASSWORD} pair in the JSON config, emit both.
+    // An empty PASSWORD string means "prompt interactively" (just -w).
+    if let Some(words) = config["words"].as_object() {
+        for (k, v) in words {
+            let pw = v
+                .as_str()
+                .ok_or_else(|| format!("words.{k}: expected string"))?;
+            argv.push("-w".into());
+            argv.push(k.clone());
+            if !pw.is_empty() {
+                argv.push("-k".into());
+                argv.push(format!("{k}={pw}"));
+            }
+        }
+    }
+
+    // Recipient public keys (multi-recipient ML-KEM / Ed25519).
+    if let Some(recipients) = config["recipients"].as_array() {
+        for r in recipients {
+            let path = r.as_str().ok_or("recipients[]: expected string")?;
+            argv.push("--recipient".into());
+            argv.push(path.into());
+        }
+    }
+
+    // Recipient private keys (decrypt path).
+    if let Some(recipient_privs) = config["recipient_privs"].as_array() {
+        for r in recipient_privs {
+            let path = r.as_str().ok_or("recipient_privs[]: expected string")?;
+            argv.push("--recipient-priv".into());
+            argv.push(path.into());
+        }
+    }
+
+    // Scalar flag bindings. Null values are treated as absent — the
+    // Python / Node / Go / Ruby helpers all pass `null` for unspecified
+    // options via JSON serialization.
+    for (json_key, cli_flag) in SCALAR_FLAGS {
+        if let Some(value) = config.get(*json_key) {
+            if value.is_null() {
+                continue;
+            }
+            let s = if let Some(s) = value.as_str() {
+                s.to_string()
+            } else if let Some(n) = value.as_i64() {
+                n.to_string()
+            } else {
+                return Err(format!("{json_key}: expected string or integer"));
+            };
+            argv.push((*cli_flag).into());
+            argv.push(s);
+        }
+    }
+
+    // Boolean flags. Each entry is (json_key, cli_flag).
+    const BOOL_FLAGS: &[(&str, &str)] = &[
+        ("fips", "--fips"),
+        ("quiet", "--quiet"),
+        ("inline", "--inline"),
+        ("verbose", "-v"),
+        ("no_pbkdf_cache", "--no-pbkdf-cache"),
+    ];
+    for (json_key, cli_flag) in BOOL_FLAGS {
+        if config
+            .get(*json_key)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+        {
+            argv.push((*cli_flag).into());
+        }
+    }
+
+    // Output file (if specified, comes after the operation flags but
+    // before the input file).
+    if let Some(out) = config["output"].as_str() {
+        argv.push("-o".into());
+        argv.push(out.into());
+    }
+
+    // Positional: input file (always last).
+    argv.push(file.into());
+
+    Ok(argv)
+}
+
+/// Map an [`enprot::Error`] to an FFI status code.
+///
+/// Heuristic until typed-error variants land ([TODO.complete/02-typed-errors]).
+/// Inspects the error's `Display` output for known substrings; defaults
+/// to `ENPROT_ERR_INVALID`.
+fn classify_error(err: &enprot::Error) -> c_int {
+    let msg = err.to_string();
+    let lower = msg.to_lowercase();
+    if lower.contains("failed to open")
+        || lower.contains("failed to read")
+        || lower.contains("failed to write")
+        || lower.contains("no such file")
+        || lower.contains("permission denied")
+        || lower.contains("cas")
+    {
+        ENPROT_ERR_IO
+    } else if lower.contains("botan")
+        || lower.contains("cipher")
+        || lower.contains("pbkdf")
+        || lower.contains("signature")
+        || lower.contains("decrypt")
+        || lower.contains("encrypt")
+    {
+        ENPROT_ERR_CRYPTO
+    } else if lower.contains("parse")
+        || lower.contains("directive")
+        || lower.contains("data:")
+        || lower.contains("extfield")
+    {
+        ENPROT_ERR_PARSE
+    } else {
+        ENPROT_ERR_INVALID
+    }
+}
+
 /// Process a file with the given JSON config.
 ///
 /// # Safety
@@ -55,15 +229,27 @@ pub unsafe extern "C" fn enprot_process(config_json: *const std::os::raw::c_char
         Err(e) => return EnprotResult::err(ENPROT_ERR_PARSE, &format!("invalid JSON: {e}")),
     };
 
-    if config["file"].as_str().is_none() {
-        return EnprotResult::err(ENPROT_ERR_INVALID, "missing 'file' in config");
+    let argv = match json_to_argv(&config) {
+        Ok(a) => a,
+        Err(msg) => return EnprotResult::err(ENPROT_ERR_INVALID, &msg),
+    };
+
+    #[cfg(feature = "cli")]
+    {
+        match enprot::app_main(argv) {
+            Ok(()) => EnprotResult::ok(),
+            Err(e) => EnprotResult::err(classify_error(&e), &e.to_string()),
+        }
     }
 
-    if config["operation"].as_str().is_none() {
-        return EnprotResult::err(ENPROT_ERR_INVALID, "missing 'operation' in config");
+    #[cfg(not(feature = "cli"))]
+    {
+        let _ = argv;
+        EnprotResult::err(
+            ENPROT_ERR_INVALID,
+            "enprot-ffi was built without 'cli' feature; rebuild with --features cli",
+        )
     }
-
-    EnprotResult::ok()
 }
 
 /// Get the enprot version string. The returned pointer is static.
@@ -109,5 +295,88 @@ mod tests {
         let json = CString::new(r#"{"foo": "bar"}"#).unwrap();
         let r = unsafe { enprot_process(json.as_ptr()) };
         assert_eq!(r.code, ENPROT_ERR_INVALID);
+    }
+
+    #[test]
+    fn json_to_argv_minimal() {
+        let cfg: serde_json::Value = serde_json::json!({
+            "operation": "encrypt",
+            "file": "/tmp/x.txt"
+        });
+        let argv = json_to_argv(&cfg).unwrap();
+        assert_eq!(argv, vec!["enprot", "encrypt", "/tmp/x.txt"]);
+    }
+
+    #[test]
+    fn json_to_argv_with_words_and_flags() {
+        let cfg: serde_json::Value = serde_json::json!({
+            "operation": "encrypt",
+            "file": "/tmp/x.txt",
+            "words": {"SECRET": "pw", "API": ""},
+            "cipher": "aes-256-siv",
+            "casdir": ".cas",
+            "fips": true
+        });
+        let argv = json_to_argv(&cfg).unwrap();
+        assert_eq!(argv[1], "encrypt");
+        // For each WORD, -w NAME appears; -k NAME=PW only if password non-empty.
+        assert!(argv.contains(&"-w".to_string()));
+        assert!(argv.iter().any(|s| s == "SECRET"));
+        assert!(argv.iter().any(|s| s == "API"));
+        // Only SECRET has a password; -k SECRET=pw appears, but not -k API=.
+        let k_idx = argv
+            .iter()
+            .position(|x| x == "-k")
+            .expect("-k present for SECRET");
+        assert_eq!(argv[k_idx + 1], "SECRET=pw");
+        // No second -k for API (empty password).
+        let k_count = argv.iter().filter(|x| **x == "-k").count();
+        assert_eq!(k_count, 1);
+        // Scalar flags
+        assert!(argv.contains(&"--cipher".to_string()));
+        assert!(argv.contains(&"-c".to_string()));
+        // Bool flag
+        assert!(argv.contains(&"--fips".to_string()));
+        // File is last
+        assert_eq!(argv.last().unwrap(), "/tmp/x.txt");
+    }
+
+    #[test]
+    fn json_to_argv_rejects_non_string_word() {
+        let cfg: serde_json::Value = serde_json::json!({
+            "operation": "encrypt",
+            "file": "/tmp/x",
+            "words": {"SECRET": 42}
+        });
+        let err = json_to_argv(&cfg).unwrap_err();
+        assert!(err.contains("expected string"));
+    }
+
+    #[test]
+    fn classify_error_io_substring() {
+        use enprot::Error;
+        let e = Error::Msg("Failed to open /tmp/x".into());
+        assert_eq!(classify_error(&e), ENPROT_ERR_IO);
+    }
+
+    #[test]
+    fn classify_error_crypto_substring() {
+        use enprot::Error;
+        let e = Error::Msg("botan cipher rejected".into());
+        assert_eq!(classify_error(&e), ENPROT_ERR_CRYPTO);
+    }
+
+    #[test]
+    fn classify_error_parse_substring() {
+        use enprot::Error;
+        let e = Error::Msg("parse error at line 3".into());
+        assert_eq!(classify_error(&e), ENPROT_ERR_PARSE);
+    }
+
+    #[test]
+    fn classify_error_unknown_is_invalid() {
+        use enprot::Error;
+        let e = Error::Msg("something else".into());
+        assert_eq!(classify_error(&e), ENPROT_ERR_INVALID);
     }
 }

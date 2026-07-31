@@ -12,6 +12,12 @@ categories = ["cryptography", "api-bindings"]
 
 [lib]
 name = "enprot"
+# cdylib + staticlib: FFI consumers (Python/Node/Go/Ruby) link
+# against the shared/static artifact named `libenprot.{so,dylib,dll}`.
+# We deliberately DON'T add rlib here — the main enprot crate also
+# produces a libenprot.rlib, and Cargo cannot disambiguate two
+# candidates with the same name. Integration tests use `extern "C"`
+# declarations + #[link(name = "enprot")] to consume the cdylib.
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
