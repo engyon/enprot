@@ -128,3 +128,48 @@ debug = "line-tables-only"
 [profile.release.package."*"]
 # Strip build-env-specific debug info from dependencies too.
 debug = "line-tables-only"
+
+# ----------------------------------------------------------------------------
+# Native package metadata.
+#
+# These sections are consumed by `cargo-deb` and `cargo-generate-rpm` to
+# build .deb and .rpm packages (TODO.complete/17). They have no effect on
+# the crate's library/binary build.
+# ----------------------------------------------------------------------------
+
+[package.metadata.deb]
+maintainer = "Engyon <open.source@ribose.com>"
+copyright = "2018-2026 Ribose Inc."
+license-file = ["LICENSE", "0"]
+depends = "libbotan-3-3, librnp0"
+section = "utils"
+priority = "optional"
+extended-description = """\
+Engyon Protected Text (EPT) — confidentiality and provenance for text.
+Enprot embeds classification levels, content-addressed storage, and
+signed chain anchors inside any text-based file without breaking the
+host language's syntax."""
+assets = [
+    ["target/release/enprot", "usr/bin/", "755"],
+    ["target/release/enprot.1", "usr/share/man/man1/", "644"],
+    ["target/release/completions/enprot.bash", "usr/share/bash-completion/completions/enprot", "644"],
+    ["target/release/completions/_enprot", "usr/share/zsh/vendor-completions/", "644"],
+    ["target/release/completions/enprot.fish", "usr/share/fish/vendor_completions.d/", "644"],
+]
+
+[package.metadata.generate-rpm]
+summary = "Engyon Protected Text — confidentiality and provenance for text"
+license = "BSD-2-Clause"
+vendor = "Ribose Inc."
+url = "https://github.com/engyon/enprot"
+assets = [
+    { source = "target/release/enprot", dest = "/usr/bin/enprot", mode = "755" },
+    { source = "target/release/enprot.1", dest = "/usr/share/man/man1/enprot.1", mode = "644" },
+    { source = "target/release/completions/enprot.bash", dest = "/usr/share/bash-completion/completions/enprot", mode = "644" },
+    { source = "target/release/completions/_enprot", dest = "/usr/share/zsh/site-functions/_enprot", mode = "644" },
+    { source = "target/release/completions/enprot.fish", dest = "/usr/share/fish/vendor_completions.d/enprot.fish", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+botan = "*"
+librnp = "*"

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Chocolatey package spec for enprot — Windows package manager.
+  See distro/chocolatey/README.md for build/publish flow.
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>enprot</id>
+    <version>0.0.0</version>
+    <title>enprot</title>
+    <authors>Engyon</authors>
+    <projectUrl>https://github.com/engyon/enprot</projectUrl>
+    <projectSourceUrl>https://github.com/engyon/enprot</projectSourceUrl>
+    <packageSourceUrl>https://github.com/engyon/enprot/tree/main/distro/chocolatey</packageSourceUrl>
+    <docsUrl>https://github.com/engyon/enprot/blob/main/docs/cookbooks/quickstart.md</docsUrl>
+    <bugTrackerUrl>https://github.com/engyon/enprot/issues</bugTrackerUrl>
+    <tags>encryption cryptography ept engyon text confidentiality</tags>
+    <copyright>2018-2026 Ribose Inc.</copyright>
+    <licenseUrl>https://github.com/engyon/enprot/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <summary>Engyon Protected Text — confidentiality for source files.</summary>
+    <description>Engyon Protected Text (EPT) confidentiality processor. Encrypts, decrypts, stores, and fetches WORD-scoped segments inside any text-based file's comments without breaking host-language syntax.</description>
+    <releaseNotes>https://github.com/engyon/enprot/releases</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

@@ -20,8 +20,18 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, ... }@inputs:
+    let
+      # System-independent outputs: NixOS module, exported for
+      # consumption by any NixOS configuration regardless of
+      # architecture. Per-system packages/devShells come from
+      # eachDefaultSystem below.
+      nixosModules.enprot = import ./nix/module.nix;
+      nixosModule = nixosModules.enprot;  # common alias
+    in
+    {
+      inherit nixosModules nixosModule;
+    } // flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs { inherit system overlays; };

@@ -1,0 +1,74 @@
+name: publish-vscode
+
+# Publish the VS Code extension to the Marketplace on every enprot
+# release tag. Implements TODO.complete/15 (VS Code half).
+#
+# Prerequisites:
+#   - Secret `VSCE_PAT` set to a Personal Access Token from
+#     https://dev.azure.com/engyon/_usersSettings/tokens (Publisher
+#     of record: `engyon`).
+#   - The extension's package.json `version` matches the tag's
+#     version (release-plz keeps this in sync automatically).
+
+on:
+  push:
+    tags:
+      - 'enprot-v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g., enprot-v0.5.13)'
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install deps + vsce
+        working-directory: editors/vscode
+        run: |
+          npm install
+          npm install --no-save @vscode/vsce
+
+      - name: Verify version matches tag
+        id: ver
+        working-directory: editors/vscode
+        run: |
+          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          # Strip any non-digit prefix.
+          TAG_VER="$(echo "$TAG" | sed 's/^[^0-9]*//')"
+          PKG_VER="$(node -p 'require("./package.json").version')"
+          if [ "$TAG_VER" != "$PKG_VER" ]; then
+            echo "::error::Tag version ($TAG_VER) does not match package.json ($PKG_VER)"
+            exit 1
+          fi
+          echo "version=$TAG_VER" >> "$GITHUB_OUTPUT"
+
+      - name: Package extension
+        working-directory: editors/vscode
+        run: npx vsce package --no-git-tag-version
+
+      - name: Publish to Marketplace
+        working-directory: editors/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --no-git-tag-version --package-path enprot-${{ steps.ver.outputs.version }}.vsix
+
+      - name: Upload VSIX as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: enprot-vsix-${{ steps.ver.outputs.version }}
+          path: editors/vscode/enprot-${{ steps.ver.outputs.version }}.vsix
+          retention-days: 90
