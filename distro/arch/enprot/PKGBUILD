@@ -1,0 +1,60 @@
+# Maintainer: Engyon <open.source@ribose.com>
+# Contributor: Ronald Tse <ronald.tse@ribose.com>
+
+pkgname=enprot
+pkgver=0.5.11
+pkgrel=1
+pkgdesc="Engyon Protected Text — confidentiality and provenance for text/source files"
+arch=('x86_64' 'aarch64')
+url="https://github.com/engyon/enprot"
+license=('BSD-2-Clause')
+depends=('gcc-libs' 'botan' 'librnp')
+makedepends=('rust' 'cargo' 'git' 'cmake')
+provides=('enprot')
+conflicts=('enprot-bin' 'enprot-git')
+source=("${pkgname}::git+${url}.git#tag=v${pkgver}")
+sha256sums=('SKIP')
+
+# Use vendored-rnp so the build is self-contained even when the
+# distro's librnp lags. The runtime dep on 'librnp' covers systems
+# where the user has installed it; the binary's vendored copy isn't
+# used in that case.
+_features='vendored-rnp,cli'
+
+build() {
+    cd "$srcdir/$pkgname"
+    # Release profile, locked deps where possible.
+    RUSTUP_TOOLCHAIN=stable cargo build --release --locked --features "${_features}"
+}
+
+# The deploy workflow ships man page + completions; rebuild them here
+# so the source-built package is self-contained.
+check() {
+    cd "$srcdir/$pkgname"
+    cargo test --release --features "${_features}"
+}
+
+package() {
+    cd "$srcdir/$pkgname"
+
+    # Binary
+    install -Dm755 target/release/enprot "$pkgdir/usr/bin/enprot"
+
+    # Man page
+    if cargo --version >/dev/null 2>&1 && [ -d examples ]; then
+        cargo run --release --features cli --example gen-manpage > enprot.1 || true
+        install -Dm644 enprot.1 "$pkgdir/usr/share/man/man1/enprot.1"
+    fi
+
+    # Shell completions
+    mkdir -p completions
+    target/release/enprot completions bash > completions/enprot.bash || true
+    target/release/enprot completions fish > completions/enprot.fish || true
+    target/release/enprot completions zsh  > completions/_enprot      || true
+    install -Dm644 completions/enprot.bash "$pkgdir/usr/share/bash-completion/completions/enprot"
+    install -Dm644 completions/enprot.fish "$pkgdir/usr/share/fish/vendor_completions.d/enprot.fish"
+    install -Dm644 completions/_enprot      "$pkgdir/usr/share/zsh/site-functions/_enprot"
+
+    # License
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/${pkgname}/LICENSE"
+}

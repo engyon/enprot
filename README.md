@@ -110,6 +110,28 @@ cd enprot
 cargo build --release        # binary at target/release/enprot
 ```
 
+### Distribution packages
+
+| Platform | Install | Notes |
+|---|---|---|
+| Linux (any) | `docker run --rm -v $PWD:/work ghcr.io/engyon/enprot:latest` | Pre-built image from GHCR. |
+| Arch Linux | `paru -S enprot-bin` (or `enprot` for build-from-source) | AUR. See [`distro/arch/`](distro/arch/). |
+| NixOS / Nix | `nix profile install github:engyon/enprot/main` | See [`docs/nix.md`](docs/nix.md). |
+| macOS | `brew install enprot` (after tap is added) | [`Formula/enprot.rb`](Formula/enprot.rb). |
+
+### Language bindings
+
+| Language | Package | Where |
+|---|---|---|
+| **Python** | `pyenprot` | [`bindings/python/`](bindings/python/) |
+| **Node.js** | `@engyon/enprot` | [`bindings/nodejs/`](bindings/nodejs/) |
+| **Go** | `github.com/engyon/enprot/bindings/go` | [`bindings/go/`](bindings/go/) |
+| **Ruby** | `enprot` gem | [`bindings/ruby/`](bindings/ruby/) |
+
+Each is a thin wrapper over the C FFI in [`include/enprot.h`](include/enprot.h).
+All expose the same five-function API: `version`, `process`,
+`encrypt`, `decrypt`, `store`, `fetch`.
+
 ### Shell completions
 
 After installation, generate completions for your shell:

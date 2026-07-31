@@ -2,19 +2,20 @@
 
 `enprot` ships with a C FFI (`include/enprot.h`) that exposes the core
 operations to any language with C-interop. The cdylib is built
-automatically by `cargo build` (the `[lib] crate-type` in `Cargo.toml`
-includes `cdylib`).
+automatically by `cargo build --release` (the `[lib] crate-type` in
+`Cargo.toml` includes `cdylib`).
 
 | Language | Package | Status |
 |---|---|---|
 | **Python** | [`bindings/python/`](python/) (`pyenprot`) | Beta — ctypes wrapper |
 | **Node.js** | [`bindings/nodejs/`](nodejs/) (`@engyon/enprot`) | Beta — koffi wrapper |
+| **Go** | [`bindings/go/`](go/) | Beta — cgo wrapper |
+| **Ruby** | [`bindings/ruby/`](ruby/) (`enprot` gem) | Beta — ffi-gem wrapper |
 | **GitHub Actions** | [`action/`](../action/) | Beta — composite action |
 | **Pre-commit hook** | [`hooks/pre-commit/`](../hooks/pre-commit/) | Beta — plaintext-leak detector |
 | **SOPS importer** | [`tools/import-sops.py`](../tools/import-sops.py) | Beta — migration from SOPS |
 | **Quickstart cookbook** | [`docs/cookbooks/quickstart.md`](../docs/cookbooks/quickstart.md) | 14 end-to-end recipes |
-| Go (cgo) | planned | — |
-| Ruby (ffi gem) | planned | — |
+| **C FFI** | [`include/enprot.h`](../include/enprot.h) | Stable |
 | WASM build | planned | — |
 
 ## Build the shared library
@@ -55,11 +56,13 @@ void            enprot_free_error(char *ptr);
 ## Writing a new binding
 
 1. Load `libenprot` via your language's FFI mechanism.
-2. Define the `enprot_result_t` struct (`int code; char *error;`).
+2. Define the `enprot_result_t` struct (`int code; void *error;`).
 3. Serialize your call args to a JSON string and pass to
    `enprot_process`.
 4. Free `error` with `enprot_free_error` if non-NULL.
 
-The Python bindings (`bindings/python/pyenprot/__init__.py`) and Node
-bindings (`bindings/nodejs/index.js`) are both ~200-line reference
-implementations.
+The Python (`bindings/python/pyenprot/__init__.py`), Node
+(`bindings/nodejs/index.js`), Go (`bindings/go/enprot/enprot.go`),
+and Ruby (`bindings/ruby/lib/enprot.rb`) bindings are all
+~200-line reference implementations — read whichever matches your
+language's idioms.
