@@ -1,6 +1,6 @@
 [package]
 name = "enprot-ffi"
-version = "0.5.11"
+version = "0.5.12"
 edition = "2024"
 rust-version = "1.88"
 license = "BSD-2-Clause"

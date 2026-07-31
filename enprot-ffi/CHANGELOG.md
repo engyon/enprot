@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.12](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.11...enprot-ffi-v0.5.12) - 2026-07-31
+
+### Other
+
+- release
+
 ## [0.5.11](https://github.com/engyon/enprot/releases/tag/enprot-ffi-v0.5.11) - 2026-07-31
 
 ### Added
