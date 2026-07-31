@@ -19,19 +19,47 @@ parts:
     plugin: nil
     source: .
     override-build: |
-      set -eux
-      # CRAFT_PROJECT_VERSION is set by snapcraft from the version: field
-      # above. The deploy.yml sed already replaced RELEASE_TAG with the
-      # actual version (e.g., 0.5.3).
+      set -eu
+      # 'pipefail' is intentionally OFF — we want curl's non-zero
+      # exit on a 404 to be caught by the if/then, not abort the
+      # script before we can try the next tag prefix.
       VER="$CRAFT_PROJECT_VERSION"
       mkdir -p "$CRAFT_PART_INSTALL/bin"
-      # Download the musl static binary from the GitHub Release for
-      # this tag. The release must already exist (publish-snap has
-      # needs: [github-release]).
-      curl -fsSL \
-        "https://github.com/engyon/enprot/releases/download/v${VER}/enprot-${VER}-x86_64-unknown-linux-musl.tar.gz" \
-        -o /tmp/enprot.tar.gz
-      # Extract the binary from the archive.
+
+      ASSET_NAME="enprot-${VER}-x86_64-unknown-linux-musl.tar.gz"
+
+      # Resolve the asset URL via the GitHub Releases API rather than
+      # guessing URL prefixes. The API returns the canonical
+      # browser_download_url for the matching asset, and tells us
+      # authoritatively whether a given release exists.
+      #
+      # We try the post-split tag (`enprot-vX.Y.Z`) first, then the
+      # legacy tag (`vX.Y.Z`) for releases older than the FFI split.
+      URL=""
+      for prefix in "enprot-v" "v"; do
+        TAG="${prefix}${VER}"
+        API_URL="https://api.github.com/repos/engyon/enprot/releases/tags/${TAG}"
+        echo "Querying GitHub API: $API_URL"
+        # jq is in core24's default repos; snapcraft installs it.
+        ASSET_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$API_URL" \
+          | jq -r --arg name "$ASSET_NAME" \
+              '.assets[]? | select(.name == $name) | .browser_download_url' \
+          | head -n1)"
+        if [ -n "$ASSET_URL" ] && [ "$ASSET_URL" != "null" ]; then
+          URL="$ASSET_URL"
+          echo "Found asset on tag $TAG"
+          break
+        fi
+      done
+
+      if [ -z "$URL" ]; then
+        echo "ERROR: no GitHub Release artifact '$ASSET_NAME' found for version ${VER}" >&2
+        echo "Tried tags: enprot-v${VER}, v${VER}" >&2
+        exit 1
+      fi
+
+      echo "Downloading $URL"
+      curl -fsSL "$URL" -o /tmp/enprot.tar.gz
       tar -xzf /tmp/enprot.tar.gz -C /tmp
       cp /tmp/enprot "$CRAFT_PART_INSTALL/bin/enprot"
       chmod +x "$CRAFT_PART_INSTALL/bin/enprot"

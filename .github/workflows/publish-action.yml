@@ -1,0 +1,75 @@
+name: publish-action
+
+# Roll the major / major-minor tags for the composite GitHub Action
+# on every enprot release. Implements TODO.complete/15 (Action half).
+#
+# After this workflow runs, users can pin to:
+#   uses: engyon/enprot/action@v0.5    # major.minor
+#   uses: engyon/enprot/action@v0      # major
+# Both move forward in lockstep with the release.
+
+on:
+  push:
+    tags:
+      - 'enprot-v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g., enprot-v0.5.13)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0  # need full history for force-push tags
+
+      - name: Compute major / major-minor tags
+        id: tags
+        run: |
+          set -euo pipefail
+          FULL_TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          VER="$(echo "$FULL_TAG" | sed 's/^[^0-9]*//')"  # strip enprot-v / v prefix
+          MAJOR="$(echo "$VER" | cut -d. -f1)"
+          MINOR="$(echo "$VER" | cut -d. -f2)"
+          echo "major=v${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "majorminor=v${MAJOR}.${MINOR}" >> "$GITHUB_OUTPUT"
+          echo "full=${FULL_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Move major / major.minor tags
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Force-push the major and major.minor tags to point at the
+          # release commit. Existing tags get overwritten (this is
+          # how GitHub-recommended rolling tags work).
+          git tag -f "${{ steps.tags.outputs.major }}"       "${{ steps.tags.outputs.full }}"
+          git tag -f "${{ steps.tags.outputs.majorminor }}"  "${{ steps.tags.outputs.full }}"
+
+          git push --force origin "${{ steps.tags.outputs.major }}"
+          git push --force origin "${{ steps.tags.outputs.majorminor }}"
+
+      - name: Summary
+        run: |
+          cat <<EOF >> $GITHUB_STEP_SUMMARY
+          ## Action rolling tags updated
+
+          | Tag | Points at |
+          |---|---|
+          | \`${{ steps.tags.outputs.major }}\` | \`${{ steps.tags.outputs.full }}\` |
+          | \`${{ steps.tags.outputs.majorminor }}\` | \`${{ steps.tags.outputs.full }}\` |
+
+          Users can now pin to:
+          \`\`\`yaml
+          uses: engyon/enprot/action@${{ steps.tags.outputs.majorminor }}
+          \`\`\`
+          EOF
