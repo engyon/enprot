@@ -1,0 +1,7 @@
+// <( BEGIN OUTER )>
+outer text
+// <( BEGIN INNER )>
+inner text
+// <( END INNER )>
+more outer text
+// <( END OUTER )>

@@ -57,6 +57,10 @@ required-features = ["cli"]
 name = "integration"
 path = "tests/tests.rs"
 
+[[test]]
+name = "rsd-conformance"
+path = "tests/rsd-conformance/conformance.rs"
+
 [dependencies]
 hex            = "0.4"
 rpassword      = "7"
