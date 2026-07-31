@@ -43,6 +43,11 @@ use crate::{
     merge, output, pbkdf, pki, prot, provenance, resolve, scm,
 };
 
+/// Per-subcommand modules. Each one exposes a `pub fn run(args)` entry
+/// point that `app_main`'s match dispatches to. Decomposition tracked
+/// in TODO.complete/07-cli-rs-decomposition.
+mod init;
+
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
     // Invariant: callers route `name` through clap's `VALID_POLICIES`
     // value_parser, so only "default" or "nist" reach here. Returning
@@ -849,7 +854,7 @@ where
     // the compiler enforces exhaustiveness, no `unreachable!` arms.
     match cli.command {
         // Bypass config layering.
-        Command::Init(a) => init_config(a),
+        Command::Init(a) => init::run(a),
         Command::MergeDriver(a) => run_merge_driver(a),
         Command::Resolve(a) => run_resolve(a),
         Command::Conflicts(a) => run_conflicts(a),
@@ -1002,69 +1007,6 @@ fn apply_config(mut common: CommonArgs) -> Result<CommonArgs> {
 /// `enprot init` implementation: write the commented template either
 /// to `.enprot.toml` in cwd or, with `--global`, to
 /// `~/.config/enprot/config.toml`. Refuses to overwrite unless `--force`.
-fn init_config(a: InitSubcmd) -> Result<()> {
-    let target = if a.global {
-        config::user_config_path()
-            .ok_or_else(|| Error::msg("could not resolve user config path (is $HOME set?)"))?
-    } else {
-        PathBuf::from(".enprot.toml")
-    };
-    if target.exists() && !a.force {
-        return Err(Error::msg(format!(
-            "{} already exists; pass --force to overwrite",
-            target.display()
-        )));
-    }
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&target, config::Config::template())?;
-    println!("wrote {}", target.display());
-
-    if a.git {
-        init_gitattributes()?;
-    }
-    // Create the CAS directory if it doesn't exist — most commands
-    // assume it's there; creating it at init time saves the user
-    // a separate mkdir.
-    let cas_path = PathBuf::from("cas");
-    if !cas_path.exists() {
-        std::fs::create_dir(&cas_path)?;
-        eprintln!("created {}", cas_path.display());
-    }
-    Ok(())
-}
-
-/// Write `.gitattributes` so *.ept files route through enprot's
-/// filter/diff/merge machinery. Prints the `.git/config` snippet to
-/// stdout — we don't write to `.git/config` directly to avoid
-/// clobbering unrelated entries.
-fn init_gitattributes() -> Result<()> {
-    let path = PathBuf::from(".gitattributes");
-    let snippet = "# Route *.ept through enprot's clean/smudge filters.\n\
-                   *.ept filter=enprot diff=enprot merge=enprot\n";
-    if path.exists() {
-        return Err(Error::msg(format!(
-            "{} already exists; merge this snippet in manually:\n{}",
-            path.display(),
-            snippet
-        )));
-    }
-    std::fs::write(&path, snippet)?;
-    println!("wrote {}", path.display());
-    println!(
-        "\nAdd the following to .git/config (or run `git config -f .git/config ...`):\n\
-               [filter \"enprot\"]\n\
-               \x20   clean = enprot clean -w WORD -k WORD=PASSWORD\n\
-               \x20   smudge = enprot smudge -w WORD -k WORD=PASSWORD\n\
-               [diff \"enprot\"]\n\
-               \x20   textconv = enprot textconv -w WORD -k WORD=PASSWORD\n\
-               [merge \"enprot\"]\n\
-               \x20   driver = enprot merge-driver %O %A %B %P\n"
-    );
-    Ok(())
-}
-
 /// `merge-driver` entry point. Performs a three-way WORD-aware
 /// merge and writes the result back into the "ours" path. Exits
 /// zero on success even when conflicts are emitted; the caller
