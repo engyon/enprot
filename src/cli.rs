@@ -575,7 +575,7 @@ pub struct PinSubcmd {
 /// Crypto-policy, separators, RNG source, password store. Defined at
 /// top-level with `global = true` on every field, so clap accepts these
 /// flags before or after the subcommand name.
-#[derive(Args, Clone)]
+#[derive(Args, Clone, Debug)]
 pub struct CommonArgs {
     /// Produce more verbose output.
     #[arg(short = 'v', long, global = true)]
@@ -700,7 +700,7 @@ impl CommonArgs {
 }
 
 /// Encrypt-specific cryptographic knobs.
-#[derive(Args, Default)]
+#[derive(Args, Default, Clone, Debug)]
 pub struct EncryptOpts {
     /// Set the PBKDF algorithm to use when encrypting.
     #[arg(long, value_parser = PossibleValuesParser::new(consts::VALID_PBKDF_ALGS.to_vec()))]
@@ -733,7 +733,7 @@ pub struct EncryptOpts {
 
 /// Input/output wiring: which WORDs to operate on, which files to read,
 /// where to write results.
-#[derive(Args)]
+#[derive(Args, Clone, Debug)]
 pub struct OutputArgs {
     /// WORD segment to operate on. Repeatable; also accepts a
     /// comma-separated list (`-w Agent_007,GEHEIM`).
@@ -862,52 +862,58 @@ where
         Command::Scm(a) => run_scm(a),
         // Config-needing: load config then dispatch.
         Command::Encrypt(a) => with_config(cli.common, |common| {
-            run(
+            run(RunConfig {
                 common,
-                a.output,
-                Some((a.encrypt, Operation::Encrypt)),
-                load_pems(&a.recipients)?,
-                Vec::new(),
-            )
+                output: a.output,
+                op: Some((a.encrypt, Operation::Encrypt)),
+                recipient_pubs: load_pems(&a.recipients)?,
+                recipient_privs: Vec::new(),
+            })
         }),
         Command::Decrypt(a) => with_config(cli.common, |common| {
-            run(
+            run(RunConfig {
                 common,
-                a.output,
-                Some((EncryptOpts::default(), Operation::Decrypt)),
-                Vec::new(),
-                load_privkey_pems(&a.key_files)?,
-            )
+                output: a.output,
+                op: Some((EncryptOpts::default(), Operation::Decrypt)),
+                recipient_pubs: Vec::new(),
+                recipient_privs: load_privkey_pems(&a.key_files)?,
+            })
         }),
         Command::Store(a) => with_config(cli.common, |common| {
-            run(
+            run(RunConfig {
                 common,
-                a.output,
-                Some((EncryptOpts::default(), Operation::Store)),
-                Vec::new(),
-                Vec::new(),
-            )
+                output: a.output,
+                op: Some((EncryptOpts::default(), Operation::Store)),
+                recipient_pubs: Vec::new(),
+                recipient_privs: Vec::new(),
+            })
         }),
         Command::Fetch(a) => with_config(cli.common, |common| {
-            run(
+            run(RunConfig {
                 common,
-                a.output,
-                Some((EncryptOpts::default(), Operation::Fetch)),
-                Vec::new(),
-                Vec::new(),
-            )
+                output: a.output,
+                op: Some((EncryptOpts::default(), Operation::Fetch)),
+                recipient_pubs: Vec::new(),
+                recipient_privs: Vec::new(),
+            })
         }),
         Command::EncryptStore(a) => with_config(cli.common, |common| {
-            run(
+            run(RunConfig {
                 common,
-                a.output,
-                Some((a.encrypt, Operation::EncryptStore)),
-                load_pems(&a.recipients)?,
-                Vec::new(),
-            )
+                output: a.output,
+                op: Some((a.encrypt, Operation::EncryptStore)),
+                recipient_pubs: load_pems(&a.recipients)?,
+                recipient_privs: Vec::new(),
+            })
         }),
         Command::Passthrough(a) => with_config(cli.common, |common| {
-            run(common, a.output, None, Vec::new(), Vec::new())
+            run(RunConfig {
+                common,
+                output: a.output,
+                op: None,
+                recipient_pubs: Vec::new(),
+                recipient_privs: Vec::new(),
+            })
         }),
         Command::Verify(a) => with_config(cli.common, |common| verify_files(common, a.output)),
         Command::List(a) => with_config(cli.common, |common| list_files(common, a.output)),
@@ -1564,8 +1570,8 @@ fn lookup_word_password(common: &CommonArgs, word: &str) -> Result<String> {
     )))
 }
 
-#[derive(Copy, Clone)]
-enum Operation {
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Operation {
     Encrypt,
     Decrypt,
     Store,
@@ -1586,13 +1592,34 @@ impl Operation {
     }
 }
 
-fn run(
-    common: CommonArgs,
-    output: OutputArgs,
-    op: Option<(EncryptOpts, Operation)>,
-    recipient_pubs: Vec<String>,
-    recipient_privs: Vec<String>,
-) -> Result<()> {
+/// Typed configuration for the four core transform operations
+/// (`encrypt`, `decrypt`, `store`, `fetch`, `encrypt-store`,
+/// `passthrough`). Grouping these previously-separate parameters
+/// into a struct gives the FFI, library consumers, and tests a
+/// single dispatch surface that doesn't depend on clap.
+///
+/// Model-driven: the configuration IS the model. `app_main` parses
+/// argv into `RunConfig`; `run()` consumes `RunConfig`. The FFI
+/// can build a `RunConfig` directly from JSON, bypassing clap
+/// entirely (TODO.complete/16-ff-enprot-pipeline-ffi).
+#[derive(Clone, Debug)]
+pub struct RunConfig {
+    pub common: CommonArgs,
+    pub output: OutputArgs,
+    /// `None` means Passthrough (no transform).
+    pub op: Option<(EncryptOpts, Operation)>,
+    pub recipient_pubs: Vec<String>,
+    pub recipient_privs: Vec<String>,
+}
+
+fn run(cfg: RunConfig) -> Result<()> {
+    let RunConfig {
+        common,
+        output,
+        op,
+        recipient_pubs,
+        recipient_privs,
+    } = cfg;
     let explicit_policy = common.policy.clone();
     let mut policy_name = explicit_policy
         .clone()
