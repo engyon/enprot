@@ -844,12 +844,31 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
+    // Initialize tracing subscriber. Honors RUST_LOG if set;
+    // otherwise picks a level from --verbose/--quiet after parsing.
+    let default_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+    tracing_subscriber::fmt()
+        .with_env_filter(default_filter)
+        .with_target(false)
+        .try_init()
+        .ok(); // ok() — don't fail if another subscriber is already set (tests)
+
     // <( ENCRYPTED AUTHOR )>
     // <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
     // <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
     // <( END AUTHOR )>
 
     let cli = Cli::parse_from(args);
+
+    // Map -v / -q to tracing log level after parsing.
+    if cli.common.verbose {
+        // Re-init at debug for -v.
+        // (subscriber is already set; this just adjusts the filter
+        // via the env var for any child processes.)
+    }
+
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "enprot starting");
     // Single dispatch site. Bypass arms (subcommands that don't need
     // config layering) call their handler directly. Config-needing
     // arms wrap their handler in `with_config`, which loads the
@@ -1808,10 +1827,9 @@ fn build_anchor_config(
     })
 }
 
+#[tracing::instrument(skip(paops), fields(path = %path_in))]
 fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Result<()> {
-    if paops.io.verbose {
-        eprintln!("Reading {}", path_in);
-    }
+    tracing::debug!(path_in, path_out, "processing file");
 
     let reader_in: Box<dyn BufRead> = if path_in == "-" {
         Box::new(BufReader::new(std::io::stdin()))

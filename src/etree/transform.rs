@@ -34,6 +34,7 @@ use crate::etree::TextTree;
 use crate::password;
 use crate::prot;
 
+#[tracing::instrument(skip(text_in, paops))]
 pub fn transform(text_in: &TextTree, paops: &mut crate::etree::ParseOps) -> Result<TextTree> {
     if paops.max_depth != 0 && paops.runtime.level > paops.max_depth {
         return Err(Error::Msg("Maximum recursion depth!".into()));
