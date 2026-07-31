@@ -32,6 +32,13 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = ["cli"]
 cli = ["dep:clap", "dep:clap_complete"]
+# Sigstore keyless signing (Fulcio + Rekor + OIDC). Gated because the
+# sigstore-rs crate pulls in heavy deps (tokio, openidconnect,
+# x509-parser, picky). Most users don't need this — it's only useful
+# when signing CHAIN anchors from CI workflows that have an OIDC
+# token. See TODO.complete/03-sigstore-keyless-signing for the
+# full design; this stub is the foundation.
+sigstore = []
 # Build librnp + json-c + sexpp from source via rnp-src. Use this in
 # CI and deploy for self-contained builds that don't need
 # system-installed librnp. For local dev, the default (system
@@ -60,6 +67,12 @@ thiserror      = "2"
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
 toml           = "1.1"
+# Sigstore scaffold deps (TODO.complete/03). Gated behind the
+# `sigstore` feature; the actual sigstore-rs integration is pending.
+# `url` and `regex` are lightweight enough to keep unconditionally;
+# they're commonly already pulled in by other transitive deps.
+url            = "2"
+regex          = "1"
 # Botan does not implement AES-GCM-SIV (RFC 8452). The RustCrypto crate
 # remains the backend for `aes-256-gcm-siv`; the other ciphers route through
 # Botan.

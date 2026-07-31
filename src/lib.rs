@@ -57,6 +57,7 @@ pub mod provenance;
 pub mod provider;
 pub mod resolve;
 pub mod scm;
+pub mod sigstore;
 pub mod utils;
 
 pub use error::{Error, Result};
