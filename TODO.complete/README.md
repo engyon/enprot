@@ -30,14 +30,14 @@ removed from the active list and noted in `## Done` below.
 
 | # | Title | Priority | Status |
 |---|---|---|---|
-| [01](01-ffi-pipeline-execution.md) | FFI: actually run the pipeline (not just validate JSON) | P0 | specified |
-| [02](02-typed-errors.md) | Replace `Error::Msg(String)` with typed variants | P0 | specified |
-| [03](03-sigstore-keyless-signing.md) | Sigstore keyless signing + verify path | P1 | specified |
-| [04](04-parallel-multi-file.md) | Parallelize multi-file processing with rayon | P1 | specified |
+| [01](01-ffi-pipeline-execution.md) | FFI: actually run the pipeline (not just validate JSON) | P0 | **done** (PR #212) |
+| [02](02-typed-errors.md) | Replace `Error::Msg(String)` with typed variants | P0 | **partial** — FFI classifier migrated to typed match (PR #215); ~47% of callsites still use `Error::msg` |
+| [03](03-sigstore-keyless-signing.md) | Sigstore keyless signing + verify path | P1 | **scaffold** — module + types land (PR #220); sigstore-rs integration pending |
+| [04](04-parallel-multi-file.md) | Parallelize multi-file processing with rayon | P1 | **foundation** — `CryptoPolicy: Send + Sync` (PR #214); rayon integration pending |
 | [05](05-streaming-io.md) | Streaming parse/transform/write for large files | P1 | specified |
 | [06](06-cas-backends.md) | S3 + Rekor CAS backends | P1 | specified |
 | [07](07-cli-rs-decomposition.md) | Decompose `src/cli.rs` into per-subcommand modules | P1 | specified |
-| [08](08-property-invariants.md) | Property-based invariant tests (round-trip, identity) | P1 | specified |
+| [08](08-property-invariants.md) | Property-based invariant tests (round-trip, identity) | P1 | **partial** — store/fetch + CAS invariants (PR #219); encrypt/decrypt + commutativity pending |
 | [09](09-observability-tracing.md) | `tracing` subscriber + structured spans | P2 | specified |
 | [10](10-dead-code-visibility-audit.md) | Dead code + module-visibility audit | P2 | specified |
 
@@ -45,30 +45,30 @@ removed from the active list and noted in `## Done` below.
 
 | # | Title | Priority | Status |
 |---|---|---|---|
-| [11](11-json-output-modes.md) | `--json` flag for `inspect` / `list` / `status` | P1 | specified |
-| [12](12-ept-directive-grammar.md) | Formal pest grammar + machine-readable EPT spec | P1 | specified |
+| [11](11-json-output-modes.md) | `--json` flag for `inspect` / `list` / `status` | P1 | **partial** — `inspect --format json` (PR #213); schemars-published JSON Schema pending |
+| [12](12-ept-directive-grammar.md) | Formal pest grammar + machine-readable EPT spec | P1 | **scaffold** — grammar file lands (PR #220); pest-as-parser integration pending |
 | [13](13-lsp-server.md) | LSP server (diagnostics, hover, goto-word) | P2 | specified |
 | [14](14-wasm-build.md) | WASM build for browser/edge runtimes | P2 | specified |
-| [15](15-marketplace-publish.md) | Publish VS Code extension + GitHub Action to Marketplaces | P2 | specified |
-| [16](16-ff-enprot-pipeline-ffi.md) | Standalone FFI subcommand runner (typed Config) | P2 | specified |
+| [15](15-marketplace-publish.md) | Publish VS Code extension + GitHub Action to Marketplaces | P2 | **done** (PR #217) |
+| [16](16-ff-enprot-pipeline-ffi.md) | Standalone FFI subcommand runner (typed Config) | P2 | **foundation** — `RunConfig` typed dispatch (PR #218); serde derives pending |
 
 ### Distribution (P2–P3)
 
 | # | Title | Priority | Status |
 |---|---|---|---|
-| [17](17-deb-rpm-packages.md) | Debian `.deb` + Fedora `.rpm` package specs | P2 | specified |
-| [18](18-nixos-module.md) | NixOS module (`services.enprot.*`) | P3 | specified |
-| [19](19-snap-publish-fix.md) | Snap auto-publish (currently `continue-on-error`-style) | P2 | specified |
-| [20](20-chocolatey-package.md) | Chocolatey package for Windows | P3 | specified |
+| [17](17-deb-rpm-packages.md) | Debian `.deb` + Fedora `.rpm` package specs | P2 | **done** (PR #217) — metadata in Cargo.toml; CI build step pending |
+| [18](18-nixos-module.md) | NixOS module (`services.enprot.*`) | P3 | **done** (PR #217) |
+| [19](19-snap-publish-fix.md) | Snap auto-publish (currently `continue-on-error`-style) | P2 | **done** (PR #217) — GitHub API download + jq asset resolution |
+| [20](20-chocolatey-package.md) | Chocolatey package for Windows | P3 | **done** (PR #217) — nuspec + scripts; publish workflow pending |
 
 ### Specifications (P0–P1)
 
 | # | Title | Priority | Status |
 |---|---|---|---|
 | [21](21-rsd-spec-conformance.md) | Ribose Standard for EPT — conformance test suite | P0 | specified |
-| [22](22-ept-wire-format-spec.md) | Machine-readable EPT wire-format spec (JSON Schema) | P1 | specified |
-| [23](23-chain-anchor-spec.md) | CHAIN anchor format spec (verification rules, identity model) | P1 | specified |
-| [24](24-extfield-schema-spec.md) | Extfield (`pbkdf:`/`cipher:`/`recipient:`) schema | P1 | specified |
+| [22](22-ept-wire-format-spec.md) | Machine-readable EPT wire-format spec (JSON Schema) | P1 | **done** (PR #216) |
+| [23](23-chain-anchor-spec.md) | CHAIN anchor format spec (verification rules, identity model) | P1 | **done** (PR #216) |
+| [24](24-extfield-schema-spec.md) | Extfield (`pbkdf:`/`cipher:`/`recipient:`) schema | P1 | **done** (PR #216) |
 
 ### Capability model (P2)
 
