@@ -1,0 +1,57 @@
+// EPT directive grammar — formal PEG spec (pest format).
+//
+// Status: spec (TODO.complete/12). Not yet wired into the Rust parser;
+// the hand-written parser in src/etree/parse.rs is the production
+// path. This grammar exists to:
+//   1. Be the single source of truth for what EPT directives look like.
+//   2. Enable third-party parsers (other languages, tooling) to share
+//      one grammar.
+//   3. Eventually replace the hand-written parser once benchmarks
+//      confirm pest is within 2× of hand-written performance.
+//
+// Conforms to docs/schemas/ept-wire-format-v1.md (the prose spec).
+// Tested by the conformance suite planned in TODO.complete/21.
+
+file           = ${ SOI ~ line* ~ EOI }
+line           =  { directive_line ~ NL | plain_line }
+plain_line     =  { (!directive_start ~ ANY)* }
+directive_line =  { ws* ~ directive ~ ws* }
+directive      =  { comment_leader ~ ws? ~ left_sep ~ ws? ~ directive_body ~ ws? ~ right_sep }
+
+// Host-language comment leaders we recognize. The parser is permissive:
+// any of these may prefix an EPT directive. The choice is informational —
+// enprot doesn't enforce that the leader matches the host language.
+comment_leader = @{ "//" | "#" | "--" | "/*" | ";" }
+
+// Default separators. Configurable via --left-separator / --right-separator
+// or --lang; the grammar captures the most common shape.
+left_sep       = _{ "<(" }
+right_sep      = _{ ")>" }
+
+// A directive body is one keyword + zero or more arguments.
+directive_body =  ${ keyword ~ (ws+ ~ arg)* }
+
+keyword        =  { "BEGIN" | "END" | "ENCRYPTED" | "STORED" | "DATA"
+                  | "CHAIN" | "IMMUTABLE" | "MUTABLE" | "MUTED"
+                  | "INCLUDE" | "CONFLICT" }
+
+// Three argument shapes:
+//   1. bare word (BEGIN/END/ENCRYPTED/etc.)
+//   2. key=value extfield
+//   3. base64 DATA payload
+arg            =  { extfield | base64_data | word }
+
+extfield       =  { key ~ "=" ~ value }
+key            = @{ ASCII_ALPHA_LOWER ~ (ASCII_ALPHA_LOWER | ASCII_DIGIT | "-" | "_")* }
+value          = @{ (!end_of_value ~ ANY)+ }
+end_of_value   = _{ ws | right_sep | NL }
+
+word           = @{ ASCII_ALPHA_UPPER ~ (ASCII_ALPHA_UPPER | ASCII_DIGIT | "_")* }
+
+// base64 (no padding required; padding tolerated). Limited to the
+// DATA payload shape (no whitespace inside).
+base64_data    = @{ ASCII_ALPHANUMERIC | "+" | "/" | "=" }+
+
+// Lexical helpers.
+ws             = _{ " " | "\t" }
+NL             = _{ "\n" | "\r\n" }
