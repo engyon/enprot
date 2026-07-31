@@ -1,0 +1,57 @@
+# Maintainer: Engyon <open.source@ribose.com>
+# Contributor: Ronald Tse <ronald.tse@ribose.com>
+
+pkgname=enprot-bin
+pkgver=0.5.11
+pkgrel=1
+pkgdesc="Engyon Protected Text — confidentiality and provenance for text/source files"
+arch=('x86_64' 'aarch64')
+url="https://github.com/engyon/enprot"
+license=('BSD-2-Clause')
+depends=('gcc-libs' 'botan')
+provides=('enprot')
+conflicts=('enprot' 'enprot-git')
+source_x86_64=("${pkgname}-${pkgver}-x86_64.tar.gz::${url}/releases/download/v${pkgver}/enprot-v${pkgver}-x86_64-unknown-linux-musl.tar.gz")
+source_aarch64=("${pkgname}-${pkgver}-aarch64.tar.gz::${url}/releases/download/v${pkgver}/enprot-v${pkgver}-aarch64-unknown-linux-musl.tar.gz")
+# sha256sums are filled in by the maintainer per release. The
+# `updpkgsums` helper (pacman-contrib) re-computes them after a
+# version bump. Skip the checksum check during initial setup with:
+#   makepkg -g >> PKGBUILD
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+# This package ships the prebuilt binary from GitHub Releases. For a
+# build-from-source variant, see distro/arch/enprot/PKGBUILD in the
+# source tree.
+
+prepare() {
+    cd "$srcdir"
+    # Extract to a known location regardless of the upstream archive
+    # layout. Releases are tarballs with enprot, enprot.1, completions/.
+    mkdir -p extract
+    if [ -d enprot-v${pkgver}-* ]; then
+        cp -a enprot-v${pkgver}-*/. extract/
+    fi
+}
+
+package() {
+    cd "$srcdir/extract"
+
+    # Bin
+    install -Dm755 enprot "$pkgdir/usr/bin/enprot"
+
+    # Man page (if shipped)
+    if [ -f enprot.1 ]; then
+        install -Dm644 enprot.1 "$pkgdir/usr/share/man/man1/enprot.1"
+    fi
+
+    # Shell completions (if shipped)
+    if [ -d completions ]; then
+        install -Dm644 completions/enprot.bash "$pkgdir/usr/share/bash-completion/completions/enprot"
+        install -Dm644 completions/enprot.fish "$pkgdir/usr/share/fish/vendor_completions.d/enprot.fish"
+        install -Dm644 completions/_enprot      "$pkgdir/usr/share/zsh/site-functions/_enprot"
+    fi
+
+    # License
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/${pkgname}/LICENSE" 2>/dev/null || true
+}
