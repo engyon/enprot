@@ -59,7 +59,7 @@ phf            = { version = "0.14", features = ["macros"] }
 thiserror      = "2"
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
-toml           = "0.8"
+toml           = "1.1"
 # Botan does not implement AES-GCM-SIV (RFC 8452). The RustCrypto crate
 # remains the backend for `aes-256-gcm-siv`; the other ciphers route through
 # Botan.
