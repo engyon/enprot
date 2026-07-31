@@ -75,6 +75,7 @@ enum ConflictMode {
     Theirs,
 }
 
+#[tracing::instrument(skip(buf_in, paops), fields(file = %paops.runtime.fname))]
 pub fn parse<R>(buf_in: R, paops: &mut ParseOps) -> Result<TextTree>
 where
     R: BufRead,
