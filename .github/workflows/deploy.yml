@@ -9,16 +9,20 @@ concurrency:
 on:
   push:
     tags:
-      # release-plz creates v-prefixed tags (v0.5.0).
-      # Also accept legacy bare-numeric tags (0.4.0) for back-compat.
+      # release-plz now uses per-crate tags in a workspace:
+      #   v0.5.X            (legacy, pre-split)
+      #   enprot-v0.5.X     (enprot CLI + library, post-split)
+      #   enprot-ffi-v0.5.X (the cdylib — not deployed, no binary)
+      # Match the first two; enprot-ffi has no standalone binary to ship.
       - 'v[0-9]*.[0-9]*.[0-9]*'
       - '[0-9]*.[0-9]*.[0-9]*'
+      - 'enprot-v[0-9]*.[0-9]*.[0-9]*'
   # Allow manual trigger to rebuild binaries for existing tags
   # (e.g., v0.5.0 was tagged before the deploy pattern was fixed).
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to deploy (e.g., v0.5.0)'
+        description: 'Tag to deploy (e.g., v0.5.0, enprot-v0.5.13)'
         required: true
         type: string
 
@@ -28,9 +32,10 @@ env:
   PROJECT_NAME: enprot
   EXE_NAME: enprot
   # Resolved tag for both trigger types:
-  #   tag push → github.ref_name = "v0.5.0"
-  #   workflow_dispatch → inputs.tag = "v0.5.0"
-  # Jobs strip the v prefix locally to get the bare version (0.5.0).
+  #   tag push → github.ref_name = "enprot-v0.5.13" or "v0.5.13"
+  #   workflow_dispatch → inputs.tag = "enprot-v0.5.13"
+  # Jobs strip any non-digit prefix (both `v` and `enprot-v`) to get
+  # the bare version (0.5.13) via `sed 's/^[^0-9]*//'`.
   DEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
@@ -45,7 +50,8 @@ jobs:
       - name: Check version
         run: |
           set -euxo pipefail
-          TAG="${DEPLOY_TAG#v}"
+          # Strip any non-digit prefix (handles 'v', 'enprot-v', bare).
+          TAG="$(echo "$DEPLOY_TAG" | sed 's/^[^0-9]*//')"
           if [ "$(grep '^version' Cargo.toml | cut -d '"' -f2)" != "$TAG" ]; then
             echo "Version tag ($TAG) does not match manifest"
             exit 1
@@ -156,7 +162,8 @@ jobs:
         env: ${{ matrix.env }}
         run: |
           set -euxo pipefail
-          TAG="${DEPLOY_TAG#v}"
+          # Strip any non-digit prefix (handles 'v', 'enprot-v', bare).
+          TAG="$(echo "$DEPLOY_TAG" | sed 's/^[^0-9]*//')"
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
           echo "PREFIX=${PREFIX-$GITHUB_WORKSPACE/installs}" >> $GITHUB_ENV
           echo "EXE_PATH=target/$TARGET/release/$EXE_NAME" >> $GITHUB_ENV
@@ -164,7 +171,8 @@ jobs:
         if: startsWith(matrix.os, 'windows')
         env: ${{ matrix.env }}
         run: |
-          $Tag = $Env:DEPLOY_TAG.TrimStart('v')
+          # Strip any non-digit prefix (handles 'v', 'enprot-v', bare).
+          $Tag = $Env:DEPLOY_TAG -replace '^[^0-9]+',''
           "RELEASE_TAG=$Tag" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
           $Prefix = (Join-Path $PWD 'installs').Replace('\', '/')
           "PREFIX=$Prefix" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
@@ -255,7 +263,8 @@ jobs:
           GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euxo pipefail
-          RELEASE_TAG="${DEPLOY_TAG#v}"
+          # Strip any non-digit prefix (handles 'v', 'enprot-v', bare).
+          RELEASE_TAG="$(echo "$DEPLOY_TAG" | sed 's/^[^0-9]*//')"
           git clone https://github.com/riboseinc/create-github-release
           cd create-github-release
           sudo apt-get -y install ruby
@@ -281,7 +290,8 @@ jobs:
       # Step is named "build" so ${{ steps.build.outputs.snap }} works.
       - name: Set snap version
         run: |
-          RELEASE_TAG="${DEPLOY_TAG#v}"
+          # Strip any non-digit prefix (handles 'v', 'enprot-v', bare).
+          RELEASE_TAG="$(echo "$DEPLOY_TAG" | sed 's/^[^0-9]*//')"
           sed -i "s/RELEASE_TAG/${RELEASE_TAG}/g" snap/snapcraft.yaml
       - name: Install snapcraft
         id: build
