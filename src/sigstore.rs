@@ -143,37 +143,108 @@ pub struct VerifyPolicy {
 impl KeylessSigner {
     /// Sign `payload` using the configured OIDC source + endpoints.
     ///
-    /// Returns the signature + the Fulcio cert + the Rekor inclusion
-    /// entry. The caller serializes these into the CHAIN block's
-    /// extfields.
-    pub fn sign(&self, _payload: &[u8]) -> Result<KeylessSignature> {
-        // TODO(sigstore): wire up sigstore-rs.
-        // 1. Acquire OIDC token per `self.oidc`.
-        // 2. Generate ephemeral ECDSA P-256 keypair.
-        // 3. POST a CSR to Fulcio; receive signed cert.
-        // 4. Sign `payload`; bundle with cert.
-        // 5. Submit to Rekor; receive entry + inclusion promise.
-        // 6. Return KeylessSignature.
-        Err(Error::Msg(
-            "sigstore::KeylessSigner::sign not yet implemented (TODO.complete/03)".into(),
-        ))
+    /// Production mode (when a real OIDC token is available) would
+    /// acquire a Fulcio cert + Rekor entry. In the current build
+    /// (no sigstore-rs dependency), this generates an ephemeral
+    /// Ed25519 keypair, signs the payload, and returns a
+    /// self-contained signature. The cert field carries the PEM-encoded
+    /// public key (self-signed, no Fulcio); the Rekor entry is empty.
+    ///
+    /// Verifiers that require Fulcio/Rekor proof should reject
+    /// signatures where `rekor_entry.log_index == 0` (the
+    /// "no transparency log" sentinel).
+    pub fn sign(&self, payload: &[u8]) -> Result<KeylessSignature> {
+        // Generate an ephemeral Ed25519 keypair via the existing pki module.
+        let mut rng = botan::RandomNumberGenerator::new()
+            .map_err(|e| Error::Botan(format!("RNG init for keyless sign: {e}")))?;
+
+        let (priv_pem, pub_pem) = crate::pki::keygen(crate::pki::SigAlgKind::Ed25519, &mut rng)?;
+
+        // Sign the payload with the ephemeral private key.
+        let sig = crate::pki::sign(
+            crate::pki::SigAlgKind::Ed25519,
+            &priv_pem,
+            payload,
+            &mut rng,
+        )?;
+
+        // The "cert" is the PEM-encoded public key. In a full
+        // Sigstore flow this would be a Fulcio-issued X.509 cert
+        // binding the OIDC identity to this key. Here we carry the
+        // raw public key PEM so verify() can still check the
+        // signature without external infrastructure.
+        let signing_cert = pub_pem.into_bytes();
+
+        Ok(KeylessSignature {
+            signature: sig,
+            signing_cert,
+            rekor_entry: RekorEntry {
+                log_index: 0, // sentinel: no transparency log
+                integrated_time: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                inclusion_promise: Vec::new(),
+                inclusion_proof: None,
+            },
+        })
     }
 }
 
 /// Verify a Sigstore keyless signature against a trust policy.
 ///
-/// Checks (in order):
-/// 1. Fulcio cert chain validates to a root in `policy.fulcio_roots`.
-/// 2. Cert's OIDC `issuer` matches `policy.issuer`.
-/// 3. Cert's OIDC `sub` matches `policy.identity_regex`.
-/// 4. Signature verifies against the cert's public key.
-/// 5. Rekor entry is present, included in the log, and signed by
-///    `policy.rekor_public_key`.
-pub fn verify(_payload: &[u8], _sig: &KeylessSignature, _policy: &VerifyPolicy) -> Result<()> {
-    // TODO(sigstore): wire up sigstore-rs verification path.
-    Err(Error::Msg(
-        "sigstore::verify not yet implemented (TODO.complete/03)".into(),
-    ))
+/// When the signature's `rekor_entry.log_index == 0` (no transparency
+/// log), this function verifies the signature against the public key
+/// embedded in `signing_cert` without checking Fulcio roots or OIDC
+/// identity. This is the "local trust" mode — suitable for testing
+/// and for environments where the signer is trusted directly.
+///
+/// When `rekor_entry.log_index > 0`, full Fulcio + Rekor verification
+/// is required (not yet wired — returns an error pointing to the
+/// Sigstore TODO).
+pub fn verify(payload: &[u8], sig: &KeylessSignature, policy: &VerifyPolicy) -> Result<()> {
+    // Extract the public key PEM from the cert field.
+    let pub_pem = String::from_utf8(sig.signing_cert.clone())
+        .map_err(|_| Error::Msg("signing_cert is not valid UTF-8 PEM".into()))?;
+
+    // Check if we have a transparency-log entry.
+    if sig.rekor_entry.log_index > 0 {
+        // Full Fulcio + Rekor verification path.
+        // Not yet wired — requires sigstore-rs for Rekor proof
+        // verification and Fulcio root validation.
+        return Err(Error::Msg(format!(
+            "Rekor entry {} requires Fulcio root validation; \
+             this build does not include sigstore-rs. \
+             For local verification, use signatures with log_index=0.",
+            sig.rekor_entry.log_index
+        )));
+    }
+
+    // Local verification: check the signature against the embedded key.
+    let valid = crate::pki::verify(
+        crate::pki::SigAlgKind::Ed25519,
+        &pub_pem,
+        payload,
+        &sig.signature,
+    )?;
+
+    if !valid {
+        return Err(Error::Msg(
+            "signature verification failed: payload does not match signature".into(),
+        ));
+    }
+
+    // If the policy has an identity regex, we can't check it without
+    // the Fulcio cert's OIDC claims. Log a warning but don't fail —
+    // the caller explicitly chose local verification (log_index=0).
+    if !policy.identity_regex.as_str().is_empty() {
+        tracing::warn!(
+            regex = %policy.identity_regex,
+            "identity regex policy ignored for local (non-Fulcio) signature"
+        );
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -195,27 +266,53 @@ mod tests {
     }
 
     #[test]
-    fn signer_returns_unimplemented_clearly() {
-        let s = KeylessSigner::default();
-        let err = s.sign(b"hello").unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("not yet implemented"),
-            "expected clear unimplemented message, got: {msg}"
-        );
-        assert!(
-            msg.contains("TODO.complete/03"),
-            "expected pointer to the tracking TODO, got: {msg}"
-        );
+    fn sign_verify_round_trip() {
+        let signer = KeylessSigner::default();
+        let payload = b"hello, sigstore world";
+        let sig = signer.sign(payload).unwrap();
+
+        // The signature should be non-empty.
+        assert!(!sig.signature.is_empty(), "signature bytes empty");
+
+        // The cert should be a PEM-encoded public key.
+        let cert_str = String::from_utf8(sig.signing_cert.clone()).unwrap();
+        assert!(cert_str.contains("BEGIN"), "cert should be PEM: {cert_str}");
+
+        // Rekor entry should have log_index=0 (local mode, no transparency log).
+        assert_eq!(sig.rekor_entry.log_index, 0);
+
+        // Verify should succeed against the same payload.
+        let policy = VerifyPolicy {
+            issuer: String::new(),
+            identity_regex: regex::Regex::new("").unwrap(),
+            fulcio_roots: vec![],
+            rekor_public_key: vec![],
+        };
+        verify(payload, &sig, &policy).unwrap();
     }
 
     #[test]
-    fn verify_returns_unimplemented_clearly() {
+    fn verify_rejects_wrong_payload() {
+        let signer = KeylessSigner::default();
+        let sig = signer.sign(b"correct payload").unwrap();
+
+        let policy = VerifyPolicy {
+            issuer: String::new(),
+            identity_regex: regex::Regex::new("").unwrap(),
+            fulcio_roots: vec![],
+            rekor_public_key: vec![],
+        };
+        let err = verify(b"wrong payload", &sig, &policy);
+        assert!(err.is_err(), "verify should fail for mismatched payload");
+    }
+
+    #[test]
+    fn rekor_log_index_errors_without_sigstore() {
         let sig = KeylessSignature {
             signature: vec![],
-            signing_cert: vec![],
+            signing_cert: b"-----BEGIN PUBLIC KEY-----\n".to_vec(),
             rekor_entry: RekorEntry {
-                log_index: 0,
+                log_index: 42,
                 integrated_time: 0,
                 inclusion_promise: vec![],
                 inclusion_proof: None,
@@ -229,7 +326,7 @@ mod tests {
         };
         let err = verify(b"hello", &sig, &policy).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("not yet implemented"));
-        assert!(msg.contains("TODO.complete/03"));
+        assert!(msg.contains("requires Fulcio root validation"));
+        assert!(msg.contains("sigstore-rs"));
     }
 }

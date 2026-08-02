@@ -33,7 +33,7 @@
 use std::io::Cursor;
 use std::path::Path;
 
-use enprot::crypto::{CryptoPolicy, CryptoPolicyDefault};
+use enprot::crypto::CryptoPolicyDefault;
 use enprot::etree::{ParseOps, TextNode, parse};
 
 fn make_paops() -> enprot::Result<ParseOps> {
