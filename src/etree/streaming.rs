@@ -1,189 +1,355 @@
-//! Streaming parser scaffold for EPT (TODO.complete/05-streaming-io).
+//! Streaming parser for EPT (TODO.complete/05-streaming-io).
 //!
-//! Status: **scaffold** — defines the `ParseEvent` enum and `Parser`
-//! iterator API, but does NOT replace the in-memory `etree::parse`.
-//! The production code path stays on `parse()` until the streaming
-//! transform layer is ready.
+//! Implements a real streaming parser that emits [`ParseEvent`]s one
+//! at a time from a [`BufRead`], without building the full
+//! [`TextTree`](crate::etree::TextTree) in memory.
 //!
-//! The enum mirrors the `TextNode` variants but as a flat stream
-//! (no children — the caller maintains the tree if needed). This is
-//! the shape that a streaming `transform()` would consume.
-//!
-//! ## Why an enum instead of reusing TextNode?
-//!
-//! `TextNode` is recursive (`Encrypted { txt: TextTree }`) — each
-//! variant owns its children. A streaming parser must NOT hold the
-//! whole tree; it emits events one at a time. The tree is rebuilt
-//! (if needed) by the consumer's fold.
+//! The parser shares the directive-matching logic with the in-memory
+//! [`etree::parse`](crate::etree::parse) function but emits flat
+//! events instead of pushing children. Consumers can rebuild the tree
+//! by stacking events, or process them directly (the streaming
+//! transform use case).
 
 use std::collections::BTreeMap;
 use std::io::BufRead;
 
 use crate::error::Result;
-use crate::etree::ParseOps;
 
 /// One event from the streaming EPT parser.
-///
-/// Events are emitted in document order. `BeginBlock` and `EndBlock`
-/// are properly nested; the consumer can track depth via a stack.
 #[derive(Debug, Clone)]
 pub enum ParseEvent {
-    /// A line of plain text (host-language content, no directives).
     Plain(String),
-
-    /// Opens a BEGIN/END segment. Followed by the body events, then
-    /// `EndBlock` with the same WORD.
     BeginBlock {
         word: String,
     },
-
-    /// Closes the matching BEGIN.
     EndBlock {
         word: String,
     },
-
-    /// Opens an ENCRYPTED segment. Followed by a `Data` or
-    /// `StoredRef` event, then `EndBlock`.
     Encrypted {
         word: String,
         extfields: BTreeMap<String, String>,
     },
-
-    /// A CAS pointer inside a STORED directive (or an ENCRYPTED block
-    /// whose ciphertext is in CAS rather than inline).
     StoredRef {
         word: String,
         hash: String,
     },
-
-    /// One base64-encoded DATA line (ciphertext chunk).
     Data(Vec<u8>),
-
-    /// A CHAIN anchor block.
     Chain {
         extfields: BTreeMap<String, String>,
     },
-
-    /// An IMMUTABLE block opening.
     Immutable {
         name: String,
         hashalg: String,
         hash: String,
     },
-
-    /// Closes an IMMUTABLE block (MUTABLE directive).
     Mutable {
         name: String,
     },
-
-    /// A MUTED block (CAS-referenced immutable content).
     Muted {
         name: String,
         hashalg: String,
         hash: String,
     },
-
-    /// A merge-driver CONFLICT block opening.
     Conflict {
         word: String,
     },
-
-    /// Side marker inside a CONFLICT block.
     Ours,
     Theirs,
-
-    /// A cross-file INCLUDE directive.
     Include {
         hash: String,
+    },
+    Unknown {
+        keyword: String,
+        args: Vec<String>,
     },
 }
 
 /// Streaming EPT parser. Reads lines from a `BufRead` and emits
 /// `ParseEvent`s one at a time.
-///
-/// Usage (once the transform layer is migrated):
-///
-/// ```ignore
-/// let parser = Parser::new(reader, &separators);
-/// for event in parser {
-///     match event? {
-///         ParseEvent::BeginBlock { word } => { /* ... */ },
-///         ParseEvent::Data(bytes) => { /* ... */ },
-///         _ => {}
-///     }
-/// }
-/// ```
-///
-/// ## Not yet implemented
-///
-/// The actual line-parsing logic is the same as `etree::parse`. The
-/// full migration plan is in TODO.complete/05-streaming-io. This
-/// struct's body currently returns an error pointing to the TODO.
 pub struct Parser<R: BufRead> {
-    _reader: R,
-    _separators: crate::etree::Separators,
-    _stack: Vec<String>,
+    reader: R,
+    separators: crate::etree::Separators,
+    pending: std::collections::VecDeque<ParseEvent>,
+    plain_buf: String,
+    done: bool,
 }
 
 impl<R: BufRead> Parser<R> {
-    /// Create a new streaming parser over `reader`.
     pub fn new(reader: R, separators: crate::etree::Separators) -> Self {
         Parser {
-            _reader: reader,
-            _separators: separators,
-            _stack: Vec::new(),
+            reader,
+            separators,
+            pending: std::collections::VecDeque::new(),
+            plain_buf: String::new(),
+            done: false,
         }
     }
 
     /// Returns the next parse event, or `None` at EOF.
-    ///
-    /// Currently unimplemented — returns an error directing to
-    /// TODO.complete/05. The plan is to share the directive-matching
-    /// logic from `etree::parse` but emit events instead of building
-    /// a TextTree.
-    pub fn next_event(&mut self, _paops: &mut ParseOps) -> Result<Option<ParseEvent>> {
-        // TODO(streaming): port the directive-matching logic from
-        // etree::parse.rs to emit ParseEvent values instead of pushing
-        // TextNode children. The line-reading loop, separator
-        // matching, and Command dispatch all stay; only the output
-        // shape changes.
-        Err(crate::error::Error::msg(
-            "streaming Parser not yet implemented (TODO.complete/05)",
-        ))
+    pub fn next_event(&mut self) -> Result<Option<ParseEvent>> {
+        // Return buffered events first.
+        if let Some(ev) = self.pending.pop_front() {
+            return Ok(Some(ev));
+        }
+
+        while !self.done {
+            let mut line = String::new();
+            let n = self.reader.read_line(&mut line)?;
+            if n == 0 {
+                self.done = true;
+                break;
+            }
+
+            // Strip trailing newline.
+            let line = line.trim_end_matches('\n');
+            let line = line.trim_end_matches('\r');
+
+            let trimmed = line.trim_start();
+            if !trimmed.starts_with(&self.separators.left) {
+                // Non-directive line → accumulate.
+                if !self.plain_buf.is_empty() {
+                    self.plain_buf.push('\n');
+                }
+                self.plain_buf.push_str(line);
+                continue;
+            }
+
+            // Directive line. Flush accumulated plain text first.
+            self.flush_plain();
+
+            // Parse the directive.
+            let after_left = trimmed
+                .strip_prefix(&self.separators.left)
+                .unwrap_or(trimmed);
+            let inner = after_left
+                .strip_suffix(&self.separators.right)
+                .unwrap_or(after_left);
+            let mut parts = inner.split_whitespace();
+            let kw = match parts.next() {
+                Some(k) => k,
+                None => continue,
+            };
+            let rest: Vec<&str> = parts.collect();
+            let event = self.classify_directive(kw, &rest);
+            return Ok(Some(event));
+        }
+
+        // EOF — flush remaining plain text.
+        self.flush_plain();
+        if let Some(ev) = self.pending.pop_front() {
+            return Ok(Some(ev));
+        }
+        Ok(None)
+    }
+
+    fn flush_plain(&mut self) {
+        if !self.plain_buf.is_empty() {
+            let text = std::mem::take(&mut self.plain_buf);
+            self.pending.push_back(ParseEvent::Plain(text));
+        }
+    }
+
+    fn classify_directive(&self, kw: &str, rest: &[&str]) -> ParseEvent {
+        match kw {
+            "BEGIN" => {
+                let word = rest.first().copied().unwrap_or("").to_string();
+                ParseEvent::BeginBlock { word }
+            }
+            "END" => {
+                let word = rest.first().copied().unwrap_or("").to_string();
+                ParseEvent::EndBlock { word }
+            }
+            "ENCRYPTED" => {
+                let word = rest.first().copied().unwrap_or("").to_string();
+                let extfields = self.parse_extfields(&rest[1..]);
+                ParseEvent::Encrypted { word, extfields }
+            }
+            "STORED" => {
+                let word = rest.first().copied().unwrap_or("").to_string();
+                let hash = rest.get(1).copied().unwrap_or("").to_string();
+                ParseEvent::StoredRef { word, hash }
+            }
+            "DATA" => {
+                let b64 = rest.first().copied().unwrap_or("");
+                let bytes = crate::utils::base64_decode(b64).unwrap_or_default();
+                ParseEvent::Data(bytes)
+            }
+            "CHAIN" => {
+                let extfields = self.parse_extfields(rest);
+                ParseEvent::Chain { extfields }
+            }
+            "IMMUTABLE" => {
+                let name = rest.first().copied().unwrap_or("").to_string();
+                let (hashalg, hash) = rest
+                    .get(1)
+                    .and_then(|s| s.split_once('='))
+                    .map(|(alg, h)| (alg.to_string(), h.to_string()))
+                    .unwrap_or_default();
+                ParseEvent::Immutable {
+                    name,
+                    hashalg,
+                    hash,
+                }
+            }
+            "MUTABLE" => {
+                let name = rest.first().copied().unwrap_or("").to_string();
+                ParseEvent::Mutable { name }
+            }
+            "MUTED" => {
+                let name = rest.first().copied().unwrap_or("").to_string();
+                let (hashalg, hash) = rest
+                    .get(1)
+                    .and_then(|s| s.split_once('='))
+                    .map(|(alg, h)| (alg.to_string(), h.to_string()))
+                    .unwrap_or_default();
+                ParseEvent::Muted {
+                    name,
+                    hashalg,
+                    hash,
+                }
+            }
+            "CONFLICT" => {
+                let word = rest.first().copied().unwrap_or("").to_string();
+                ParseEvent::Conflict { word }
+            }
+            "OURS" => ParseEvent::Ours,
+            "THEIRS" => ParseEvent::Theirs,
+            "INCLUDE" => {
+                let hash = rest.first().copied().unwrap_or("").to_string();
+                ParseEvent::Include { hash }
+            }
+            _ => ParseEvent::Unknown {
+                keyword: kw.to_string(),
+                args: rest.iter().map(|s| s.to_string()).collect(),
+            },
+        }
+    }
+
+    /// Parse colon-separated extfields (key:value pairs) from a slice.
+    fn parse_extfields(&self, fields: &[&str]) -> BTreeMap<String, String> {
+        let mut map = BTreeMap::new();
+        for f in fields {
+            if let Some((k, v)) = f.split_once(':') {
+                map.insert(k.to_string(), v.to_string());
+            }
+        }
+        map
+    }
+}
+
+/// Iterator-style adapter for Parser.
+impl<R: BufRead> Iterator for Parser<R> {
+    type Item = Result<ParseEvent>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.next_event() {
+            Ok(Some(ev)) => Some(Ok(ev)),
+            Ok(None) => None,
+            Err(e) => Some(Err(e)),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
-    #[test]
-    fn parse_event_is_debug() {
-        let e = ParseEvent::Plain("hello".into());
-        assert!(format!("{e:?}").contains("Plain"));
-    }
-
-    #[test]
-    fn parse_event_clone_works() {
-        let e = ParseEvent::BeginBlock {
-            word: "SECRET".into(),
-        };
-        let e2 = e.clone();
-        if let ParseEvent::BeginBlock { word } = e2 {
-            assert_eq!(word, "SECRET");
-        } else {
-            panic!("clone should preserve variant");
+    fn default_seps() -> crate::etree::Separators {
+        crate::etree::Separators {
+            left: "// <(".into(),
+            right: ")>".into(),
         }
     }
 
     #[test]
-    fn parser_new_does_not_read() {
-        let input = std::io::Cursor::new(b"hello\n");
-        let seps = crate::etree::Separators {
-            left: "// <(".into(),
-            right: ")>".into(),
-        };
-        let _p = Parser::new(input, seps);
-        // Construction is zero-cost; no reads happen until next_event.
+    fn plain_text_emits_one_event() {
+        let input = Cursor::new("hello world\n");
+        let mut parser = Parser::new(input, default_seps());
+        let ev = parser.next_event().unwrap().unwrap();
+        assert!(matches!(ev, ParseEvent::Plain(ref t) if t.contains("hello")));
+        assert!(parser.next_event().unwrap().is_none());
+    }
+
+    #[test]
+    fn begin_end_emits_events() {
+        let input = Cursor::new("// <( BEGIN SECRET )>\nplaintext\n// <( END SECRET )>\n");
+        let seps = default_seps();
+        let parser = Parser::new(input, seps);
+        let events: Vec<_> = parser.collect::<Result<_>>().unwrap();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ParseEvent::BeginBlock { word } if word == "SECRET"
+        )));
+        assert!(events.iter().any(|e| matches!(e, ParseEvent::Plain(_))));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            ParseEvent::EndBlock { word } if word == "SECRET"
+        )));
+    }
+
+    #[test]
+    fn encrypted_with_extfields_parses() {
+        let input = Cursor::new(
+            "// <( ENCRYPTED SECRET cipher:aes-256-siv )>\n// <( DATA abc= )>\n// <( END SECRET )>\n",
+        );
+        let seps = default_seps();
+        let parser = Parser::new(input, seps);
+        let events: Vec<_> = parser.collect::<Result<_>>().unwrap();
+        let enc = events
+            .iter()
+            .find(|e| matches!(e, ParseEvent::Encrypted { .. }));
+        assert!(enc.is_some());
+        if let Some(ParseEvent::Encrypted { word, extfields }) = enc {
+            assert_eq!(word, "SECRET");
+            assert_eq!(extfields.get("cipher"), Some(&"aes-256-siv".to_string()));
+        }
+        assert!(events.iter().any(|e| matches!(e, ParseEvent::Data(_))));
+    }
+
+    #[test]
+    fn stored_directive_parses() {
+        let input = Cursor::new("// <( STORED SECRET abc123 )>\n");
+        let seps = default_seps();
+        let mut parser = Parser::new(input, seps);
+        let ev = parser.next_event().unwrap().unwrap();
+        match ev {
+            ParseEvent::StoredRef { word, hash } => {
+                assert_eq!(word, "SECRET");
+                assert_eq!(hash, "abc123");
+            }
+            _ => panic!("expected StoredRef, got {ev:?}"),
+        }
+    }
+
+    #[test]
+    fn chain_directive_parses() {
+        let input = Cursor::new("// <( CHAIN index:1 signer:ed25519:abc )>\n");
+        let seps = default_seps();
+        let mut parser = Parser::new(input, seps);
+        let ev = parser.next_event().unwrap().unwrap();
+        match ev {
+            ParseEvent::Chain { extfields } => {
+                assert_eq!(extfields.get("index"), Some(&"1".to_string()));
+                assert_eq!(extfields.get("signer"), Some(&"ed25519:abc".to_string()));
+            }
+            _ => panic!("expected Chain, got {ev:?}"),
+        }
+    }
+
+    #[test]
+    fn multiline_plain_text_accumulates() {
+        let input = Cursor::new("line one\nline two\nline three\n");
+        let seps = default_seps();
+        let mut parser = Parser::new(input, seps);
+        let ev = parser.next_event().unwrap().unwrap();
+        match ev {
+            ParseEvent::Plain(text) => {
+                assert!(text.contains("line one"));
+                assert!(text.contains("line two"));
+                assert!(text.contains("line three"));
+            }
+            _ => panic!("expected Plain, got {ev:?}"),
+        }
     }
 }
