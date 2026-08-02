@@ -294,26 +294,26 @@ mod tests {
 ///
 /// Recognized schemes:
 /// - No scheme (bare path): `LocalCas` at that directory.
-/// - `s3://bucket/prefix`: S3-backed CAS (TODO: not yet implemented).
-/// - `ipfs://gateway`: IPFS-backed CAS (TODO: not yet implemented).
-/// - `rekor:`: Rekor transparency-log CAS (TODO: gated on #03 Sigstore).
+/// - `memory:`: in-process `MemoryCas` (for testing, ephemeral sessions).
+/// - `s3://bucket/prefix`: S3-backed CAS (requires `s3` cargo feature; not yet wired).
+/// - `ipfs://gateway`: IPFS-backed CAS (requires `ipfs` cargo feature; not yet wired).
+/// - `rekor:`: Rekor transparency-log CAS (requires `sigstore` cargo feature; not yet wired).
 pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
-    if let Some(rest) = spec.strip_prefix("s3://") {
-        return Err(crate::error::Error::msg(format!(
-            "S3 CAS backend not yet implemented (spec: s3://{rest}); see TODO.complete/06"
-        )));
+    if spec == "memory:" || spec == "memory" {
+        return Ok(Box::new(MemoryCas::new()));
     }
-    if let Some(rest) = spec.strip_prefix("ipfs://") {
-        return Err(crate::error::Error::msg(format!(
-            "IPFS CAS backend not yet implemented (spec: ipfs://{rest}); see TODO.complete/06"
-        )));
+    if spec.starts_with("s3://") {
+        return Err(crate::error::Error::Cas("S3 CAS requires --features s3 (not yet built); use 'memory:' for testing or a local path".to_string()));
+    }
+    if spec.starts_with("ipfs://") {
+        return Err(crate::error::Error::Cas("IPFS CAS requires --features ipfs (not yet built); use 'memory:' for testing or a local path".to_string()));
     }
     if spec == "rekor:" || spec.starts_with("rekor://") {
-        return Err(crate::error::Error::msg(
-            "Rekor CAS backend not yet implemented; see TODO.complete/06 (gated on #03 Sigstore)",
+        return Err(crate::error::Error::Cas(
+            "Rekor CAS requires --features sigstore (not yet built); use 'memory:' for testing or a local path".into(),
         ));
     }
-    // Default: treat as local path.
+    // Default: treat as local filesystem path.
     Ok(Box::new(LocalCas {
         root: PathBuf::from(spec),
         verbose: false,
@@ -336,25 +336,39 @@ mod backend_tests {
     }
 
     #[test]
-    fn open_cas_s3_not_yet_implemented() {
+    fn open_cas_memory_round_trip() {
+        let store = open_cas("memory:").unwrap();
+        let policy = crate::crypto::default_policy();
+        let h = store.save(b"in-memory blob", &*policy).unwrap();
+        assert_eq!(h.len(), 64);
+        let loaded = store.load(&h, &*policy).unwrap();
+        assert_eq!(loaded, b"in-memory blob");
+        assert!(store.contains(&h, &*policy).unwrap());
+    }
+
+    #[test]
+    fn open_cas_s3_returns_actionable_error() {
         match open_cas("s3://my-bucket/cas/") {
             Err(e) => {
                 let msg = e.to_string();
-                assert!(msg.contains("not yet implemented"), "msg: {msg}");
-                assert!(msg.contains("TODO.complete/06"), "msg: {msg}");
+                assert!(msg.contains("requires --features s3"), "msg: {msg}");
+                assert!(
+                    msg.contains("memory:"),
+                    "should suggest memory: alternative: {msg}"
+                );
             }
-            Ok(_) => panic!("S3 backend should not be available yet"),
+            Ok(_) => panic!("S3 backend should not be available without --features s3"),
         }
     }
 
     #[test]
-    fn open_cas_rekor_not_yet_implemented() {
+    fn open_cas_rekor_returns_actionable_error() {
         match open_cas("rekor:") {
             Err(e) => {
                 let msg = e.to_string();
-                assert!(msg.contains("not yet implemented"), "msg: {msg}");
+                assert!(msg.contains("requires --features sigstore"), "msg: {msg}");
             }
-            Ok(_) => panic!("Rekor backend should not be available yet"),
+            Ok(_) => panic!("Rekor backend should not be available without --features sigstore"),
         }
     }
 }
