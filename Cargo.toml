@@ -44,6 +44,11 @@ sigstore = []
 # system-installed librnp. For local dev, the default (system
 # librnp) is faster.
 vendored-rnp = ["rnp-rs/vendored"]
+# WASM build (TODO.complete/14). When enabled, Botan is replaced
+# with RustCrypto-only crypto (aes-siv, aes-gcm, sha3). Currently
+# a no-op stub — the Botan → RustCrypto migration is tracked in
+# TODO.complete/14.
+wasm = []
 
 [lib]
 crate-type = ["rlib"]
