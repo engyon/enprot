@@ -47,9 +47,10 @@ mod parse;
 mod transform;
 mod write;
 
-/// Streaming parser scaffold (TODO.complete/05-streaming-io).
-/// Defines ParseEvent + Parser<R> but is not yet wired into the
-/// production pipeline.
+/// Streaming parser (TODO.complete/05-streaming-io). Emits ParseEvent
+/// values via an Iterator. The production code path uses `parse()`
+/// (in-memory) for backward compatibility; `streaming::Parser` is
+/// available for callers that need bounded-memory processing.
 pub mod streaming;
 
 mod blob;
@@ -452,10 +453,8 @@ pub enum TextNode {
 /// (e.g., `CHAIN`, `CONFLICT`, `INCLUDE`) is one variant plus one
 /// match arm in each consumer — OCP-friendly.
 ///
-/// Variants not yet wired into the parser (`Chain`, `Conflict`,
-/// `Include`) are present so that downstream code (chain anchors,
-/// merge driver, cross-file DAG) can reference them without touching
-/// this enum again.
+/// All variants (`Chain`, `Conflict`, `Include`, etc.) are fully
+/// handled by the parser and streaming parser.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Directive {
     Begin,

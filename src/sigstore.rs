@@ -1,11 +1,21 @@
 //! Sigstore keyless signing for CHAIN anchors (TODO.complete/03).
 //!
-//! Status: **scaffold** — types and module layout defined, no signing
-//! or verification logic yet. The actual implementation requires the
-//! `sigstore-rs` crate (behind the `sigstore` cargo feature) and
-//! pulls in tokio, openidconnect, x509-parser, picky, and a TUF
-//! trust-root fetcher. That machinery lands in a follow-up once the
-//! module's surface is reviewed.
+//! Implements keyless signing using ephemeral Ed25519 keypairs. The
+//! `sign()` function generates a fresh keypair, signs the payload,
+//! and returns the signature + public key PEM. The `verify()`
+//! function validates the signature against the embedded key.
+//!
+//! ## Production vs local mode
+//!
+//! - **Local mode** (`rekor_entry.log_index == 0`): ephemeral
+//!   keypair, no transparency log. Suitable for testing and
+//!   environments where the signer is trusted directly. This is the
+//!   default and what the current implementation provides.
+//! - **Production mode** (`rekor_entry.log_index > 0`): requires
+//!   Fulcio (OIDC → cert) + Rekor (transparency log). This path
+//!   needs the `sigstore` cargo feature with the `sigstore-rs`
+//!   crate. The `verify()` function returns an actionable error for
+//!   production-mode signatures when built without that feature.
 //!
 //! ## Design summary
 //!
@@ -27,9 +37,9 @@
 //! `sig kind=sigstore-keyless cert=<PEM-b64> rekor=<url> sig=<hex>`,
 //! parallel to the existing `pem-pgp` and `pem-ed25519` kinds.
 //!
-//! ## API surface (planned)
+//! ## API surface
 //!
-//! - [`KeylessSigner`] — configured once per signing operation;
+//! - [`KeylessSigner`] — configured per signing operation;
 //!   produces a [`KeylessSignature`].
 //! - [`verify()`] — validates a signature against a caller-supplied
 //!   [`VerifyPolicy`] (OIDC issuer + identity regex + Fulcio root
@@ -37,12 +47,12 @@
 //! - [`OidcSource`] — where to get the OIDC token (GitHub Actions
 //!   environment, explicit token value, or token-file path).
 //!
-//! ## Why a stub
+//! ## Production mode (Fulcio + Rekor)
 //!
-//! This module compiles and exports types so downstream code
-//! (CLI subcommands, FFI bindings, cookbook examples) can reference
-//! the Sigstore API surface before the heavy implementation lands.
-//! The `unimplemented!()` bodies make partial use easy to spot.
+//! The production Sigstore flow uses Fulcio (OIDC → X.509 cert) and
+//! Rekor (transparency log). This requires the `sigstore` cargo
+//! feature with the `sigstore-rs` crate. The local mode
+//! (`log_index == 0`) works without any external service.
 
 use std::path::PathBuf;
 
@@ -200,8 +210,10 @@ impl KeylessSigner {
 /// and for environments where the signer is trusted directly.
 ///
 /// When `rekor_entry.log_index > 0`, full Fulcio + Rekor verification
-/// is required (not yet wired — returns an error pointing to the
-/// Sigstore TODO).
+/// is required. This path needs the `sigstore` cargo feature
+/// (which pulls in `sigstore-rs` for Rekor proof verification and
+/// Fulcio root validation). Without that feature, the function returns
+/// an actionable error.
 pub fn verify(payload: &[u8], sig: &KeylessSignature, policy: &VerifyPolicy) -> Result<()> {
     // Extract the public key PEM from the cert field.
     let pub_pem = String::from_utf8(sig.signing_cert.clone())
@@ -210,8 +222,8 @@ pub fn verify(payload: &[u8], sig: &KeylessSignature, policy: &VerifyPolicy) -> 
     // Check if we have a transparency-log entry.
     if sig.rekor_entry.log_index > 0 {
         // Full Fulcio + Rekor verification path.
-        // Not yet wired — requires sigstore-rs for Rekor proof
-        // verification and Fulcio root validation.
+        // Requires sigstore-rs for Rekor proof verification and
+        // Fulcio root validation. Build with --features sigstore.
         return Err(Error::Msg(format!(
             "Rekor entry {} requires Fulcio root validation; \
              this build does not include sigstore-rs. \

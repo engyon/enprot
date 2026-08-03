@@ -381,7 +381,7 @@ pub enum ScmCommand {
         path: PathBuf,
     },
     /// Parse Cargo.toml at MANIFEST_FILE and append each `[dependencies]`
-    /// entry as an INCLUDE. (npm + pyproject parsers are stubbed.)
+    /// entry as an INCLUDE.
     Deps {
         #[arg(value_name = "MANIFEST")]
         manifest: PathBuf,

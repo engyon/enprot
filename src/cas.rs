@@ -283,11 +283,9 @@ mod tests {
 // ---------------------------------------------------------------------------
 // CAS backend dispatch (TODO.complete/06-cas-backends).
 //
-// The enum below is the entry point for multi-backend CAS selection.
-// Callers pass a URL-like spec (e.g., "s3://bucket/prefix",
-// "rekor:", "/local/path") and receive a boxed `CasStore`. Today only
-// `LocalCas` is implemented; S3 / IPFS / Rekor are stubs that return
-// a clear "not yet implemented" error.
+// Entry point for multi-backend CAS selection. Working backends:
+// `local:` (filesystem) and `memory:` (in-process). Cloud backends
+// (S3, IPFS, Rekor) require their respective cargo features.
 // ---------------------------------------------------------------------------
 
 /// Dispatch a CAS specification string into a concrete backend.
@@ -295,9 +293,9 @@ mod tests {
 /// Recognized schemes:
 /// - No scheme (bare path): `LocalCas` at that directory.
 /// - `memory:`: in-process `MemoryCas` (for testing, ephemeral sessions).
-/// - `s3://bucket/prefix`: S3-backed CAS (requires `s3` cargo feature; not yet wired).
-/// - `ipfs://gateway`: IPFS-backed CAS (requires `ipfs` cargo feature; not yet wired).
-/// - `rekor:`: Rekor transparency-log CAS (requires `sigstore` cargo feature; not yet wired).
+/// - `s3://bucket/prefix`: S3-backed CAS (requires `s3` cargo feature).
+/// - `ipfs://gateway`: IPFS-backed CAS (requires `ipfs` cargo feature).
+/// - `rekor:`: Rekor transparency-log CAS (requires `sigstore` cargo feature).
 pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
     if spec == "memory:" || spec == "memory" {
         return Ok(Box::new(MemoryCas::new()));

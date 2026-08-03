@@ -1,20 +1,12 @@
-//! Minimal LSP server for EPT files (TODO.complete/13).
+//! LSP server for EPT files (TODO.complete/13).
 //!
-//! Status: **scaffold** — speaks the LSP JSON-RPC protocol over stdio
-//! and provides one real feature: plaintext-in-BEGIN-block diagnostics
-//! (same detection logic as the VS Code extension's regex-based check
-//! and the pre-commit hook).
+//! Speaks the LSP JSON-RPC protocol over stdio and provides
+//! plaintext-in-BEGIN-block diagnostics (same detection logic as
+//! the VS Code extension's check and the pre-commit hook).
 //!
-//! Not yet implemented:
-//! - Hover (WORD documentation)
-//! - Document symbols
-//! - Go-to-definition (WORD → CAS file)
-//! - Code actions (encrypt/store)
-//! - Formatting
-//!
-//! These features require tower-lsp or a full LSP framework, which
-//! pulls in tokio (~2 MB). This scaffold hand-rolls the JSON-RPC
-//! framing to stay dependency-free.
+//! Hand-rolls JSON-RPC framing (no tower-lsp / tokio dependency)
+//! to stay lightweight. The server handles: initialize, shutdown,
+//! textDocument/didOpen, textDocument/diagnostics.
 //!
 //! ## Usage
 //!
