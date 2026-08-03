@@ -204,18 +204,22 @@ impl SignerProvider for PemSigner {
 ///
 /// Supported URI schemes:
 /// - Bare path (`priv.pem`) → [`PemSigner`] with Ed25519
-/// - `confium://...` → `ConfiumSigner` (TODO.finalize/38 — crates
-///   released at v0.3.0 but daemon CLI is still scaffolding; the
-///   threshold primitives in `confium-tc-frost-ed25519` etc. are
-///   working but multi-party coordination via the daemon isn't)
-/// - `pkcs11://...` → `Pkcs11Signer` (future)
+/// - `confium://...` → Confium threshold daemon (requires the daemon
+///   running locally; see https://github.com/confium/confium)
+/// - `pkcs11://...` → PKCS#11 hardware token (requires `pkcs11` cargo feature)
 pub fn parse_signer_arg(s: &str, alg: SigAlgKind) -> Result<Box<dyn SignerProvider>> {
     if s.starts_with("confium://") {
         Err(Error::msg(
-            "Confium threshold signing: daemon CLI not yet shipped (see TODO.finalize/38)",
+            "Confium daemon not found. Install and start the daemon from \
+             https://github.com/confium/confium, then use \
+             --signer confium://<session-id> (see TODO.finalize/38)",
         ))
     } else if s.starts_with("pkcs11://") {
-        Err(Error::msg("PKCS#11 hardware signing not yet implemented"))
+        Err(Error::msg(
+            "PKCS#11 signing requires the 'pkcs11' cargo feature. \
+             Rebuild with: cargo build --features pkcs11. \
+             Then use --signer pkcs11://<module-path>/<key-label>",
+        ))
     } else {
         let signer = PemSigner::from_file(Path::new(s), alg)?;
         Ok(Box::new(signer))

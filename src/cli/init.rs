@@ -1,11 +1,7 @@
 //! `enprot init` subcommand — bootstrap a new enprot-aware directory.
 //!
-//! Extracted from `cli/mod.rs` as Phase 1 of TODO.complete/07. Shows
-//! the per-subcommand-module decomposition pattern that the rest of
-//! the file will follow: one `cli/<subcommand>.rs` per top-level
-//! subcommand, exposing a single `pub fn run(args) -> Result<()>`
-//! entry point. The module owns its own helpers; `mod.rs` keeps the
-//! dispatch table.
+//! Extracted from `cli/mod.rs` (TODO.complete/07-cli-rs-decomposition).
+//! Follows the per-subcommand-module pattern.
 
 use std::path::PathBuf;
 
