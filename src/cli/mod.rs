@@ -676,6 +676,12 @@ pub struct CommonArgs {
     /// whose required capability the caller doesn't hold.
     #[arg(long, global = true, value_name = "PATH")]
     pub policy_file: Option<PathBuf>,
+
+    /// Number of parallel threads for multi-file processing (default 1).
+    /// When > 1, each file is processed in its own thread with an
+    /// independent ParseOps instance — no shared mutable state.
+    #[arg(long, global = true, default_value_t = 1)]
+    pub jobs: usize,
 }
 
 impl CommonArgs {
@@ -704,6 +710,7 @@ impl CommonArgs {
             format: output::OutputFormat::Text,
             inline: false,
             policy_file: None,
+            jobs: 1,
         }
     }
 }
@@ -1578,7 +1585,125 @@ pub struct RunConfig {
     pub recipient_privs: Vec<String>,
 }
 
+impl RunConfig {
+    /// Build a fresh `ParseOps` from this configuration. Each call
+    /// produces an independent instance with its own RNG, PBKDF cache,
+    /// and mutable state. Safe to call from multiple threads — no
+    /// shared mutable state between instances.
+    ///
+    /// `policy_name` must be pre-resolved (FIPS detection, explicit
+    /// policy, defaults) by the caller. This method does NOT redo
+    /// that resolution.
+    fn build_paops(&self, policy_name: &str) -> Result<ParseOps> {
+        let policy = make_policy(policy_name);
+        let mut paops = if let Some(defaults) = self.common.defaults.as_deref() {
+            let mut p = ParseOps::new(make_policy(defaults))?;
+            p.crypto.policy = policy;
+            p
+        } else {
+            ParseOps::new(policy)?
+        };
+
+        if let Some(dir) = self.common.casdir.clone() {
+            paops.io.set_local_casdir(dir);
+        } else if Path::new("cas").is_dir() {
+            paops.io.set_local_casdir(Path::new("cas").to_path_buf());
+        } else {
+            paops.io.set_local_casdir(Path::new(".").to_path_buf());
+        }
+
+        paops.io.verbose = self.common.verbose && !self.common.quiet;
+        paops.io.inline_data = self.common.inline || self.common.casdir.is_none();
+        paops.max_depth = self.common.max_depth;
+        let (left, right) = resolve_separators(&self.common);
+        paops.separators.left = left;
+        paops.separators.right = right;
+        paops.passwords.extend(self.common.password.clone());
+        paops.crypto.recipient_pubs = self.recipient_pubs.clone();
+        for (i, w) in self.output.word.iter().enumerate() {
+            if let Some(priv_pem) = self
+                .recipient_privs
+                .get(i)
+                .or_else(|| self.recipient_privs.first())
+            {
+                paops
+                    .crypto
+                    .recipient_privkeys
+                    .insert(w.clone(), priv_pem.clone());
+            }
+        }
+        if self.common.pbkdf_disable_cache {
+            paops.crypto.pbkdf_cache = None;
+        }
+
+        if let Some((enc_opts, op_kind)) = self.op.as_ref() {
+            for w in &self.output.word {
+                match op_kind {
+                    Operation::Encrypt => {
+                        paops.transforms.encrypt.insert(w.clone());
+                    }
+                    Operation::Decrypt => {
+                        paops.transforms.decrypt.insert(w.clone());
+                    }
+                    Operation::Store => {
+                        paops.transforms.store.insert(w.clone());
+                    }
+                    Operation::Fetch => {
+                        paops.transforms.fetch.insert(w.clone());
+                    }
+                    Operation::EncryptStore => {
+                        paops.transforms.encrypt.insert(w.clone());
+                        paops.transforms.store.insert(w.clone());
+                    }
+                }
+            }
+
+            if matches!(op_kind, Operation::Encrypt | Operation::EncryptStore) {
+                if let Some(alg) = enc_opts.pbkdf.as_deref() {
+                    paops.crypto.pbkdfopts.alg = alg.to_string();
+                }
+                if let Some(saltlen) = enc_opts.pbkdf_salt_len {
+                    paops.crypto.pbkdfopts.saltlen = saltlen;
+                }
+                if let Some(msec) = enc_opts.pbkdf_msec {
+                    paops.crypto.pbkdfopts.msec = Some(msec);
+                }
+                if let Some(raw) = enc_opts.pbkdf_params.as_deref() {
+                    paops.crypto.pbkdfopts.msec = None;
+                    let params: std::collections::BTreeMap<String, usize> = raw
+                        .split(',')
+                        .map(|kv| {
+                            let (k, v) = kv.split_once('=').unwrap_or(("", "0"));
+                            (k.to_string(), v.parse().unwrap_or(0))
+                        })
+                        .collect();
+                    paops.crypto.pbkdfopts.params = Some(params);
+                }
+                if let Some(salt_hex) = enc_opts.pbkdf_salt.as_deref() {
+                    paops.crypto.pbkdfopts.salt = Some(hex::decode(salt_hex).map_err(Error::from)?);
+                }
+                if let Some(c) = enc_opts.cipher.as_deref() {
+                    paops.crypto.cipheropts.alg = c.to_string();
+                }
+                if let Some(iv_hex) = enc_opts.cipher_iv.as_deref() {
+                    paops.crypto.cipheropts.iv = Some(hex::decode(iv_hex).map_err(Error::from)?);
+                }
+            }
+        }
+
+        paops.anchor = build_anchor_config(
+            self.common.anchor,
+            self.common.signer.as_deref(),
+            self.op.as_ref().map(|(_, k)| *k),
+            &self.output.word,
+        )?;
+
+        Ok(paops)
+    }
+}
+
 fn run(cfg: RunConfig) -> Result<()> {
+    let cfg_parallel = cfg.clone();
     let RunConfig {
         common,
         output,
@@ -1746,10 +1871,46 @@ fn run(cfg: RunConfig) -> Result<()> {
         &output.word,
     )?;
 
-    for (path_in, path_out) in files {
-        process_one_file(&path_in, &path_out, &mut paops)?;
+    // --- File processing ---
+    // When --jobs > 1 and we have multiple files, process them in
+    // parallel using scoped threads. Each thread builds its own
+    // ParseOps from the same RunConfig — no shared mutable state.
+    if common.jobs > 1 && files.len() > 1 {
+        tracing::info!(
+            files = files.len(),
+            jobs = common.jobs,
+            "processing files in parallel"
+        );
+        let jobs = common.jobs.min(files.len());
+        let chunk_size = files.len().div_ceil(jobs);
+        let policy = &policy_name;
+        let cfg_ref = &cfg_parallel;
+        let chunks: Vec<&[(String, String)]> = files.chunks(chunk_size).collect();
+        std::thread::scope(|s| {
+            let handles: Vec<_> = chunks
+                .iter()
+                .map(|chunk| {
+                    s.spawn(move || -> Result<()> {
+                        let mut local_paops = cfg_ref.build_paops(policy)?;
+                        for (path_in, path_out) in chunk.iter() {
+                            process_one_file(path_in, path_out, &mut local_paops)?;
+                        }
+                        Ok(())
+                    })
+                })
+                .collect();
+            for h in handles {
+                h.join()
+                    .map_err(|_| Error::msg("worker thread panicked"))??;
+            }
+            Ok(())
+        })
+    } else {
+        for (path_in, path_out) in &files {
+            process_one_file(path_in, path_out, &mut paops)?;
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Pair each input with its output, following the rules in
