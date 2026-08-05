@@ -40,7 +40,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use crate::etree::ParseOps;
 use crate::{
     Error, Result, capability, cappolicy, cas, cipher, config, consts, crypto, etree, ledger,
-    output, pbkdf, pki, provenance, scm,
+    output, pbkdf, pki,
 };
 
 mod cap;
@@ -49,6 +49,7 @@ mod cap;
 mod init;
 mod inspect;
 mod merge_cmd;
+mod provenance_cmd;
 mod smudge;
 
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
@@ -895,9 +896,9 @@ where
         Command::Clean(a) => smudge::run(smudge::Mode::Clean, a, cli.common),
         Command::Smudge(a) => smudge::run(smudge::Mode::Smudge, a, cli.common),
         Command::Textconv(a) => smudge::run(smudge::Mode::Smudge, a, cli.common),
-        Command::Manifest(a) => run_manifest(a),
-        Command::Attest(a) => run_attest(a),
-        Command::Scm(a) => run_scm(a),
+        Command::Manifest(a) => provenance_cmd::run_manifest(a),
+        Command::Attest(a) => provenance_cmd::run_attest(a),
+        Command::Scm(a) => provenance_cmd::run_scm(a),
         // Config-needing: load config then dispatch.
         Command::Encrypt(a) => with_config(cli.common, |common| {
             run(RunConfig {
@@ -1040,144 +1041,6 @@ fn apply_config(mut common: CommonArgs) -> Result<CommonArgs> {
 /// `enprot init` implementation: write the commented template either
 /// to `.enprot.toml` in cwd or, with `--global`, to
 /// `~/.config/enprot/config.toml`. Refuses to overwrite unless `--force`.
-/// `manifest` entry point: build a provenance manifest for a project
-/// tree. Walks the directory, stores each file in CAS, emits an EPT
-/// file with INCLUDE per source. Output goes to `--output` or stdout.
-fn run_manifest(a: ManifestSubcmd) -> Result<()> {
-    let casdir = a
-        .casdir
-        .clone()
-        .or_else(|| {
-            if Path::new("cas").is_dir() {
-                Some(PathBuf::from("cas"))
-            } else {
-                Some(PathBuf::from("."))
-            }
-        })
-        .unwrap();
-    if !casdir.is_dir() {
-        std::fs::create_dir_all(&casdir)?;
-    }
-
-    eprintln!("manifest: walking {}...", a.dir.display());
-    let tree = provenance::build_manifest(&a.dir, &casdir)?;
-    eprintln!(
-        "manifest: {} entries",
-        tree.iter()
-            .filter(|n| matches!(n, etree::TextNode::Include { .. }))
-            .count()
-    );
-    let policy = crypto::default_policy();
-    let mut paops = ParseOps::new(policy)?;
-    paops.runtime.fname = a
-        .output
-        .as_ref()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "<stdout>".into());
-
-    match a.output.as_ref() {
-        Some(path) => {
-            let f = File::create(path)?;
-            etree::tree_write(&mut BufWriter::new(f), &tree, &mut paops)?;
-            eprintln!("manifest: wrote {}", path.display());
-        }
-        None => {
-            let stdout = std::io::stdout();
-            etree::tree_write(&mut stdout.lock(), &tree, &mut paops)?;
-        }
-    }
-    Ok(())
-}
-
-/// `attest` entry point: append a signed chain anchor to a manifest.
-fn run_attest(a: AttestSubcmd) -> Result<()> {
-    let priv_pem = fs::read_to_string(&a.signer)?;
-    let body = fs::read_to_string(&a.file)?;
-    let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
-    let mut paops = ParseOps::new(policy)?;
-    paops.runtime.fname = a.file.display().to_string();
-    let cursor = std::io::Cursor::new(body.into_bytes());
-    let tree = etree::parse(cursor, &mut paops)?;
-
-    // Default casdir to `.` so attest doesn't fail when the manifest
-    // has no CAS-referenced content (the chain anchor just needs to
-    // hash the file state).
-    if paops.io.casdir.as_os_str().is_empty() {
-        paops.io.set_local_casdir(PathBuf::from("."));
-    }
-
-    let attested = provenance::attest(&tree, &priv_pem, &paops.io.casdir, Vec::new())?;
-    let f = File::create(&a.file)?;
-    etree::tree_write(&mut BufWriter::new(f), &attested, &mut paops)?;
-    eprintln!("attest: signed {}", a.file.display());
-    Ok(())
-}
-
-/// `scm` entry point: dispatch to the appropriate sub-operation.
-/// Re-uses provenance::attest for signing so the wire format is
-/// identical to TODO.roadmap/51.
-fn run_scm(a: ScmSubcmd) -> Result<()> {
-    let casdir = a.casdir.clone().unwrap_or_else(|| {
-        if Path::new("cas").is_dir() {
-            PathBuf::from("cas")
-        } else {
-            PathBuf::from(".")
-        }
-    });
-    if !casdir.is_dir() {
-        std::fs::create_dir_all(&casdir)?;
-    }
-    match a.command {
-        ScmCommand::Init { manifest } => {
-            scm::init_manifest(&manifest)?;
-            println!("scm init: wrote {}", manifest.display());
-            Ok(())
-        }
-        ScmCommand::Add { manifest, path } => {
-            let n = scm::add_to_manifest(&manifest, &path, &casdir)?;
-            println!("scm add: appended {} entries to {}", n, manifest.display());
-            Ok(())
-        }
-        ScmCommand::Deps {
-            manifest,
-            cargo_toml,
-        } => {
-            let n = scm::add_cargo_deps(&manifest, &cargo_toml, &casdir)?;
-            println!("scm deps: appended {} entries to {}", n, manifest.display());
-            Ok(())
-        }
-        ScmCommand::Attest { signer, manifest } => {
-            run_attest(AttestSubcmd {
-                signer,
-                file: manifest.clone(),
-            })?;
-            println!("scm attest: signed {}", manifest.display());
-            Ok(())
-        }
-        ScmCommand::Verify {
-            trust_root,
-            manifest,
-        } => {
-            // Delegate to the existing verify-chain implementation so
-            // customers get identical semantics to `enprot verify-
-            // chain --trust-root X FILE`. CommonArgs is constructed
-            // with the filter-context defaults via the helper.
-            verify_chain_files(
-                CommonArgs::for_filter(Some(casdir.clone())),
-                VerifyChainSubcmd {
-                    trust_roots: vec![trust_root],
-                    files: vec![manifest.to_string_lossy().into_owned()],
-                },
-            )
-        }
-        ScmCommand::Diff { old, new } => {
-            let d = scm::diff_manifests(&old, &new)?;
-            print!("{d}");
-            Ok(())
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Operation {
     Encrypt,
@@ -2639,7 +2502,7 @@ fn build_chain_anchor_node_with_parent(
 /// `verify-chain` implementation: parse each file, collect CHAIN
 /// blocks into an [`AnchorDag`], verify signatures against the
 /// caller-supplied trust roots. Exit non-zero on any failure.
-fn verify_chain_files(common: CommonArgs, a: VerifyChainSubcmd) -> Result<()> {
+pub(super) fn verify_chain_files(common: CommonArgs, a: VerifyChainSubcmd) -> Result<()> {
     // Load trust roots into a fingerprint → PEM map.
     let mut trust: HashMap<String, String> = HashMap::new();
     for pem_path in &a.trust_roots {
