@@ -40,14 +40,14 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use crate::etree::ParseOps;
 use crate::{
     Error, Result, capability, cappolicy, cas, cipher, config, consts, crypto, etree, ledger,
-    merge, output, pbkdf, pki, prot, provenance, resolve, scm,
+    output, pbkdf, pki, prot, provenance, scm,
 };
 
 mod cap;
 /// Per-subcommand modules. Each one exposes a `pub fn run(args)` entry
-/// point that `app_main`'s match dispatches to. Decomposition tracked
-/// in TODO.complete/07-cli-rs-decomposition.
+/// point that `app_main`'s match dispatches to.
 mod init;
+mod merge_cmd;
 
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
     // Invariant: callers route `name` through clap's `VALID_POLICIES`
@@ -885,9 +885,9 @@ where
     match cli.command {
         // Bypass config layering.
         Command::Init(a) => init::run(a),
-        Command::MergeDriver(a) => run_merge_driver(a),
-        Command::Resolve(a) => run_resolve(a),
-        Command::Conflicts(a) => run_conflicts(a),
+        Command::MergeDriver(a) => merge_cmd::run_merge_driver(a),
+        Command::Resolve(a) => merge_cmd::run_resolve(a),
+        Command::Conflicts(a) => merge_cmd::run_conflicts(a),
         Command::Inspect(a) => run_inspect(a, cli.common),
         Command::Cap(args) => cap::run(args, &cli.common),
         Command::Clean(a) => run_smudge_clean(SmudgeMode::Clean, a, cli.common),
@@ -1038,95 +1038,6 @@ fn apply_config(mut common: CommonArgs) -> Result<CommonArgs> {
 /// `enprot init` implementation: write the commented template either
 /// to `.enprot.toml` in cwd or, with `--global`, to
 /// `~/.config/enprot/config.toml`. Refuses to overwrite unless `--force`.
-/// `merge-driver` entry point. Performs a three-way WORD-aware
-/// merge and writes the result back into the "ours" path. Exits
-/// zero on success even when conflicts are emitted; the caller
-/// detects conflicts by scanning the output for CONFLICT markers.
-/// Exits non-zero only on parse / IO errors.
-fn run_merge_driver(a: MergeDriverSubcmd) -> Result<()> {
-    let conflicts = merge::merge_paths(&a.base, &a.ours, &a.theirs)?;
-    if conflicts > 0 {
-        eprintln!(
-            "merge-driver: {} conflict(s) emitted in {}",
-            conflicts,
-            a.ours.display()
-        );
-    }
-    Ok(())
-}
-
-/// `resolve` entry point. Reads FILE, walks CONFLICT blocks, applies
-/// the chosen mode, writes the result back to FILE in-place.
-fn run_resolve(a: ResolveSubcmd) -> Result<()> {
-    use std::io::{BufReader, BufWriter, IsTerminal};
-    let mode = resolve::ResolveMode::from_cli_flag(&a.mode)?;
-    let overrides = resolve::WordOverride::from_cli_flags(&a.word)?;
-    if matches!(mode, resolve::ResolveMode::Interactive) && !std::io::stdin().is_terminal() {
-        return Err(Error::msg(
-            "resolve --interactive requires a TTY (pass --mode ours/theirs/both/skip for non-interactive runs)",
-        ));
-    };
-
-    let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
-    let mut paops = ParseOps::new(policy)?;
-    paops.runtime.fname = a.file.display().to_string();
-    let f = File::open(&a.file)?;
-    let tree = etree::parse(BufReader::new(f), &mut paops)?;
-    let (resolved, n) = resolve::resolve_tree_with_overrides(&tree, mode, &overrides)?;
-    let out = File::create(&a.file)?;
-    etree::tree_write(&mut BufWriter::new(out), &resolved, &mut paops)?;
-    eprintln!("resolve: cleared {} conflict(s) in {}", n, a.file.display());
-    Ok(())
-}
-
-/// `conflicts` entry point: walk FILE and report unresolved
-/// CONFLICT blocks. Exits non-zero if any are present.
-fn run_conflicts(a: ConflictsSubcmd) -> Result<()> {
-    use std::io::BufReader;
-    let policy = Box::new(crypto::CryptoPolicyDefault {}) as Box<dyn crypto::CryptoPolicy>;
-    let mut paops = ParseOps::new(policy)?;
-    paops.runtime.fname = a.file.display().to_string();
-    let f = File::open(&a.file)?;
-    let tree = etree::parse(BufReader::new(f), &mut paops)?;
-
-    let entries: Vec<output::ConflictEntry> = tree
-        .iter()
-        .filter_map(|n| match n {
-            etree::TextNode::Conflict { keyw, ours, theirs } => Some(output::ConflictEntry {
-                word: keyw.clone(),
-                ours_nodes: ours.len(),
-                theirs_nodes: theirs.len(),
-            }),
-            _ => None,
-        })
-        .collect();
-
-    let count = entries.len();
-    match a.format {
-        output::OutputFormat::Text => {
-            if entries.is_empty() {
-                println!("no conflicts in {}", a.file.display());
-            } else {
-                for e in &entries {
-                    println!(
-                        "{:<16} {} nodes ours / {} nodes theirs",
-                        e.word, e.ours_nodes, e.theirs_nodes
-                    );
-                }
-            }
-        }
-        output::OutputFormat::Json => {
-            let payload = output::ConflictsOutput { conflicts: entries };
-            println!("{}", output::to_json(&payload)?);
-        }
-    }
-
-    if count > 0 {
-        std::process::exit(1);
-    }
-    Ok(())
-}
-
 /// `inspect` entry point (TODO.finalize/42): combined diagnostic.
 /// Parses the file, lists structure, checks chain anchors, and
 /// shows what the current flag set can do with the file. One
