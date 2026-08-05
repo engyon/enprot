@@ -10,8 +10,9 @@ use crate::etree::{self, ParseOps};
 use crate::ledger;
 use crate::output;
 
+use super::list::list_tree;
 use super::{
-    CommonArgs, InspectSubcmd, apply_common, capability_to_dto, collect_chain_anchors, list_tree,
+    CommonArgs, InspectSubcmd, apply_common, capability_to_dto, collect_chain_anchors,
     resolve_policy,
 };
 
