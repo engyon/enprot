@@ -39,8 +39,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::etree::ParseOps;
 use crate::{
-    Error, Result, capability, cappolicy, cas, cipher, config, consts, crypto, etree, ledger,
-    output, pbkdf, pki,
+    Error, Result, capability, cappolicy, config, consts, crypto, etree, ledger, output, pki,
 };
 
 mod cap;
@@ -52,6 +51,7 @@ mod list;
 mod merge_cmd;
 mod provenance_cmd;
 mod smudge;
+mod verify;
 
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
     // Invariant: callers route `name` through clap's `VALID_POLICIES`
@@ -955,7 +955,7 @@ where
                 recipient_privs: Vec::new(),
             })
         }),
-        Command::Verify(a) => with_config(cli.common, |common| verify_files(common, a.output)),
+        Command::Verify(a) => with_config(cli.common, |common| verify::run(common, a.output)),
         Command::List(a) => with_config(cli.common, |common| list::run(common, a.output)),
         Command::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "enprot", &mut std::io::stdout());
@@ -1671,167 +1671,6 @@ fn capability_to_dto(c: &capability::Capability) -> output::CapabilityDto {
             word: None,
             key_fp: Some(fp.to_hex()),
         },
-    }
-}
-
-/// Parse each input and list all WORD segments to stdout. One line per
-/// directive node, with keyword, type, and crypto metadata.
-/// Parse each input and check structural integrity: valid EPT markup,
-/// resolvable CAS pointers (file exists + hash matches), well-formed
-/// cipher/pbkdf extfields. Reports per-file status to stderr; returns
-/// Err on the first problem.
-fn verify_files(common: CommonArgs, output: OutputArgs) -> Result<()> {
-    let policy = resolve_policy(&common)?;
-    let mut paops = ParseOps::new(policy)?;
-    apply_common(&common, &mut paops);
-
-    let files = pair_inputs_to_outputs(
-        &output.files,
-        &output.output,
-        &output.prefix,
-        output.output_dir.as_deref(),
-    );
-
-    let mut issues = 0usize;
-    for (path_in, _) in &files {
-        if paops.io.verbose {
-            eprintln!("Verifying {}", path_in);
-        }
-
-        let reader: Box<dyn BufRead> = if path_in == "-" {
-            Box::new(BufReader::new(std::io::stdin()))
-        } else {
-            Box::new(BufReader::new(File::open(path_in).map_err(|e| {
-                Error::Msg(format!("Failed to open {}: {}", path_in, e))
-            })?))
-        };
-        paops.runtime.fname = path_in.clone();
-
-        let tree = match etree::parse(reader, &mut paops) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("FAIL {}: parse error: {}", path_in, e);
-                issues += 1;
-                continue;
-            }
-        };
-
-        for node in &tree {
-            let node_issues = verify_node(node, &mut paops);
-            issues += node_issues;
-        }
-
-        if issues == 0 {
-            eprintln!("OK   {}", path_in);
-        }
-    }
-
-    if issues > 0 {
-        return Err(Error::Msg(format!("{} issue(s) found", issues)));
-    }
-    Ok(())
-}
-
-fn verify_node(node: &etree::TextNode, paops: &mut ParseOps) -> usize {
-    match node {
-        etree::TextNode::Stored { keyw, cas } => match cas::load(cas, paops) {
-            Ok(_) => 0,
-            Err(e) => {
-                eprintln!("FAIL: CAS pointer '{}' for WORD '{}': {}", cas, keyw, e);
-                1
-            }
-        },
-        etree::TextNode::Encrypted { txt, extfields, .. } => {
-            let mut n = 0;
-            // Check inner node
-            for child in txt {
-                n += verify_node(child, paops);
-            }
-            // Validate extfield format
-            if let Some(cipher_str) = extfields.get("cipher")
-                && let Err(e) = cipher::parse_cipher_extfield(cipher_str)
-            {
-                eprintln!("FAIL: cipher extfield '{}': {}", cipher_str, e);
-                n += 1;
-            }
-            if let Some(phc_str) = extfields.get("pbkdf")
-                && let Err(e) = pbkdf::parse_phc(phc_str)
-            {
-                eprintln!("FAIL: pbkdf extfield '{}': {}", phc_str, e);
-                n += 1;
-            }
-            n
-        }
-        etree::TextNode::BeginEnd { txt, .. } => {
-            let mut n = 0;
-            for child in txt {
-                n += verify_node(child, paops);
-            }
-            n
-        }
-        etree::TextNode::Immutable {
-            name,
-            hashalg,
-            hash,
-            txt,
-        } => {
-            // RSD spec: verify that the declared hash matches the
-            // actual content hash.
-            let mut n = 0;
-            let blob = crate::etree::tree_to_blob(txt, paops);
-            match blob {
-                Ok(b) => {
-                    let policy: &dyn crypto::CryptoPolicy = &*paops.crypto.policy;
-                    match crate::crypto::hexdigest(hashalg, &b, policy) {
-                        Ok(computed) if computed == *hash => {
-                            // Hash matches — pass
-                        }
-                        Ok(computed) => {
-                            eprintln!(
-                                "FAIL: IMMUTABLE {} hash mismatch (declared={}, computed={})",
-                                name, hash, computed
-                            );
-                            n += 1;
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "FAIL: IMMUTABLE {} hash algorithm '{}': {}",
-                                name, hashalg, e
-                            );
-                            n += 1;
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("FAIL: IMMUTABLE {} internal serialization: {}", name, e);
-                    n += 1;
-                }
-            }
-            // Also verify children
-            for child in txt {
-                n += verify_node(child, paops);
-            }
-            n
-        }
-        etree::TextNode::Muted {
-            name,
-            hashalg,
-            hash,
-        } => {
-            // MUTED is the sanitized form — content lives in CAS.
-            // Verify the CAS blob exists and its hash matches.
-            match cas::load(hash, paops) {
-                Ok(_) => 0,
-                Err(e) => {
-                    eprintln!(
-                        "FAIL: MUTED {} CAS blob ({}={}): {}",
-                        name, hashalg, hash, e
-                    );
-                    1
-                }
-            }
-        }
-        _ => 0,
     }
 }
 
