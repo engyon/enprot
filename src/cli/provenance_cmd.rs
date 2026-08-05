@@ -16,10 +16,8 @@ use crate::error::Result;
 use crate::etree::{self, ParseOps};
 use crate::{crypto, provenance, scm};
 
-use super::{
-    AttestSubcmd, CommonArgs, ManifestSubcmd, ScmCommand, ScmSubcmd, VerifyChainSubcmd,
-    verify_chain_files,
-};
+use super::verify_chain;
+use super::{AttestSubcmd, CommonArgs, ManifestSubcmd, ScmCommand, ScmSubcmd, VerifyChainSubcmd};
 
 /// `manifest` entry point: walk a directory tree and emit an EPT
 /// manifest referencing each file via STORED directives. Defaults
@@ -143,7 +141,7 @@ pub fn run_scm(a: ScmSubcmd) -> Result<()> {
             // customers get identical semantics to `enprot verify-
             // chain --trust-root X FILE`. CommonArgs is constructed
             // with the filter-context defaults via the helper.
-            verify_chain_files(
+            verify_chain::run(
                 CommonArgs::for_filter(Some(casdir.clone())),
                 VerifyChainSubcmd {
                     trust_roots: vec![trust_root],

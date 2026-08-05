@@ -11,10 +11,8 @@ use crate::ledger;
 use crate::output;
 
 use super::list::list_tree;
-use super::{
-    CommonArgs, InspectSubcmd, apply_common, capability_to_dto, collect_chain_anchors,
-    resolve_policy,
-};
+use super::verify_chain::collect_chain_anchors;
+use super::{CommonArgs, InspectSubcmd, apply_common, capability_to_dto, resolve_policy};
 
 /// `inspect` entry point (TODO.finalize/42): combined diagnostic.
 /// Parses the file, lists structure, checks chain anchors, and
