@@ -47,6 +47,7 @@ mod cap;
 /// Per-subcommand modules. Each one exposes a `pub fn run(args)` entry
 /// point that `app_main`'s match dispatches to.
 mod init;
+mod inspect;
 mod merge_cmd;
 
 fn make_policy(name: &str) -> Box<dyn crypto::CryptoPolicy> {
@@ -888,7 +889,7 @@ where
         Command::MergeDriver(a) => merge_cmd::run_merge_driver(a),
         Command::Resolve(a) => merge_cmd::run_resolve(a),
         Command::Conflicts(a) => merge_cmd::run_conflicts(a),
-        Command::Inspect(a) => run_inspect(a, cli.common),
+        Command::Inspect(a) => inspect::run(a, cli.common),
         Command::Cap(args) => cap::run(args, &cli.common),
         Command::Clean(a) => run_smudge_clean(SmudgeMode::Clean, a, cli.common),
         Command::Smudge(a) => run_smudge_clean(SmudgeMode::Smudge, a, cli.common),
@@ -1038,159 +1039,6 @@ fn apply_config(mut common: CommonArgs) -> Result<CommonArgs> {
 /// `enprot init` implementation: write the commented template either
 /// to `.enprot.toml` in cwd or, with `--global`, to
 /// `~/.config/enprot/config.toml`. Refuses to overwrite unless `--force`.
-/// `inspect` entry point (TODO.finalize/42): combined diagnostic.
-/// Parses the file, lists structure, checks chain anchors, and
-/// shows what the current flag set can do with the file. One
-/// pass, one output, no file modification.
-fn run_inspect(a: InspectSubcmd, common: CommonArgs) -> Result<()> {
-    let policy = resolve_policy(&common)?;
-    let mut paops = ParseOps::new(policy)?;
-    apply_common(&common, &mut paops);
-
-    let reader: Box<dyn BufRead> = match &a.file {
-        Some(p) if p != &PathBuf::from("-") => {
-            let path_str = p.display().to_string();
-            paops.runtime.fname = path_str.clone();
-            Box::new(BufReader::new(File::open(p).map_err(|e| {
-                Error::msg(format!("inspect: failed to open {}: {}", path_str, e))
-            })?))
-        }
-        _ => {
-            paops.runtime.fname = "<stdin>".into();
-            Box::new(BufReader::new(std::io::stdin()))
-        }
-    };
-
-    let tree = etree::parse(reader, &mut paops)?;
-
-    // Build the chain-anchor view (needed by both text and JSON paths).
-    let mut dag = ledger::AnchorDag::new();
-    collect_chain_anchors(&tree, &mut dag)?;
-    let conflict_count = tree
-        .iter()
-        .filter(|n| matches!(n, etree::TextNode::Conflict { .. }))
-        .count();
-    let caps = capability::CapabilitySet::from_paops(&paops);
-
-    match common.format {
-        output::OutputFormat::Text => {
-            // Section 1: structure (same as `list`)
-            println!("== structure ==");
-            let stdout = std::io::stdout();
-            list_tree(&tree, 0, &mut stdout.lock())?;
-
-            // Section 2: chain anchors
-            println!("\n== chain anchors ==");
-            if dag.is_empty() {
-                println!("  (none)");
-            } else {
-                println!("  {} anchor(s)", dag.len());
-                for (id, signed) in dag.iter() {
-                    println!("    {} signer={}", id.to_hex(), signed.anchor.signer);
-                }
-            }
-
-            // Section 3: conflicts
-            println!("\n== conflicts ==");
-            if conflict_count == 0 {
-                println!("  (none)");
-            } else {
-                println!("  {} unresolved conflict(s)", conflict_count);
-            }
-
-            // Section 4: capabilities
-            println!("\n== capabilities ==");
-            for c in caps.iter_sorted() {
-                println!("  {}", c);
-            }
-        }
-        output::OutputFormat::Json => {
-            // Build block summaries from the parsed tree.
-            let blocks: Vec<output::InspectBlock> = tree
-                .iter()
-                .map(|n| match n {
-                    etree::TextNode::Plain(_) => output::InspectBlock::Plain,
-                    etree::TextNode::Data(_) => output::InspectBlock::Data,
-                    etree::TextNode::Stored { keyw, cas } => output::InspectBlock::Stored {
-                        word: keyw.clone(),
-                        hash: cas.clone(),
-                    },
-                    etree::TextNode::Encrypted {
-                        keyw, extfields, ..
-                    } => output::InspectBlock::Encrypted {
-                        word: keyw.clone(),
-                        cipher: extfields.get("cipher").cloned(),
-                        pbkdf: extfields.get("pbkdf").cloned(),
-                    },
-                    etree::TextNode::BeginEnd { keyw, .. } => {
-                        output::InspectBlock::Begin { word: keyw.clone() }
-                    }
-                    etree::TextNode::Chain { extfields } => {
-                        let index = extfields
-                            .get("index")
-                            .and_then(|s| s.parse::<u64>().ok())
-                            .unwrap_or(0);
-                        output::InspectBlock::Chain {
-                            index,
-                            signer: extfields.get("signer").cloned().unwrap_or_default(),
-                        }
-                    }
-                    etree::TextNode::Immutable { name, .. } => {
-                        output::InspectBlock::Immutable { word: name.clone() }
-                    }
-                    etree::TextNode::Muted { name, .. } => {
-                        output::InspectBlock::Mutable { word: name.clone() }
-                    }
-                    etree::TextNode::Conflict { keyw, .. } => {
-                        output::InspectBlock::Conflict { word: keyw.clone() }
-                    }
-                    // Other variants (Muted, BeginEnd's END side, Include) are
-                    // surfaced via the variants above; no separate DTO yet.
-                    _ => output::InspectBlock::Plain,
-                })
-                .collect();
-
-            let chain_anchors: Vec<output::InspectChainAnchor> = dag
-                .iter()
-                .map(|(id, signed)| output::InspectChainAnchor {
-                    id: id.to_hex(),
-                    signer: signed.anchor.signer.to_string(),
-                })
-                .collect();
-
-            let capabilities: Vec<output::CapabilityDto> = caps
-                .iter_sorted()
-                .into_iter()
-                .map(capability_to_dto)
-                .collect();
-
-            let payload = output::InspectOutput {
-                file: paops.runtime.fname.clone(),
-                blocks,
-                chain_anchors,
-                conflict_count,
-                capabilities,
-            };
-            println!("{}", output::to_json(&payload)?);
-        }
-    }
-
-    if conflict_count > 0 {
-        std::process::exit(1);
-    }
-    Ok(())
-}
-
-/// Direction of the smudge/clean filter. Clean encrypts (plaintext
-/// in, ciphertext out); Smudge decrypts (ciphertext in, plaintext
-/// out). Textconv is the same as Smudge — git just calls it from a
-/// different context (diff rendering vs. checkout).
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum SmudgeMode {
-    Clean,
-    Smudge,
-}
-
 /// `manifest` entry point: build a provenance manifest for a project
 /// tree. Walks the directory, stores each file in CAS, emits an EPT
 /// file with INCLUDE per source. Output goes to `--output` or stdout.
@@ -1327,6 +1175,16 @@ fn run_scm(a: ScmSubcmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// Direction of the smudge/clean filter. Clean encrypts (plaintext
+/// in, ciphertext out); Smudge decrypts (ciphertext in, plaintext
+/// out). Textconv is the same as Smudge — git just calls it from a
+/// different context (diff rendering vs. checkout).
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum SmudgeMode {
+    Clean,
+    Smudge,
 }
 
 /// `clean` / `smudge` / `textconv` entry point. Pipes stdin through
