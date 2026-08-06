@@ -82,6 +82,7 @@ impl AnchorDag {
     /// - No duplicate IDs (re-inserting the same anchor is OK; returns `Ok(())`)
     /// - All parents already in the DAG
     /// - No cycle introduced
+    #[tracing::instrument(skip(self, signed), fields(parents = signed.anchor.parents.len()))]
     pub fn push(&mut self, signed: SignedAnchor) -> std::result::Result<(), DagError> {
         let id = signed.id().map_err(DagError::Internal)?;
         if self.by_id.contains_key(&id) {
@@ -159,6 +160,7 @@ impl AnchorDag {
     /// pubkey resolver. The resolver maps signer fingerprint hex →
     /// PEM pubkey. Anchors whose signer isn't in the resolver are
     /// reported as failed.
+    #[tracing::instrument(skip(self, pubkey_resolver), fields(anchors = self.by_id.len()))]
     pub fn verify_signatures<F>(&self, pubkey_resolver: F) -> DagReport
     where
         F: Fn(&str) -> Option<String>,
