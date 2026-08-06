@@ -186,12 +186,18 @@ echo "RNP_LIB_DIR=$Env:RNP_LIB_DIR"         | Out-File -Append -Encoding ascii $
 # Note: RUSTFLAGS takes precedence over .cargo/config.toml [build]
 # rustflags, so we carry the remap-path-prefix forward here too.
 #
-# /DEBUG:FASTLINK avoids the LNK1201 PDB-write race that flaked every
-# Windows CI run on the repo (parallel link.exe + Windows Defender
-# real-time scanning both lock the single shared PDB that the default
-# /DEBUG:FULL produces). FASTLINK keeps debug info in the .obj files
-# and emits only a tiny binary PDB, eliminating the contention.
-$Env:RUSTFLAGS = "--remap-path-prefix=/usr/local/cargo=/cargo -L native=$Env:PREFIX/lib -C link-arg=/DEBUG:FASTLINK"
+# `-C split-debuginfo=unpacked` is the canonical fix for the
+# `LINK : fatal error LNK1201: error writing to program database
+# enprot.pdb` race that flaked every Windows CI run on the repo.
+# Cause: rustc passes bare `/DEBUG` (defaults to FULL) to link.exe,
+# which writes a single shared PDB. Windows Defender real-time
+# scanning locks the file mid-write, and parallel link.exe invocations
+# also contend. `-C split-debuginfo=unpacked` makes rustc emit only
+# `/DEBUG:FASTLINK` (no bare `/DEBUG`), which keeps debug info inside
+# the .obj files and only emits a tiny binary PDB, eliminating both
+# sources of contention. (Adding `-C link-arg=/DEBUG:FASTLINK` alone
+# didn't work because link.exe sees bare /DEBUG first and uses FULL.)
+$Env:RUSTFLAGS = "--remap-path-prefix=/usr/local/cargo=/cargo -L native=$Env:PREFIX/lib -C split-debuginfo=unpacked"
 echo "RUSTFLAGS=$Env:RUSTFLAGS" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
 # PREFIX is available to cargo build.
