@@ -49,6 +49,16 @@ jobs:
             cmake ninja-build zlib1g-dev \
             curl jq unzip python3 git g++ make
 
+      # dockerharmony image is aarch64-only; on the amd64 GitHub runner
+      # we need binfmt + qemu-user-static to emulate aarch64 at the
+      # verify step. Without this, `docker run` fails with
+      #   no matching manifest for linux/amd64 in the manifest list entries
+      # because docker tries to pull the amd64 manifest which doesn't exist.
+      - name: Set up QEMU (for dockerharmony aarch64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Install Rust target
         run: |
           rustup target add ${{ env.RUST_TARGET }}
@@ -170,7 +180,11 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           image: ghcr.io/hqzing/dockerharmony:latest
-          options: -v ${{ github.workspace }}/ohos-verify:/work -w /work
+          # --platform linux/arm64 forces docker to pull the arm64
+          # manifest (the image has no amd64 variant). The QEMU
+          # binfmt registration from the earlier setup-qemu-action
+          # step handles the actual emulation.
+          options: --platform linux/arm64 -v ${{ github.workspace }}/ohos-verify:/work -w /work
           run: |
             echo "--- enprot --version ---"
             chmod +x ./enprot && ./enprot --version || true
