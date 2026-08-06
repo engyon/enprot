@@ -179,7 +179,20 @@ cmake -S sexpp-src -B sexpp-src/build \
 # during the build phase, which fails (ELF binary run as shell script).
 # --target sexpp skips the test binary entirely.
 cmake --build sexpp-src/build --target sexpp --parallel "$(nproc)"
-cmake --install sexpp-src/build
+# Manual install: cmake --install fails because it tries to install
+# bin/sexpp which we didn't build (--target sexpp = library only).
+# Hand-copy what rnp's find_package(sexpp) needs:
+#   - lib/libsexpp.a
+#   - include/sexpp/*.h
+#   - lib/cmake/sexpp/sexpp-config.cmake (+ targets files)
+install -m 755 -d "$INSTALL_PREFIX/lib/cmake/sexpp"
+find sexpp-src/build -name 'libsexpp.a' -exec cp -f {} "$INSTALL_PREFIX/lib/" \;
+cp -rf sexpp-src/include/sexpp "$INSTALL_PREFIX/include/"
+cp -f sexpp-src/build/cmake/sexpp-config.cmake "$INSTALL_PREFIX/lib/cmake/sexpp/" 2>/dev/null || true
+cp -f sexpp-src/build/cmake/sexpp-targets*.cmake "$INSTALL_PREFIX/lib/cmake/sexpp/" 2>/dev/null || true
+# Rewrite the targets-release.cmake to remove the bin/sexpp reference
+# that would fail at find_package(sexpp) time on cross-compile.
+sed -i '/bin\/sexpp/d' "$INSTALL_PREFIX/lib/cmake/sexpp/sexpp-targets-release.cmake" 2>/dev/null || true
 
 # -------------------------------------------------------------------
 # 5. rnp itself
