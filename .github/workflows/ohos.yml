@@ -83,6 +83,22 @@ jobs:
             --botan-version ${{ env.BOTAN_VERSION }} \
             --ndk-triple ${{ env.NDK_TRIPLE }}
 
+      - name: Cache librnp build
+        id: cache-rnp
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.NDK_PREFIX }}/rnp-build
+          key: ohos-rnp-0.18.1-${{ env.NDK_TRIPLE }}-${{ hashFiles('ci/build-rnp-ohos.sh') }}
+
+      - name: Cross-compile librnp + deps (static)
+        if: steps.cache-rnp.outputs.cache-hit != 'true'
+        run: |
+          bash ci/build-rnp-ohos.sh \
+            --prefix ${{ env.NDK_PREFIX }} \
+            --rnp-version 0.18.1 \
+            --ndk-triple ${{ env.NDK_TRIPLE }}
+
       - name: Build enprot
         run: |
           # Resolve everything to absolute paths — pkg-config requires
@@ -101,6 +117,12 @@ jobs:
           # botan-sys reads BOTAN_STATIC=1 to force static linking against
           # the .a we cross-compiled; otherwise it tries to link libbotan-3.so.
           export BOTAN_STATIC=1
+          # Surface the cross-compiled librnp to rnp-rs's build script
+          # via Explicit link mode (build.rs reads RNP_INCLUDE_DIR +
+          # RNP_LIB_DIR env vars). Without this, rnp-rs panics with
+          # "Could not find <rnp/rnp.h> under /usr/include".
+          export RNP_INCLUDE_DIR="$PREFIX/ohos-aarch64/include"
+          export RNP_LIB_DIR="$PREFIX/ohos-aarch64/lib"
           # Cargo env var name is uppercased RUST_TARGET with _ for -.
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$NDK_CLANGXX"
           # Link args:
