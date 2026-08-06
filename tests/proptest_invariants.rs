@@ -323,6 +323,10 @@ fn cas_hash(body: &str, casdir: &std::path::Path) -> String {
 /// Tiny tempdir helper — we don't depend on the `tempfile` crate from
 /// this test binary's deps directly (it's already in enprot's
 /// dev-deps; re-using it here would require adding it).
+///
+/// Uses an atomic counter + thread ID + nanos for uniqueness so
+/// parallel proptest cases never collide on the same path. Earlier
+/// iterations used nanos alone; under load that wasn't unique.
 struct TempDir(std::path::PathBuf);
 impl TempDir {
     fn path(&self) -> &std::path::Path {
@@ -336,13 +340,15 @@ impl Drop for TempDir {
 }
 
 fn tempdir() -> TempDir {
-    let path = std::env::temp_dir().join(format!(
-        "enprot-proptest-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let thread_id = format!("{:?}", std::thread::current().id());
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("enprot-proptest-{nanos}-{n}-{thread_id}"));
     std::fs::create_dir_all(&path).unwrap();
     TempDir(path)
 }

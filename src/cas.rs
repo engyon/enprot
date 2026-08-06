@@ -196,14 +196,21 @@ impl CasStore for MemoryCas {
 // methods directly on `paops.io.cas`.
 // ---------------------------------------------------------------------
 
+#[tracing::instrument(skip(paops), fields(hash = %hexhash))]
 pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
     let policy: &dyn crypto::CryptoPolicy = &*paops.crypto.policy;
     paops.io.cas.load(hexhash, policy)
 }
 
+#[tracing::instrument(skip(blob, paops), fields(bytes = blob.len()))]
 pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String> {
     let policy: &dyn crypto::CryptoPolicy = &*paops.crypto.policy;
-    paops.io.cas.save(&blob, policy)
+    let hash = paops.io.cas.save(&blob, policy);
+    tracing::Span::current().record(
+        "hash",
+        tracing::field::display(hash.as_ref().map(|h| h.as_str()).unwrap_or("?")),
+    );
+    hash
 }
 
 #[cfg(test)]

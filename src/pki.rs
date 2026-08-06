@@ -171,6 +171,7 @@ fn split_pem_bundle(pem: &str) -> Vec<String> {
 /// Sign `msg` with `privkey_pem`. For composite algorithms, signs
 /// with each leg and concatenates the signatures with 4-byte
 /// big-endian length prefixes.
+#[tracing::instrument(skip(privkey_pem, msg), fields(alg = ?kind, bytes = msg.len()))]
 pub fn sign(
     kind: SigAlgKind,
     privkey_pem: &str,
@@ -206,6 +207,7 @@ pub fn sign(
 /// Verify `sig` over `msg` against `pubkey_pem`. Returns `Ok(true)` on
 /// a valid signature, `Ok(false)` on verification failure.
 /// For composite algorithms, ALL legs must verify.
+#[tracing::instrument(skip(pubkey_pem, msg, sig), fields(alg = ?kind, bytes = msg.len()))]
 pub fn verify(kind: SigAlgKind, pubkey_pem: &str, msg: &[u8], sig: &[u8]) -> Result<bool> {
     match kind {
         SigAlgKind::CompositeEd25519MlDsa => {
