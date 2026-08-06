@@ -81,6 +81,18 @@ jobs:
         run: cargo test --verbose --features vendored-rnp -- --nocapture
       # Windows: install.ps1 builds the full C dep stack from source.
       # vendored-rnp isn't ready on Windows yet (rnp-src 0.1.3 pending).
+      - name: Disable Defender realtime (windows)
+        # LNK1201 PDB write race: Windows Defender real-time scanning
+        # locks enprot.pdb mid-write during parallel cargo builds.
+        # Disable real-time monitoring for the duration of the job.
+        # This requires admin (the runner user has it). Refs:
+        #   https://learn.microsoft.com/en-us/powershell/module/defender/set-mppreference
+        if: "startsWith(matrix.os, 'windows')"
+        shell: pwsh
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+          Set-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE -ErrorAction SilentlyContinue
+          Get-MpPreference | Select-Object DisableRealtimeMonitoring
       - name: Install dependencies (windows)
         if: "startsWith(matrix.os, 'windows')"
         env:

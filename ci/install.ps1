@@ -185,19 +185,7 @@ echo "RNP_LIB_DIR=$Env:RNP_LIB_DIR"         | Out-File -Append -Encoding ascii $
 # including dep compilation.
 # Note: RUSTFLAGS takes precedence over .cargo/config.toml [build]
 # rustflags, so we carry the remap-path-prefix forward here too.
-#
-# `-C debuginfo=1` (line tables only) instead of the default `2` (full
-# debug info) is the canonical fix for `LINK : fatal error LNK1201:
-# error writing to program database enprot.pdb` on Windows CI.
-# Cause: rustc passes bare `/DEBUG` to link.exe, which writes a single
-# shared PDB. Windows Defender real-time scanning locks the file
-# mid-write during the large PDB output that debuginfo=2 produces.
-# `-C debuginfo=1` keeps PDB output small enough that Defender's scan
-# window doesn't overlap with link.exe's write window. `-C debuginfo=0`
-# would eliminate the PDB entirely but loses stack traces on test
-# failures; `-C split-debuginfo=unpacked` would be ideal but is
-# unstable on MSVC.
-$Env:RUSTFLAGS = "--remap-path-prefix=/usr/local/cargo=/cargo -L native=$Env:PREFIX/lib -C debuginfo=1"
+$Env:RUSTFLAGS = "--remap-path-prefix=/usr/local/cargo=/cargo -L native=$Env:PREFIX/lib"
 echo "RUSTFLAGS=$Env:RUSTFLAGS" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
 # PREFIX is available to cargo build.
