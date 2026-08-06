@@ -115,11 +115,7 @@ jobs:
           cat "$PKG_CONFIG_PATH/botan-3.pc" || true
           echo "=== libbotan-3.a location ==="
           ls -la "$PREFIX/ohos-aarch64/lib/" | grep -E 'botan|\.a' || true
-          # --features vendored-rnp builds librnp + json-c + sexpp from
-          # source via rnp-src; otherwise rnp-rs's build script panics
-          # with "Could not find <rnp/rnp.h> under /usr/include" because
-          # OHOS has no system librnp.
-          cargo build --target ${{ env.RUST_TARGET }} --release --features vendored-rnp
+          cargo build --target ${{ env.RUST_TARGET }} --release
 
       - name: Build smoke test
         run: |
