@@ -123,6 +123,15 @@ jobs:
           # "Could not find <rnp/rnp.h> under /usr/include".
           export RNP_INCLUDE_DIR="$PREFIX/ohos-aarch64/include"
           export RNP_LIB_DIR="$PREFIX/ohos-aarch64/lib"
+          # bindgen (used by rnp-rs build.rs to generate FFI bindings)
+          # shells out to the system clang. Without these flags, clang
+          # picks up /usr/include/stdint.h which on Ubuntu's multiarch
+          # layout includes <bits/libc-header-start.h> from a different
+          # arch — bindgen fails with
+          #   fatal error: 'bits/libc-header-start.h' file not found
+          # Forcing clang into --target=aarch64-linux-ohos + OHOS
+          # sysroot makes it pick the right headers.
+          export BINDGEN_EXTRA_CLANG_ARGS="--target=${{ env.NDK_TRIPLE }} --sysroot=$SYSROOT -I$PREFIX/ohos-aarch64/include"
           # Cargo env var name is uppercased RUST_TARGET with _ for -.
           export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$NDK_CLANGXX"
           # Link args:
