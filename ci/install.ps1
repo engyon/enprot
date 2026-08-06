@@ -185,7 +185,13 @@ echo "RNP_LIB_DIR=$Env:RNP_LIB_DIR"         | Out-File -Append -Encoding ascii $
 # including dep compilation.
 # Note: RUSTFLAGS takes precedence over .cargo/config.toml [build]
 # rustflags, so we carry the remap-path-prefix forward here too.
-$Env:RUSTFLAGS = "--remap-path-prefix=/usr/local/cargo=/cargo -L native=$Env:PREFIX/lib"
+#
+# /DEBUG:FASTLINK avoids the LNK1201 PDB-write race that flaked every
+# Windows CI run on the repo (parallel link.exe + Windows Defender
+# real-time scanning both lock the single shared PDB that the default
+# /DEBUG:FULL produces). FASTLINK keeps debug info in the .obj files
+# and emits only a tiny binary PDB, eliminating the contention.
+$Env:RUSTFLAGS = "--remap-path-prefix=/usr/local/cargo=/cargo -L native=$Env:PREFIX/lib -C link-arg=/DEBUG:FASTLINK"
 echo "RUSTFLAGS=$Env:RUSTFLAGS" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
 
 # PREFIX is available to cargo build.
