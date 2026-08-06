@@ -341,7 +341,9 @@ impl SignedAnchor {
         if ok {
             Ok(())
         } else {
-            Err(Error::msg("signature verification failed"))
+            Err(Error::SignatureVerify {
+                key_id: self.anchor.signer.to_string(),
+            })
         }
     }
 
@@ -466,9 +468,10 @@ impl SignedAnchor {
     /// single-signer fields, the rest populate `co_signers` and
     /// `co_signatures`. Optional: `ts`, `mut`, `parents`.
     pub fn from_extfields(extfields: &std::collections::BTreeMap<String, String>) -> Result<Self> {
-        let payload_str = extfields
-            .get("payload")
-            .ok_or_else(|| Error::msg("CHAIN missing required 'payload' field"))?;
+        let payload_str = extfields.get("payload").ok_or_else(|| Error::Extfield {
+            field: "payload",
+            reason: "CHAIN missing required 'payload' field".to_string(),
+        })?;
         let payload_hash = PayloadHash::from_hex(payload_str)?;
 
         let parents: Vec<AnchorHash> = extfields
@@ -491,9 +494,10 @@ impl SignedAnchor {
         // older producers and consumers stay consistent.
         let (signer, co_signers, signature, co_signatures) =
             if let Some(signers_str) = extfields.get("signers") {
-                let sigs_str = extfields
-                    .get("sigs")
-                    .ok_or_else(|| Error::msg("multi-sig CHAIN missing 'sigs' field"))?;
+                let sigs_str = extfields.get("sigs").ok_or_else(|| Error::Extfield {
+                    field: "sigs",
+                    reason: "multi-sig CHAIN missing 'sigs' field".to_string(),
+                })?;
                 let signer_ids: Vec<SignerId> = signers_str
                     .split(',')
                     .map(|s| s.parse::<SignerId>())
@@ -518,13 +522,15 @@ impl SignedAnchor {
                 let co_signatures = sigs[1..].to_vec();
                 (primary_signer, co_signers, primary_sig, co_signatures)
             } else {
-                let signer_str = extfields
-                    .get("signer")
-                    .ok_or_else(|| Error::msg("CHAIN missing required 'signer' field"))?;
+                let signer_str = extfields.get("signer").ok_or_else(|| Error::Extfield {
+                    field: "signer",
+                    reason: "CHAIN missing required 'signer' field".to_string(),
+                })?;
                 let signer: SignerId = signer_str.parse()?;
-                let sig_str = extfields
-                    .get("sig")
-                    .ok_or_else(|| Error::msg("CHAIN missing required 'sig' field"))?;
+                let sig_str = extfields.get("sig").ok_or_else(|| Error::Extfield {
+                    field: "sig",
+                    reason: "CHAIN missing required 'sig' field".to_string(),
+                })?;
                 let signature = hex::decode(sig_str)?;
                 (signer, Vec::new(), signature, Vec::new())
             };
