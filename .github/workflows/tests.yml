@@ -81,21 +81,6 @@ jobs:
         run: cargo test --verbose --features vendored-rnp -- --nocapture
       # Windows: install.ps1 builds the full C dep stack from source.
       # vendored-rnp isn't ready on Windows yet (rnp-src 0.1.3 pending).
-      - name: Exclude workspace from Defender (windows)
-        # LNK1201 PDB write race: Windows Defender real-time scanning
-        # locks enprot.pdb mid-write during parallel cargo builds.
-        # Add the workspace as an exclusion so Defender doesn't scan
-        # build artifacts. (Disabling Defender entirely caused
-        # install.ps1 to hang in earlier experiments.)
-        if: "startsWith(matrix.os, 'windows')"
-        shell: pwsh
-        run: |
-          try {
-            Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE -ErrorAction Stop
-            Write-Host "Defender exclusion added for $env:GITHUB_WORKSPACE"
-          } catch {
-            Write-Host "Add-MpPreference failed: $_"
-          }
       - name: Install dependencies (windows)
         if: "startsWith(matrix.os, 'windows')"
         env:
@@ -108,7 +93,15 @@ jobs:
           ./ci/install.ps1
       - name: Build (windows)
         if: "startsWith(matrix.os, 'windows')"
-        run: cargo build --verbose
+        # Build the main crate and the FFI crate sequentially.
+        # Both produce target/debug/deps/enprot.pdb (the main crate's
+        # enprot.exe and enprot-ffi's enprot.dll share the same output
+        # basename), and parallel link.exe invocations race on the
+        # shared PDB file (LNK1201). Sequential linking eliminates the
+        # race without changing crate names or disabling Defender.
+        run: |
+          cargo build --verbose --package enprot
+          cargo build --verbose --package enprot-ffi
       - name: Run tests (windows)
         if: "startsWith(matrix.os, 'windows')"
         run: cargo test --verbose -- --nocapture
