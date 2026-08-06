@@ -171,8 +171,14 @@ cmake -S sexpp-src -B sexpp-src/build \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=OFF \
   -DBUILD_TESTING=OFF \
+  -DSEXPP_BUILD_TESTS=OFF \
+  -DSEXPP_TESTS=OFF \
   -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX"
-cmake --build sexpp-src/build --parallel "$(nproc)"
+# Build only the sexpp library target — not the tests. CMake's
+# gtest_discover_tests tries to execute cross-compiled binaries
+# during the build phase, which fails (ELF binary run as shell script).
+# --target sexpp skips the test binary entirely.
+cmake --build sexpp-src/build --target sexpp --parallel "$(nproc)"
 cmake --install sexpp-src/build
 
 # -------------------------------------------------------------------
