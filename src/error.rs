@@ -94,6 +94,37 @@ pub enum Error {
     /// appears in more than one place.
     #[error("{0}")]
     Msg(String),
+
+    /// Invalid argument value supplied by the caller. `arg` is the
+    /// flag/parameter name; `reason` is the human-readable validation
+    /// failure. Distinguished from `Policy` (algorithm-gating) and
+    /// `Msg` (generic) so the FFI can return `ENPROT_ERR_INVALID`.
+    #[error("invalid argument {arg}: {reason}")]
+    InvalidArg { arg: &'static str, reason: String },
+
+    /// Wire-format extfield (`pbkdf:`, `cipher:`, `signer:`, etc.)
+    /// failed to parse or validate. `field` is the extfield name
+    /// (without the trailing `=`); `reason` is the parse failure.
+    #[error("extfield {field} malformed: {reason}")]
+    Extfield { field: &'static str, reason: String },
+
+    /// Signature verification failed. `key_id` is the fingerprint or
+    /// label that was being verified against. Carries no `source`
+    /// because signature verify is a boolean result, not a nested
+    /// error.
+    #[error("signature verification failed for {key_id}")]
+    SignatureVerify { key_id: String },
+
+    /// EPT block shape error — the wrong kind of children inside a
+    /// BeginEnd or Encrypted block. `word` is the affected WORD;
+    /// `reason` describes what was expected vs found.
+    #[error("block {word} shape error: {reason}")]
+    BlockShape { word: String, reason: String },
+
+    /// CONFLICT-block resolution failure. `word` is the WORD under
+    /// conflict; `reason` is why resolution didn't succeed.
+    #[error("conflict resolution failed for {word}: {reason}")]
+    ConflictResolve { word: String, reason: String },
 }
 
 impl Error {
@@ -148,3 +179,66 @@ impl From<crate::ledger::DagError> for Error {
 
 /// Convenience alias used everywhere in the crate.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Display output is a stable contract for users who grep on
+    /// error messages. These snapshots lock the format.
+    #[test]
+    fn display_invalid_arg() {
+        let e = Error::InvalidArg {
+            arg: "--word",
+            reason: "missing".to_string(),
+        };
+        assert_eq!(e.to_string(), "invalid argument --word: missing");
+    }
+
+    #[test]
+    fn display_extfield() {
+        let e = Error::Extfield {
+            field: "payload",
+            reason: "CHAIN missing required 'payload' field".to_string(),
+        };
+        assert_eq!(
+            e.to_string(),
+            "extfield payload malformed: CHAIN missing required 'payload' field"
+        );
+    }
+
+    #[test]
+    fn display_signature_verify() {
+        let e = Error::SignatureVerify {
+            key_id: "ed25519:abcd".to_string(),
+        };
+        assert_eq!(
+            e.to_string(),
+            "signature verification failed for ed25519:abcd"
+        );
+    }
+
+    #[test]
+    fn display_block_shape() {
+        let e = Error::BlockShape {
+            word: "SECRET".to_string(),
+            reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
+        };
+        assert_eq!(
+            e.to_string(),
+            "block SECRET shape error: ENCRYPTED block has no DATA or STORED child"
+        );
+    }
+
+    #[test]
+    fn display_conflict_resolve() {
+        let e = Error::ConflictResolve {
+            word: "AGENT".to_string(),
+            reason: "no resolution strategy picked".to_string(),
+        };
+        assert_eq!(
+            e.to_string(),
+            "conflict resolution failed for AGENT: no resolution strategy picked"
+        );
+    }
+}

@@ -165,7 +165,12 @@ fn transform_encrypted(
         let ct = match &txt[0] {
             TextNode::Data(data) => data.clone(),
             TextNode::Stored { cas: hexhash, .. } => cas::load(hexhash, paops)?,
-            _ => return Err(Error::Msg("No data in ENCRYPTED.".into())),
+            _ => {
+                return Err(Error::BlockShape {
+                    word: keyw.to_string(),
+                    reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
+                });
+            }
         };
 
         let pt = if extfields.contains_key("recipients") {
@@ -217,7 +222,12 @@ fn transform_encrypted(
         let hexhash = match &txt[0] {
             TextNode::Data(data) => cas::save(data.clone(), paops)?,
             TextNode::Stored { cas: hexhash, .. } => hexhash.clone(),
-            _ => return Err(Error::Msg("No data in ENCRYPTED.".into())),
+            _ => {
+                return Err(Error::BlockShape {
+                    word: keyw.to_string(),
+                    reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
+                });
+            }
         };
         return Ok(TextNode::Encrypted {
             keyw: keyw.to_string(),
@@ -233,7 +243,12 @@ fn transform_encrypted(
         let ct = match &txt[0] {
             TextNode::Data(data) => data.clone(),
             TextNode::Stored { cas: hexhash, .. } => cas::load(hexhash, paops)?,
-            _ => return Err(Error::Msg("No data in ENCRYPTED.".into())),
+            _ => {
+                return Err(Error::BlockShape {
+                    word: keyw.to_string(),
+                    reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
+                });
+            }
         };
         return Ok(TextNode::Encrypted {
             keyw: keyw.to_string(),
