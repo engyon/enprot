@@ -119,7 +119,7 @@ Extfields with the `x-` prefix are user/extensions-specific and
 ```
 
 Unknown extfields **without** `x-` prefix cause parse failure. This
-catches typos (`chiper=` instead of `cipher=`) and prevents silent
+catches typos (e.g., a misspelled `cipher=` field) and prevents silent
 data loss when an unknown extension is misinterpreted.
 
 To add a new extfield to the spec:
