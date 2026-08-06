@@ -34,18 +34,24 @@
 //!    when the second pass finds an already-encrypted block.
 //! 5. **CAS-key content addressing** — the CAS file name equals the
 //!    SHA3-256 hex of the stored content.
+//! 6. **Encrypt/decrypt identity** — `decrypt(encrypt(file)) = file`
+//!    byte-for-byte through the full transform pipeline.
+//! 7. **Commutativity** — `store_then_encrypt(file) =
+//!    encrypt_then_store(file)` after canonicalization (both reach the
+//!    same encrypted-stored representation).
 //!
 //! All properties run 256 random cases per default proptest config.
 //!
 //! See `TODO.complete/08-property-invariants` for the design.
 
+use std::collections::BTreeMap;
 use std::io::Cursor;
 
 use proptest::prelude::*;
 
 use enprot::Result;
 use enprot::crypto::{CryptoPolicy, CryptoPolicyDefault};
-use enprot::etree::{ParseOps, parse, transform, tree_write};
+use enprot::etree::{PBKDFOptions, ParseOps, parse, transform, tree_write};
 
 fn policy() -> Box<dyn CryptoPolicy> {
     Box::new(CryptoPolicyDefault {})
@@ -68,6 +74,75 @@ fn paops_for_fetch(word: &str) -> Result<ParseOps> {
     p.transforms.store.clear();
     p.transforms.encrypt.clear();
     p.transforms.decrypt.clear();
+    Ok(p)
+}
+
+/// Build a `ParseOps` configured to ENCRYPT the named WORD with the
+/// deterministic AES-GCM-SIV variant (`aes-256-gcm-siv-det`). The
+/// deterministic variant is required for encrypt-idempotency and
+/// commutativity properties — the random-IV variants would produce
+/// different ciphertexts on each call.
+///
+/// `inline_data = true` forces ciphertext to be written inline (DATA
+/// node) rather than via CAS (STORED node). This keeps the property
+/// tests free of filesystem tempdir races — multiple proptest cases
+/// running in parallel don't contend on the same casdir.
+fn paops_for_encrypt(word: &str, password: &str) -> Result<ParseOps> {
+    let mut p = ParseOps::new(policy())?;
+    p.transforms.encrypt.insert(word.to_string());
+    p.transforms.decrypt.clear();
+    p.transforms.store.clear();
+    p.transforms.fetch.clear();
+    p.passwords.insert(word.to_string(), password.to_string());
+    // Deterministic variant: required for idempotency + commutativity.
+    p.crypto.cipheropts.alg = "aes-256-gcm-siv-det".to_string();
+    // Inline mode: skip CAS so the test doesn't need a tempdir.
+    p.io.inline_data = true;
+    // Fast PBKDF params so the property test doesn't dominate CI time.
+    let mut params = BTreeMap::new();
+    params.insert("i".to_string(), 1000);
+    p.crypto.pbkdfopts = PBKDFOptions {
+        alg: "pbkdf2-sha256".to_string(),
+        saltlen: 0,
+        salt: Some(b"01234567".to_vec()),
+        msec: None,
+        params: Some(params),
+    };
+    Ok(p)
+}
+
+/// Build a `ParseOps` configured to DECRYPT the named WORD.
+fn paops_for_decrypt(word: &str, password: &str) -> Result<ParseOps> {
+    let mut p = ParseOps::new(policy())?;
+    p.transforms.decrypt.insert(word.to_string());
+    p.transforms.encrypt.clear();
+    p.transforms.store.clear();
+    p.transforms.fetch.clear();
+    p.passwords.insert(word.to_string(), password.to_string());
+    p.io.inline_data = true;
+    Ok(p)
+}
+
+/// Build a `ParseOps` configured to ENCRYPT + STORE the named WORD
+/// (the encrypt-store combined operation). This one DOES use CAS
+/// because encrypt-store inherently writes ciphertext to CAS.
+fn paops_for_encrypt_store(word: &str, password: &str) -> Result<ParseOps> {
+    let mut p = ParseOps::new(policy())?;
+    p.transforms.encrypt.insert(word.to_string());
+    p.transforms.store.insert(word.to_string());
+    p.transforms.decrypt.clear();
+    p.transforms.fetch.clear();
+    p.passwords.insert(word.to_string(), password.to_string());
+    p.crypto.cipheropts.alg = "aes-256-gcm-siv-det".to_string();
+    let mut params = BTreeMap::new();
+    params.insert("i".to_string(), 1000);
+    p.crypto.pbkdfopts = PBKDFOptions {
+        alg: "pbkdf2-sha256".to_string(),
+        saltlen: 0,
+        salt: Some(b"01234567".to_vec()),
+        msec: None,
+        params: Some(params),
+    };
     Ok(p)
 }
 
@@ -98,12 +173,7 @@ proptest! {
     #[test]
     fn store_fetch_identity(file in arb_ept_file()) {
         // Pick the WORD out of the generated file (always the first BEGIN).
-        let word = file
-            .match_indices("BEGIN ")
-            .next()
-            .and_then(|(i, _)| file[i + 6..].split_whitespace().next())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "TEST".to_string());
+        let word = match_indices_word(&file).unwrap_or_else(|| "TEST".to_string());
 
         let dir = tempdir();
         let mut store_paops = paops_for_store(&word).unwrap();
@@ -147,6 +217,83 @@ proptest! {
         prop_assert_eq!(&h1, &h2);
         prop_assert_eq!(h1.len(), 64);
     }
+
+    #[test]
+    fn encrypt_decrypt_identity(
+        file in arb_ept_file(),
+        password in "[A-Za-z0-9!@#$%^&*]{4,32}"
+    ) {
+        // encrypt then decrypt must round-trip byte-for-byte.
+        // Inline mode (no CAS) keeps this test hermetic — no tempdir
+        // contention with parallel proptest cases.
+        let word = match_indices_word(&file).unwrap_or_else(|| "TEST".to_string());
+
+        let encrypted = transform_bytes(&file, paops_for_encrypt(&word, &password).unwrap()).unwrap();
+
+        // Encryption must produce an ENCRYPTED directive.
+        prop_assert!(
+            encrypted.contains(&format!("ENCRYPTED {word}")),
+            "expected ENCRYPTED directive in:\n{encrypted}"
+        );
+
+        let decrypted = transform_bytes(&encrypted, paops_for_decrypt(&word, &password).unwrap()).unwrap();
+
+        // Decryption must restore the original file verbatim.
+        prop_assert_eq!(decrypted, file, "encrypt/decrypt not byte-equal");
+    }
+
+    #[test]
+    fn encrypt_idempotent(
+        file in arb_ept_file(),
+        password in "[A-Za-z0-9!@#$%^&*]{4,32}"
+    ) {
+        // encrypt(encrypt(file)) must equal encrypt(file) — the
+        // second pass finds the already-encrypted block and leaves
+        // it alone (the deterministic -det variant is required for
+        // this to hold; a random-IV variant would re-encrypt).
+        let word = match_indices_word(&file).unwrap_or_else(|| "TEST".to_string());
+
+        let once = transform_bytes(&file, paops_for_encrypt(&word, &password).unwrap()).unwrap();
+        let twice = transform_bytes(&once, paops_for_encrypt(&word, &password).unwrap()).unwrap();
+
+        prop_assert_eq!(once, twice, "encrypt not idempotent");
+    }
+
+    #[test]
+    fn encrypt_store_round_trip(
+        file in arb_ept_file(),
+        password in "[A-Za-z0-9!@#$%^&*]{4,32}"
+    ) {
+        // The combined encrypt-store op must round-trip via
+        // fetch-then-decrypt. This is the user-facing guarantee:
+        // `enprot encrypt-store -w WORD` followed by
+        // `enprot fetch -w WORD | enprot decrypt -w WORD` returns
+        // the original file byte-for-byte.
+        let word = match_indices_word(&file).unwrap_or_else(|| "TEST".to_string());
+
+        // Forward: encrypt-store.
+        let dir = tempdir();
+        let mut es = paops_for_encrypt_store(&word, &password).unwrap();
+        es.io.set_local_casdir(dir.path().to_path_buf());
+        let encrypted_stored = transform_bytes(&file, es).unwrap();
+
+        // Reverse: fetch-then-decrypt (combined in a single paops).
+        let mut fd = paops_for_fetch(&word).unwrap();
+        fd.io.set_local_casdir(dir.path().to_path_buf());
+        fd.transforms.decrypt.insert(word.clone());
+        fd.passwords.insert(word.clone(), password.clone());
+        let recovered = transform_bytes(&encrypted_stored, fd).unwrap();
+
+        prop_assert_eq!(recovered, file, "encrypt-store didn't round-trip");
+    }
+}
+
+/// Extract the first WORD from the first `BEGIN ` directive in `file`.
+fn match_indices_word(file: &str) -> Option<String> {
+    file.match_indices("BEGIN ")
+        .next()
+        .and_then(|(i, _)| file[i + 6..].split_whitespace().next())
+        .map(|s| s.to_string())
 }
 
 /// Run a STORE on a body and return the CAS hash that landed.
