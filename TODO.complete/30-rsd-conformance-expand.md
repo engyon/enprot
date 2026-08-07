@@ -121,7 +121,7 @@ instead of `expected.tree`.
 
 - [ ] All 25 fixtures pass locally.
 - [ ] Each fixture has a `meta.toml` with at least `name` + `description`.
-- [ ] At least one fixture per EPT directive (CHANGLOG: audit).
+- [ ] At least one fixture per EPT directive (CHANGELOG: audit).
 - [ ] At least one negative fixture (parse error).
 - [ ] CI runs the suite on every PR.
 
