@@ -34,9 +34,12 @@ pub fn run_resolve(a: ResolveSubcmd) -> Result<()> {
     let mode = resolve::ResolveMode::from_cli_flag(&a.mode)?;
     let overrides = resolve::WordOverride::from_cli_flags(&a.word)?;
     if matches!(mode, resolve::ResolveMode::Interactive) && !std::io::stdin().is_terminal() {
-        return Err(Error::msg(
-            "resolve --interactive requires a TTY (pass --mode ours/theirs/both/skip for non-interactive runs)",
-        ));
+        return Err(Error::InvalidArg {
+            arg: "--interactive",
+            reason:
+                "resolve --interactive requires a TTY (pass --mode ours/theirs/both/skip for non-interactive runs)"
+                    .to_string(),
+        });
     };
 
     let policy =

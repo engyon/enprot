@@ -64,10 +64,12 @@ impl ResolveMode {
             "both" => Ok(ResolveMode::Both),
             "skip" => Ok(ResolveMode::Skip),
             "interactive" | "i" => Ok(ResolveMode::Interactive),
-            other => Err(Error::msg(format!(
-                "unknown resolve mode '{}' (expected: ours, theirs, both, skip, interactive)",
-                other
-            ))),
+            other => Err(Error::InvalidArg {
+                arg: "--mode",
+                reason: format!(
+                    "unknown resolve mode '{other}' (expected: ours, theirs, both, skip, interactive)"
+                ),
+            }),
         }
     }
 }
@@ -92,17 +94,24 @@ impl WordOverride {
     pub fn from_cli_flags(flags: &[String]) -> Result<Self> {
         let mut overrides = std::collections::HashMap::new();
         for f in flags {
-            let (word, mode_str) = f
-                .split_once(':')
-                .ok_or_else(|| Error::msg(format!("--word value must be WORD:MODE, got '{f}'")))?;
+            let (word, mode_str) = f.split_once(':').ok_or_else(|| Error::InvalidArg {
+                arg: "--word",
+                reason: format!("--word value must be WORD:MODE, got '{f}'"),
+            })?;
             if word.is_empty() {
-                return Err(Error::msg(format!("--word value '{f}' has empty WORD")));
+                return Err(Error::InvalidArg {
+                    arg: "--word",
+                    reason: format!("--word value '{f}' has empty WORD"),
+                });
             }
             let mode = ResolveMode::from_cli_flag(mode_str)?;
             if matches!(mode, ResolveMode::Interactive) {
-                return Err(Error::msg(format!(
-                    "--word {word}:interactive not supported (interactive prompts only via --mode)"
-                )));
+                return Err(Error::InvalidArg {
+                    arg: "--word",
+                    reason: format!(
+                        "--word {word}:interactive not supported (interactive prompts only via --mode)"
+                    ),
+                });
             }
             overrides.insert(word.to_string(), mode);
         }
@@ -191,10 +200,10 @@ fn prompt_one(keyw: &str, ours: &TextTree, theirs: &TextTree) -> Result<ResolveM
         "t" | "theirs" => Ok(ResolveMode::Theirs),
         "b" | "both" => Ok(ResolveMode::Both),
         "s" | "skip" | "" => Ok(ResolveMode::Skip),
-        other => Err(Error::msg(format!(
-            "unknown response '{}' (expected: o, t, b, s)",
-            other
-        ))),
+        other => Err(Error::InvalidArg {
+            arg: "<interactive>",
+            reason: format!("unknown response '{other}' (expected: o, t, b, s)"),
+        }),
     }
 }
 

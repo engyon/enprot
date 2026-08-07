@@ -55,9 +55,12 @@ use crate::provenance;
 /// at the CLI layer if they want that.
 pub fn init_manifest(path: &Path) -> Result<()> {
     if path.exists() {
-        return Err(Error::msg(format!(
-            "{} already exists; remove it or pass a different path",
-            path.display()
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!(
+                "{} already exists; remove it or pass a different path",
+                path.display()
+            ),
         )));
     }
     std::fs::write(
@@ -98,9 +101,9 @@ pub fn add_to_manifest(manifest_path: &Path, path: &Path, casdir: &Path) -> Resu
             TextNode::Include { hash },
         ]
     } else {
-        return Err(Error::msg(format!(
-            "{} is neither a file nor a directory",
-            path.display()
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} is neither a file nor a directory", path.display()),
         )));
     };
 
@@ -212,7 +215,7 @@ impl Dep {
 /// versions.
 fn collect_cargo_deps(cargo_toml: &str) -> Result<Vec<Dep>> {
     let parsed: toml::Value =
-        toml::from_str(cargo_toml).map_err(|e| Error::msg(format!("Cargo.toml parse: {e}")))?;
+        toml::from_str(cargo_toml).map_err(|e| Error::Json(format!("Cargo.toml parse: {e}")))?;
     let mut out = Vec::new();
     collect_from_table(&parsed, "dependencies", "deps", &mut out);
     collect_from_table(&parsed, "dev-dependencies", "dev-deps", &mut out);
