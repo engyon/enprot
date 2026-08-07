@@ -104,6 +104,8 @@ longer active:
 - **Tracing expansion**: 8 crypto/CAS/PKI/ledger hot paths instrumented (PR #240)
 - **RSD conformance Phase 2**: 5 → 10 fixtures covering CHAIN/IMMUTABLE/MUTED/CONFLICT/INCLUDE (PR #241)
 - **ledger/anchor.rs typed-error migration**: 0 `Error::msg` callsites remaining (PR #242)
+- **Threat model + API stability + migration guide**: docs/threat-model.md, docs/api-stability.md, docs/migrations/{README,0.4-to-0.5}.md written (PR #251)
+- **Small-module typed-error migration**: 15 sites across capability/provenance/resolve/scm/cli/init/merge_cmd (PR #251)
 
 ### Architecture (P1–P3) — continuation TODOs
 
@@ -115,10 +117,17 @@ longer active:
 | [36](36-fuzz-targets.md) | `cargo fuzz` targets for parser + transform | P2 | specified |
 | [37](37-plugin-system.md) | Plugin ABI for custom CAS + transform backends | P3 | specified |
 | [38](38-opentelemetry-export.md) | OTLP export for distributed tracing + metrics | P3 | specified |
-| [39](39-threat-model-document.md) | Formal threat model document | P1 | specified |
-| [40](40-api-stability-semver.md) | API stability classification + semver policy | P1 | specified |
+| [39](39-threat-model-document.md) | Formal threat model document | P1 | **done** (PR #251) |
+| [40](40-api-stability-semver.md) | API stability classification + semver policy | P1 | **done** (PR #251) |
 | [41](41-benchmark-suite-expansion.md) | Pipeline / parallel / CAS / sigstore / memory benches | P2 | specified |
-| [42](42-migration-guide.md) | `docs/migrations/` + `enprot doctor` command | P2 | specified |
+| [42](42-migration-guide.md) | `docs/migrations/` + `enprot doctor` command | P2 | **partial** — docs/migrations/ scaffold + 0.4-to-0.5 retrospective (PR #251); `enprot doctor` still pending |
+| [43](43-mutation-testing.md) | Mutation testing with cargo-mutants | P2 | specified |
+| [44](44-snapshot-testing.md) | Snapshot testing harness (insta) | P2 | specified |
+| [45](45-reproducibility-verification.md) | Reproducibility verification | P1 | specified |
+| [46](46-cross-platform-matrix.md) | Cross-platform CI matrix expansion (arm64 native) | P2 | specified |
+| [47](47-ios-android-bindings.md) | iOS + Android mobile bindings | P3 | specified |
+| [48](48-mdbook-documentation-site.md) | mdbook documentation site | P2 | specified |
+| [49](49-code-coverage-gate.md) | Code coverage gate | P2 | specified |
 
 ## Reading order for new contributors
 
