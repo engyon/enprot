@@ -88,7 +88,7 @@ impl KeyFp {
         let mut arr = [0u8; 32];
         let bytes = hex::decode(&hash)?;
         if bytes.len() != 32 {
-            return Err(Error::msg(format!(
+            return Err(Error::Hex(format!(
                 "expected 32-byte SHA3-256, got {} bytes",
                 bytes.len()
             )));

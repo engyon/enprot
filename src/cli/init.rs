@@ -17,15 +17,20 @@ use crate::error::{Error, Result};
 /// if absent.
 pub fn run(a: InitSubcmd) -> Result<()> {
     let target = if a.global {
-        config::user_config_path()
-            .ok_or_else(|| Error::msg("could not resolve user config path (is $HOME set?)"))?
+        config::user_config_path().ok_or_else(|| Error::InvalidArg {
+            arg: "--global",
+            reason: "could not resolve user config path (is $HOME set?)".to_string(),
+        })?
     } else {
         PathBuf::from(".enprot.toml")
     };
     if target.exists() && !a.force {
-        return Err(Error::msg(format!(
-            "{} already exists; pass --force to overwrite",
-            target.display()
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!(
+                "{} already exists; pass --force to overwrite",
+                target.display()
+            ),
         )));
     }
     if let Some(parent) = target.parent() {
@@ -57,10 +62,13 @@ fn init_gitattributes() -> Result<()> {
     let snippet = "# Route *.ept through enprot's clean/smudge filters.\n\
                    *.ept filter=enprot diff=enprot merge=enprot\n";
     if path.exists() {
-        return Err(Error::msg(format!(
-            "{} already exists; merge this snippet in manually:\n{}",
-            path.display(),
-            snippet
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!(
+                "{} already exists; merge this snippet in manually:\n{}",
+                path.display(),
+                snippet
+            ),
         )));
     }
     std::fs::write(&path, snippet)?;

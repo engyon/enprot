@@ -50,7 +50,10 @@ use crate::etree::{self, ParseOps, TextNode, TextTree};
 /// manifest text.
 pub fn build_manifest(dir: &Path, casdir: &Path) -> Result<TextTree> {
     if !dir.is_dir() {
-        return Err(Error::msg(format!("{} is not a directory", dir.display())));
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{} is not a directory", dir.display()),
+        )));
     }
     let policy = crate::crypto::default_policy();
     let mut paops = ParseOps::new(policy)?;
@@ -69,9 +72,13 @@ pub fn build_manifest(dir: &Path, casdir: &Path) -> Result<TextTree> {
     )));
 
     for file in &files {
-        let rel = file
-            .strip_prefix(dir)
-            .map_err(|e| Error::msg(e.to_string()))?;
+        let rel = file.strip_prefix(dir).map_err(|e| {
+            Error::Io(std::io::Error::other(format!(
+                "strip_prefix({}): {}",
+                dir.display(),
+                e
+            )))
+        })?;
         let bytes = std::fs::read(file)?;
         let hash = cas::save(bytes, &mut paops)?;
         // Use a Plain comment to record the path alongside the hash
