@@ -345,3 +345,43 @@ fn fixture_13_multiline_data_parses() {
         "expected ≥ 144 bytes of concatenated DATA, got {total_bytes}"
     );
 }
+
+#[test]
+fn fixture_14_plain_only_parses() {
+    let tree = parse_fixture("14-plain-only.ept").unwrap();
+    // A file with no EPT markup is just one Plain node.
+    assert!(!tree.is_empty(), "empty file should still produce a tree");
+    let all_plain = tree.iter().all(|n| matches!(n, TextNode::Plain(_)));
+    assert!(
+        all_plain,
+        "expected all nodes to be Plain in a markup-free file"
+    );
+}
+
+#[test]
+fn fixture_15_key_cert_declarations_parse() {
+    let tree = parse_fixture("15-key-cert-declarations.ept").unwrap();
+    let has_key = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Key { name, .. } if name == "signing-key"));
+    assert!(has_key, "expected a Key(signing-key) declaration");
+    let has_cert = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Cert { name, .. } if name == "build-cert"));
+    assert!(has_cert, "expected a Cert(build-cert) declaration");
+}
+
+#[test]
+fn fixture_16_mixed_directives_parse() {
+    let tree = parse_fixture("16-mixed-directives.ept").unwrap();
+    let has_stored = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Stored { keyw, .. } if keyw == "SECRET"));
+    assert!(has_stored, "expected a Stored(SECRET) block");
+    let has_encrypted = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Encrypted { keyw, .. } if keyw == "SECRET2"));
+    assert!(has_encrypted, "expected an Encrypted(SECRET2) block");
+    let has_chain = tree.iter().any(|n| matches!(n, TextNode::Chain { .. }));
+    assert!(has_chain, "expected a Chain anchor");
+}
