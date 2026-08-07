@@ -100,14 +100,34 @@ longer active:
 - **Windows CI fixed**: LNK1201 PDB race resolved via sequential enprot + enprot-ffi build (#237)
 - **OHOS CI fixed**: cross-compile librnp + deps via new ci/build-rnp-ohos.sh; QEMU for dockerharmony verify (#237)
 - **Property tests complete**: encrypt/decrypt/encrypt-store invariants (PR #238)
+- **Typed-error batch 1**: 5 new variants + 8 high-leverage callsite migrations + FFI classifier update (PR #239)
+- **Tracing expansion**: 8 crypto/CAS/PKI/ledger hot paths instrumented (PR #240)
+- **RSD conformance Phase 2**: 5 → 10 fixtures covering CHAIN/IMMUTABLE/MUTED/CONFLICT/INCLUDE (PR #241)
+- **ledger/anchor.rs typed-error migration**: 0 `Error::msg` callsites remaining (PR #242)
+
+### Architecture (P1–P3) — continuation TODOs
+
+| # | Title | Priority | Status |
+|---|---|---|---|
+| [33](33-model-driven-config-validation.md) | Typed `EnprotConfig` with upfront validation | P1 | specified |
+| [34](34-capability-policy-as-rule-data.md) | `CapPolicy` as `Vec<Rule>` (OCP for policy rules) | P2 | specified |
+| [35](35-streaming-transform-write.md) | Streaming transform + write (finish #05) | P1 | specified |
+| [36](36-fuzz-targets.md) | `cargo fuzz` targets for parser + transform | P2 | specified |
+| [37](37-plugin-system.md) | Plugin ABI for custom CAS + transform backends | P3 | specified |
+| [38](38-opentelemetry-export.md) | OTLP export for distributed tracing + metrics | P3 | specified |
+| [39](39-threat-model-document.md) | Formal threat model document | P1 | specified |
+| [40](40-api-stability-semver.md) | API stability classification + semver policy | P1 | specified |
+| [41](41-benchmark-suite-expansion.md) | Pipeline / parallel / CAS / sigstore / memory benches | P2 | specified |
+| [42](42-migration-guide.md) | `docs/migrations/` + `enprot doctor` command | P2 | specified |
 
 ## Reading order for new contributors
 
-1. [26-typed-errors-callsite-migration](26-typed-errors-callsite-migration.md) — concrete code work; mechanical; ~106 sites.
+1. [26-typed-errors-callsite-migration](26-typed-errors-callsite-migration.md) — concrete code work; mechanical; ~95 sites remain.
 2. [29-cli-decomposition-finalize](29-cli-decomposition-finalize.md) — make the codebase navigable (post-#236).
-3. [30-rsd-conformance-expand](30-rsd-conformance-expand.md) — single source of truth for behavior.
-4. [31-tracing-instrumentation-expand](31-tracing-instrumentation-expand.md) — production observability.
-5. [27-cas-backends-real](27-cas-backends-real.md) — supply-chain story.
+3. [33-model-driven-config-validation](33-model-driven-config-validation.md) — architectural foundation; replace ad-hoc validation with a typed model.
+4. [30-rsd-conformance-expand](30-rsd-conformance-expand.md) — single source of truth for behavior; 10/25 fixtures done.
+5. [39-threat-model-document](39-threat-model-document.md) — security review foundation.
+6. [40-api-stability-semver](40-api-stability-semver.md) — defines what users can depend on.
 
 ## Maintenance
 
@@ -117,6 +137,14 @@ longer active:
 - A TODO that proves to be the wrong shape gets superseded: rename to
   `XX-name.superseded.md`, write a one-paragraph explanation in the
   body, and add the replacement to the index.
+- **Split vs extend**: when a TODO grows beyond ~500 lines of spec,
+  prefer splitting it (e.g. #02 → #02 + #26) over bloating the file.
+  The original keeps the high-level design; the new one details the
+  remaining work.
+- **OCP test for new TODOs**: a new TODO should describe an extension
+  point that doesn't require modifying existing code. If the spec
+  requires touching N files just to add one new behavior, the design
+  is wrong — rework it before landing.
 - **Split vs extend**: when a TODO grows beyond ~500 lines of spec,
   prefer splitting it (e.g. #02 → #02 + #26) over bloating the file.
   The original keeps the high-level design; the new one details the
