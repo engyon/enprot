@@ -286,6 +286,24 @@ proptest! {
 
         prop_assert_eq!(recovered, file, "encrypt-store didn't round-trip");
     }
+
+    #[test]
+    fn cas_load_save_roundtrip(body in "[a-zA-Z0-9 ]{0,500}") {
+        // cas::save(blob) then cas::load(hash) must return the
+        // original blob byte-for-byte. This is the CAS trait's
+        // foundational invariant.
+        use enprot::cas;
+
+        let dir = tempdir();
+        let mut paops = ParseOps::new(policy()).unwrap();
+        paops.io.set_local_casdir(dir.path().to_path_buf());
+
+        let blob = body.into_bytes();
+        let hash = cas::save(blob.clone(), &mut paops).unwrap();
+        let recovered = cas::load(&hash, &mut paops).unwrap();
+
+        prop_assert_eq!(recovered, blob, "cas load(save(blob)) != blob");
+    }
 }
 
 /// Extract the first WORD from the first `BEGIN ` directive in `file`.

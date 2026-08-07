@@ -385,3 +385,69 @@ fn fixture_16_mixed_directives_parse() {
     let has_chain = tree.iter().any(|n| matches!(n, TextNode::Chain { .. }));
     assert!(has_chain, "expected a Chain anchor");
 }
+
+#[test]
+fn fixture_17_empty_block_parses() {
+    let tree = parse_fixture("17-empty-block.ept").unwrap();
+    let has_empty = tree.iter().any(
+        |n| matches!(n, TextNode::BeginEnd { keyw, txt } if keyw == "EMPTY" && txt.is_empty()),
+    );
+    assert!(
+        has_empty,
+        "expected a BeginEnd(EMPTY) block with no children"
+    );
+}
+
+#[test]
+fn fixture_18_comment_only_parses() {
+    let tree = parse_fixture("18-comment-only.ept").unwrap();
+    assert!(!tree.is_empty(), "expected at least one node");
+    let all_plain = tree.iter().all(|n| matches!(n, TextNode::Plain(_)));
+    assert!(
+        all_plain,
+        "expected all Plain nodes for a comment-only file"
+    );
+}
+
+#[test]
+fn fixture_19_source_file_with_secrets_parses() {
+    let tree = parse_fixture("19-source-file-with-secrets.ept").unwrap();
+    let words: Vec<&str> = tree
+        .iter()
+        .filter_map(|n| {
+            if let TextNode::BeginEnd { keyw, .. } = n {
+                Some(keyw.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(
+        words.contains(&"API_KEY"),
+        "expected BeginEnd(API_KEY), got: {words:?}"
+    );
+    assert!(
+        words.contains(&"DB_PASSWORD"),
+        "expected BeginEnd(DB_PASSWORD), got: {words:?}"
+    );
+}
+
+#[test]
+fn fixture_20_multiple_stored_parses() {
+    let tree = parse_fixture("20-multiple-stored.ept").unwrap();
+    let stored_words: Vec<&str> = tree
+        .iter()
+        .filter_map(|n| {
+            if let TextNode::Stored { keyw, .. } = n {
+                Some(keyw.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        stored_words,
+        vec!["SECRET", "CONFIG"],
+        "expected STORED(SECRET) and STORED(CONFIG)"
+    );
+}

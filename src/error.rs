@@ -241,4 +241,92 @@ mod tests {
             "conflict resolution failed for AGENT: no resolution strategy picked"
         );
     }
+
+    #[test]
+    fn display_io() {
+        let e = Error::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "missing"));
+        assert!(e.to_string().contains("i/o error"));
+    }
+
+    #[test]
+    fn display_botan() {
+        let e = Error::Botan("rng failure".to_string());
+        assert_eq!(e.to_string(), "botan: rng failure");
+    }
+
+    #[test]
+    fn display_hex() {
+        let e = Error::Hex("odd-length".to_string());
+        assert_eq!(e.to_string(), "hex: odd-length");
+    }
+
+    #[test]
+    fn display_base64() {
+        let e = Error::Base64("invalid char".to_string());
+        assert_eq!(e.to_string(), "base64: invalid char");
+    }
+
+    #[test]
+    fn display_cipher() {
+        let e = Error::Cipher("wrong key length".to_string());
+        assert_eq!(e.to_string(), "cipher: wrong key length");
+    }
+
+    #[test]
+    fn display_pbkdf() {
+        let e = Error::Pbkdf("iterations below floor".to_string());
+        assert_eq!(e.to_string(), "pbkdf: iterations below floor");
+    }
+
+    #[test]
+    fn display_policy() {
+        let e = Error::Policy("sha1 not approved".to_string());
+        assert_eq!(e.to_string(), "policy violation: sha1 not approved");
+    }
+
+    #[test]
+    fn display_policy_violation() {
+        let e = Error::PolicyViolation {
+            rule: "trust_root".to_string(),
+            context: "signer abc not in trust_roots".to_string(),
+        };
+        assert_eq!(
+            e.to_string(),
+            "capability policy 'trust_root' violated: signer abc not in trust_roots"
+        );
+    }
+
+    #[test]
+    fn display_parse() {
+        let e = Error::Parse {
+            file: "test.ept".to_string(),
+            lineno: 42,
+            msg: "unexpected END".to_string(),
+        };
+        assert_eq!(e.to_string(), "parse error in test.ept:42: unexpected END");
+    }
+
+    #[test]
+    fn display_cas() {
+        let e = Error::Cas("hash mismatch".to_string());
+        assert_eq!(e.to_string(), "CAS: hash mismatch");
+    }
+
+    #[test]
+    fn display_phc() {
+        let e = Error::Phc("missing $ separator".to_string());
+        assert_eq!(e.to_string(), "PHC: missing $ separator");
+    }
+
+    #[test]
+    fn display_json() {
+        let e = Error::Json("unexpected EOF".to_string());
+        assert_eq!(e.to_string(), "JSON: unexpected EOF");
+    }
+
+    #[test]
+    fn display_msg() {
+        let e = Error::Msg("something happened".to_string());
+        assert_eq!(e.to_string(), "something happened");
+    }
 }
