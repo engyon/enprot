@@ -93,7 +93,15 @@ jobs:
           ./ci/install.ps1
       - name: Build (windows)
         if: "startsWith(matrix.os, 'windows')"
-        run: cargo build --verbose
+        # Build the main crate and the FFI crate sequentially.
+        # Both produce target/debug/deps/enprot.pdb (the main crate's
+        # enprot.exe and enprot-ffi's enprot.dll share the same output
+        # basename), and parallel link.exe invocations race on the
+        # shared PDB file (LNK1201). Sequential linking eliminates the
+        # race without changing crate names or disabling Defender.
+        run: |
+          cargo build --verbose --package enprot
+          cargo build --verbose --package enprot-ffi
       - name: Run tests (windows)
         if: "startsWith(matrix.os, 'windows')"
         run: cargo test --verbose -- --nocapture

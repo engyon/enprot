@@ -5,3 +5,18 @@
 # placeholder.
 [build]
 rustflags = ["--remap-path-prefix=/usr/local/cargo=/cargo"]
+
+# Windows MSVC linker workaround for LNK1201.
+#
+# During parallel codegen, multiple link.exe invocations can race on
+# the same final .pdb (Windows Defender real-time scanning also
+# locks the file mid-write). The default is `/DEBUG:FULL`, which
+# writes a single shared PDB. `/DEBUG:FASTLINK` keeps the debug info
+# inside the .obj files and only emits a tiny PDB for the binary,
+# eliminating the contention. This matches what `cargo build` on
+# Windows does when `split-debuginfo = "unpacked"` is set.
+#
+# Symptom: `LINK : fatal error LNK1201: error writing to program
+# database 'target\debug\deps\enprot.pdb'`.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/DEBUG:FASTLINK"]
