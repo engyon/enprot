@@ -143,3 +143,124 @@ fn fixture_05_mismatched_end_rejected() {
         }
     }
 }
+
+// ---- Extended fixtures (Phase 2, TODO.complete/30) ----
+
+#[test]
+fn fixture_06_chain_anchor_parses() {
+    let tree = parse_fixture("06-chain-anchor.ept").unwrap();
+    let has_chain = tree.iter().any(|n| matches!(n, TextNode::Chain { .. }));
+    assert!(has_chain, "expected a Chain node");
+
+    // The chain extfields must carry the required keys.
+    let chain_ext = tree.iter().find_map(|n| {
+        if let TextNode::Chain { extfields } = n {
+            Some(extfields)
+        } else {
+            None
+        }
+    });
+    let ext = chain_ext.expect("Chain extfields");
+    assert!(
+        ext.contains_key("signer"),
+        "missing 'signer' in CHAIN extfields: {:?}",
+        ext.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        ext.contains_key("payload"),
+        "missing 'payload' in CHAIN extfields"
+    );
+    assert!(ext.contains_key("sig"), "missing 'sig' in CHAIN extfields");
+}
+
+#[test]
+fn fixture_07_immutable_content_parses() {
+    let tree = parse_fixture("07-immutable-content.ept").unwrap();
+    let has_immutable = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Immutable { name, .. } if name == "CONFIG"));
+    assert!(has_immutable, "expected an Immutable(CONFIG) block");
+
+    // The IMMUTABLE block must declare hashalg + hash.
+    let imm = tree.iter().find_map(|n| match n {
+        TextNode::Immutable {
+            name,
+            hashalg,
+            hash,
+            ..
+        } if name == "CONFIG" => Some((hashalg, hash)),
+        _ => None,
+    });
+    let (alg, hash) = imm.expect("Immutable fields");
+    assert_eq!(alg, "sha3-256");
+    assert_eq!(hash.len(), 64, "hash must be 64 hex chars (SHA3-256)");
+}
+
+#[test]
+fn fixture_08_muted_sanitized_parses() {
+    let tree = parse_fixture("08-muted-sanitized.ept").unwrap();
+    let has_muted = tree.iter().any(|n| {
+        matches!(n, TextNode::Muted { name, hashalg, .. } if name == "SECRET" && hashalg == "sha3-256")
+    });
+    assert!(
+        has_muted,
+        "expected a Muted(SECRET) block with sha3-256 hashalg"
+    );
+}
+
+#[test]
+fn fixture_09_conflict_markers_parse() {
+    let tree = parse_fixture("09-conflict-markers.ept").unwrap();
+    let has_conflict = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Conflict { keyw, .. } if keyw == "WORD_A"));
+    assert!(has_conflict, "expected a Conflict(WORD_A) block");
+
+    // The CONFLICT block holds two labelled subtrees (`ours`, `theirs`)
+    // switched by the OURS directive. Content before OURS lands in
+    // `ours`; content after OURS lands in `theirs`.
+    let conflict = tree.iter().find_map(|n| match n {
+        TextNode::Conflict { keyw, ours, theirs } if keyw == "WORD_A" => Some((ours, theirs)),
+        _ => None,
+    });
+    let (ours, theirs) = conflict.expect("Conflict body");
+    assert!(!ours.is_empty(), "expected `ours` side to have content");
+    assert!(!theirs.is_empty(), "expected `theirs` side to have content");
+}
+
+#[test]
+fn fixture_10_include_manifest_parses() {
+    let tree = parse_fixture("10-include-manifest.ept").unwrap();
+
+    // A manifest has a BeginEnd(MANIFEST) block containing INCLUDE directives.
+    let manifest = tree.iter().find_map(|n| {
+        if let TextNode::BeginEnd { keyw, txt } = n {
+            if keyw == "MANIFEST" { Some(txt) } else { None }
+        } else {
+            None
+        }
+    });
+    let txt = manifest.expect("MANIFEST block");
+    let includes: Vec<&str> = txt
+        .iter()
+        .filter_map(|n| {
+            if let TextNode::Include { hash } = n {
+                Some(hash.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        includes.len(),
+        2,
+        "expected 2 INCLUDE directives in MANIFEST, got {}: {:?}",
+        includes.len(),
+        includes
+    );
+    assert!(
+        includes.iter().all(|h| h.len() == 64),
+        "INCLUDE hashes must be 64 hex chars: {:?}",
+        includes
+    );
+}
