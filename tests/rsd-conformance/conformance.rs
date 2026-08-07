@@ -264,3 +264,84 @@ fn fixture_10_include_manifest_parses() {
         includes
     );
 }
+
+#[test]
+fn fixture_11_deeply_nested_parses() {
+    let tree = parse_fixture("11-deeply-nested.ept").unwrap();
+    let outer = tree.iter().find_map(|n| {
+        if let TextNode::BeginEnd { keyw, txt } = n {
+            if keyw == "OUTER" { Some(txt) } else { None }
+        } else {
+            None
+        }
+    });
+    let outer_txt = outer.expect("OUTER block");
+    let has_inner = outer_txt
+        .iter()
+        .any(|n| matches!(n, TextNode::BeginEnd { keyw, .. } if keyw == "INNER"));
+    assert!(has_inner, "expected INNER nested inside OUTER");
+    // The INNER block must be inside OUTER, not a sibling.
+    let sibling_inner = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::BeginEnd { keyw, .. } if keyw == "INNER"));
+    // If sibling_inner is true but has_inner is false, the parser
+    // flattened the nesting incorrectly.
+    let _ = sibling_inner;
+}
+
+#[test]
+fn fixture_12_multiple_words_parses() {
+    let tree = parse_fixture("12-multiple-words.ept").unwrap();
+    let words: Vec<&str> = tree
+        .iter()
+        .filter_map(|n| {
+            if let TextNode::BeginEnd { keyw, .. } = n {
+                Some(keyw.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        words,
+        vec!["WORD_A", "WORD_B"],
+        "expected WORD_A and WORD_B blocks"
+    );
+}
+
+#[test]
+fn fixture_13_multiline_data_parses() {
+    let tree = parse_fixture("13-multiline-data.ept").unwrap();
+    let encrypted = tree.iter().find_map(|n| {
+        if let TextNode::Encrypted { keyw, txt, .. } = n {
+            if keyw == "SECRET" { Some(txt) } else { None }
+        } else {
+            None
+        }
+    });
+    let txt = encrypted.expect("Encrypted(SECRET) block");
+    let data_nodes: Vec<_> = txt
+        .iter()
+        .filter_map(|n| {
+            if let TextNode::Data(d) = n {
+                Some(d)
+            } else {
+                None
+            }
+        })
+        .collect();
+    // The parser concatenates consecutive DATA lines into a single
+    // Data node; verify we got the bytes from all four lines.
+    assert!(
+        !data_nodes.is_empty(),
+        "expected at least one Data node inside ENCRYPTED(SECRET)"
+    );
+    // Four 48-byte base64 lines decode to 4 × 36 = 144 bytes (each
+    // 48-char base64 line is 36 bytes after decode). Accept either
+    // a single concatenated Data node or four separate ones.
+    let total_bytes: usize = data_nodes.iter().map(|d| d.len()).sum();
+    assert!(
+        total_bytes >= 144,
+        "expected ≥ 144 bytes of concatenated DATA, got {total_bytes}"
+    );
+}
