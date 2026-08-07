@@ -48,7 +48,10 @@ fn to_botan_hash(alg: &str) -> Result<&'static str> {
     BOTAN_HASH_ALG_MAP
         .get(alg)
         .copied()
-        .ok_or_else(|| Error::Msg(format!("Unrecognized hash algorithm: {}", alg)))
+        .ok_or_else(|| Error::InvalidArg {
+            arg: "hashalg",
+            reason: format!("Unrecognized hash algorithm: {alg}"),
+        })
 }
 
 pub fn digest(alg: &str, data: &[u8], policy: &dyn CryptoPolicy) -> Result<Vec<u8>> {

@@ -88,7 +88,10 @@ pub fn encrypt(
         } else {
             let ivlen = enc.nonce_len();
             rng.as_mut()
-                .ok_or(Error::Msg("Missing RNG".into()))?
+                .ok_or(Error::InvalidArg {
+                    arg: "rng",
+                    reason: "Missing RNG for non-deterministic encrypt".to_string(),
+                })?
                 .read(ivlen)
                 .map_err(Error::botan)?
         };

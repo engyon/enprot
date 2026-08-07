@@ -209,17 +209,21 @@ impl SignerProvider for PemSigner {
 /// - `pkcs11://...` → PKCS#11 hardware token (requires `pkcs11` cargo feature)
 pub fn parse_signer_arg(s: &str, alg: SigAlgKind) -> Result<Box<dyn SignerProvider>> {
     if s.starts_with("confium://") {
-        Err(Error::msg(
-            "Confium daemon not found. Install and start the daemon from \
+        Err(Error::InvalidArg {
+            arg: "signer",
+            reason: "Confium daemon not found. Install and start the daemon from \
              https://github.com/confium/confium, then use \
-             --signer confium://<session-id> (see TODO.finalize/38)",
-        ))
+             --signer confium://<session-id> (see TODO.finalize/38)"
+                .to_string(),
+        })
     } else if s.starts_with("pkcs11://") {
-        Err(Error::msg(
-            "PKCS#11 signing requires the 'pkcs11' cargo feature. \
+        Err(Error::InvalidArg {
+            arg: "signer",
+            reason: "PKCS#11 signing requires the 'pkcs11' cargo feature. \
              Rebuild with: cargo build --features pkcs11. \
-             Then use --signer pkcs11://<module-path>/<key-label>",
-        ))
+             Then use --signer pkcs11://<module-path>/<key-label>"
+                .to_string(),
+        })
     } else {
         let signer = PemSigner::from_file(Path::new(s), alg)?;
         Ok(Box::new(signer))

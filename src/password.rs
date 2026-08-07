@@ -60,15 +60,18 @@ fn read_password(prompt: &str) -> Result<String> {
     use rpassword::ConfigBuilder;
     use std::io::{stdin, stdout};
     let pass = if stdin().is_terminal() {
-        rpassword::prompt_password(prompt)
-            .map_err(|e| Error::msg(format!("password prompt failed: {e}")))?
+        rpassword::prompt_password(prompt).map_err(|e| {
+            Error::Io(std::io::Error::other(format!(
+                "password prompt failed: {e}"
+            )))
+        })?
     } else {
         let config = ConfigBuilder::new()
             .input_reader(stdin())
             .output_writer(stdout())
             .build();
         rpassword::prompt_password_with_config(prompt, config)
-            .map_err(|e| Error::msg(format!("password read failed: {e}")))?
+            .map_err(|e| Error::Io(std::io::Error::other(format!("password read failed: {e}"))))?
     };
     // Strip a trailing CR so CRLF-terminated piped input (e.g. from
     // Windows or some terminals) is treated identically to
