@@ -451,3 +451,78 @@ fn fixture_20_multiple_stored_parses() {
         "expected STORED(SECRET) and STORED(CONFIG)"
     );
 }
+
+// ---- Phase 3 fixtures (21-25, TODO.complete/30 target: 25 fixtures) ----
+
+#[test]
+fn fixture_21_custom_separators_parses() {
+    // This fixture uses /* <( ... )> */ separators instead of the
+    // default // <( ... )>. The parser with default separators should
+    // treat the entire file as plain text.
+    let tree = parse_fixture("21-custom-separators.ept").unwrap();
+    assert!(!tree.is_empty());
+    let all_plain = tree.iter().all(|n| matches!(n, TextNode::Plain(_)));
+    assert!(
+        all_plain,
+        "with default separators, custom-separator file should be all Plain"
+    );
+}
+
+#[test]
+fn fixture_22_encrypted_minimal_parses() {
+    let tree = parse_fixture("22-encrypted-minimal.ept").unwrap();
+    let has_enc = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Encrypted { keyw, .. } if keyw == "SHORT"));
+    assert!(has_enc, "expected Encrypted(SHORT) block");
+    let has_plain = tree.iter().any(|n| matches!(n, TextNode::Plain(_)));
+    assert!(
+        has_plain,
+        "expected trailing Plain text after encrypted block"
+    );
+}
+
+#[test]
+fn fixture_23_data_inside_begin_end_parses() {
+    let tree = parse_fixture("23-data-inside-begin-end.ept").unwrap();
+    let block = tree.iter().find_map(|n| {
+        if let TextNode::BeginEnd { keyw, txt } = n {
+            if keyw == "FILE_CONFIG" {
+                Some(txt)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+    let txt = block.expect("BeginEnd(FILE_CONFIG) block");
+    let has_data = txt.iter().any(|n| matches!(n, TextNode::Data(_)));
+    assert!(has_data, "expected DATA node inside BeginEnd(FILE_CONFIG)");
+}
+
+#[test]
+fn fixture_24_unkey_directive_parses() {
+    let tree = parse_fixture("24-unkey-directive.ept").unwrap();
+    let has_unkey = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Unkey { name } if name == "signing-key"));
+    assert!(has_unkey, "expected Unkey(signing-key) directive");
+    let has_begin = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::BeginEnd { keyw, .. } if keyw == "DATA"));
+    assert!(has_begin, "expected BeginEnd(DATA) after UNKEY");
+}
+
+#[test]
+fn fixture_25_uncert_directive_parses() {
+    let tree = parse_fixture("25-uncert-directive.ept").unwrap();
+    let has_uncert = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::Uncert { name } if name == "build-cert"));
+    assert!(has_uncert, "expected Uncert(build-cert) directive");
+    let has_begin = tree
+        .iter()
+        .any(|n| matches!(n, TextNode::BeginEnd { keyw, .. } if keyw == "PAYLOAD"));
+    assert!(has_begin, "expected BeginEnd(PAYLOAD) after UNCERT");
+}

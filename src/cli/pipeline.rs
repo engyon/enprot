@@ -462,6 +462,17 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
         eprintln!("Writing {}", path_out);
     }
 
+    if paops.io.dry_run {
+        eprintln!(
+            "dry-run: {} → {} ({} nodes in, {} nodes out, would write)",
+            path_in,
+            path_out,
+            tree_in.len(),
+            tree_out.len()
+        );
+        return Ok(());
+    }
+
     let mut writer_out: Box<dyn Write> = if path_out == "-" {
         Box::new(BufWriter::new(std::io::stdout()))
     } else {
