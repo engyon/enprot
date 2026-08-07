@@ -1,0 +1,7 @@
+// <( BEGIN OUTER )>
+outer content
+// <( BEGIN INNER )>
+inner content inside outer
+// <( END INNER )>
+back in outer
+// <( END OUTER )>

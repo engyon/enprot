@@ -27,8 +27,10 @@ pub fn run(a: InspectSubcmd, common: CommonArgs) -> Result<()> {
         Some(p) if p != &PathBuf::from("-") => {
             let path_str = p.display().to_string();
             paops.runtime.fname = path_str.clone();
-            Box::new(BufReader::new(File::open(p).map_err(|e| {
-                Error::msg(format!("inspect: failed to open {}: {}", path_str, e))
+            Box::new(BufReader::new(File::open(p).map_err(|_e| {
+                Error::Io(std::io::Error::other(format!(
+                    "inspect: failed to open {path_str}"
+                )))
             })?))
         }
         _ => {

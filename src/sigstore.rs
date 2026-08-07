@@ -216,20 +216,22 @@ impl KeylessSigner {
 /// an actionable error.
 pub fn verify(payload: &[u8], sig: &KeylessSignature, policy: &VerifyPolicy) -> Result<()> {
     // Extract the public key PEM from the cert field.
-    let pub_pem = String::from_utf8(sig.signing_cert.clone())
-        .map_err(|_| Error::Msg("signing_cert is not valid UTF-8 PEM".into()))?;
+    let pub_pem = String::from_utf8(sig.signing_cert.clone()).map_err(|_| Error::InvalidArg {
+        arg: "signing_cert",
+        reason: "signing_cert is not valid UTF-8 PEM".to_string(),
+    })?;
 
     // Check if we have a transparency-log entry.
     if sig.rekor_entry.log_index > 0 {
-        // Full Fulcio + Rekor verification path.
-        // Requires sigstore-rs for Rekor proof verification and
-        // Fulcio root validation. Build with --features sigstore.
-        return Err(Error::Msg(format!(
-            "Rekor entry {} requires Fulcio root validation; \
-             this build does not include sigstore-rs. \
-             For local verification, use signatures with log_index=0.",
-            sig.rekor_entry.log_index
-        )));
+        return Err(Error::InvalidArg {
+            arg: "rekor_log_index",
+            reason: format!(
+                "Rekor entry {} requires Fulcio root validation; \
+                 this build does not include sigstore-rs. \
+                 For local verification, use signatures with log_index=0.",
+                sig.rekor_entry.log_index
+            ),
+        });
     }
 
     // Local verification: check the signature against the embedded key.
@@ -241,9 +243,9 @@ pub fn verify(payload: &[u8], sig: &KeylessSignature, policy: &VerifyPolicy) -> 
     )?;
 
     if !valid {
-        return Err(Error::Msg(
-            "signature verification failed: payload does not match signature".into(),
-        ));
+        return Err(Error::SignatureVerify {
+            key_id: "keyless: payload does not match signature".to_string(),
+        });
     }
 
     // If the policy has an identity regex, we can't check it without

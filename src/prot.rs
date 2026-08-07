@@ -30,6 +30,7 @@ use crate::error::{Error, Result};
 use crate::etree;
 use crate::pbkdf::{PBKDFCache, derive_key, parse_phc};
 
+#[tracing::instrument(skip(pt, password, rng, pbkdfopts, cipheropts, cache, policy), fields(bytes = pt.len(), alg = %cipheropts.alg))]
 pub fn encrypt(
     pt: Vec<u8>,
     password: &str,
@@ -87,7 +88,10 @@ pub fn encrypt(
         } else {
             let ivlen = enc.nonce_len();
             rng.as_mut()
-                .ok_or(Error::Msg("Missing RNG".into()))?
+                .ok_or(Error::InvalidArg {
+                    arg: "rng",
+                    reason: "Missing RNG for non-deterministic encrypt".to_string(),
+                })?
                 .read(ivlen)
                 .map_err(Error::botan)?
         };
@@ -113,6 +117,7 @@ pub fn encrypt(
     Ok((enc.process(&key, &iv, &[], &pt)?, extfields))
 }
 
+#[tracing::instrument(skip(ct, password, pbkdf, cipher, cache, policy), fields(bytes = ct.len()))]
 pub fn decrypt(
     ct: Vec<u8>,
     password: &str,

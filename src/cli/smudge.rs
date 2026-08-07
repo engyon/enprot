@@ -65,8 +65,11 @@ pub fn run(mode: Mode, a: SmudgeCleanSubcmd, common: CommonArgs) -> Result<()> {
             paops.runtime.fname = "<smudge-stdin>".into();
             let cursor = std::io::Cursor::new(input);
             let tree = etree::parse(cursor, &mut paops)?;
-            let (ct, pbkdf, cipher) = extract_first_encrypted(&tree, &a.word)
-                .ok_or_else(|| Error::msg(format!("no ENCRYPTED {} block in input", a.word)))?;
+            let (ct, pbkdf, cipher) =
+                extract_first_encrypted(&tree, &a.word).ok_or_else(|| Error::BlockShape {
+                    word: a.word.clone(),
+                    reason: "no ENCRYPTED block for this WORD in input".to_string(),
+                })?;
             let pt = prot::decrypt(
                 ct,
                 paops.passwords.get(&a.word).unwrap(),
@@ -135,8 +138,8 @@ fn lookup_word_password(common: &CommonArgs, word: &str) -> Result<String> {
     {
         return Ok(p.to_string());
     }
-    Err(Error::msg(format!(
-        "no password supplied for WORD '{}' (pass `-k {0}=PASSWORD` or set ENPROPT_KEY={0}=PASSWORD)",
-        word
-    )))
+    Err(Error::InvalidArg {
+        arg: "password",
+        reason: format!("no password supplied for WORD {word}"),
+    })
 }

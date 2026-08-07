@@ -34,7 +34,9 @@ pub fn run(common: CommonArgs, output_args: OutputArgs) -> Result<()> {
             Box::new(BufReader::new(std::io::stdin()))
         } else {
             Box::new(BufReader::new(File::open(path_in).map_err(|e| {
-                Error::Msg(format!("Failed to open {}: {}", path_in, e))
+                Error::Io(std::io::Error::other(format!(
+                    "Failed to open {path_in}: {e}"
+                )))
             })?))
         };
         paops.runtime.fname = path_in.clone();

@@ -104,10 +104,10 @@ impl std::str::FromStr for SigAlgKind {
             .map(|k| k.name())
             .collect::<Vec<_>>()
             .join(", ");
-        Err(Error::Msg(format!(
-            "unknown signature algorithm '{}'; supported: {}",
-            s, valid
-        )))
+        Err(Error::InvalidArg {
+            arg: "alg",
+            reason: format!("unknown signature algorithm '{s}'; supported: {valid}"),
+        })
     }
 }
 
@@ -171,6 +171,7 @@ fn split_pem_bundle(pem: &str) -> Vec<String> {
 /// Sign `msg` with `privkey_pem`. For composite algorithms, signs
 /// with each leg and concatenates the signatures with 4-byte
 /// big-endian length prefixes.
+#[tracing::instrument(skip(privkey_pem, msg), fields(alg = ?kind, bytes = msg.len()))]
 pub fn sign(
     kind: SigAlgKind,
     privkey_pem: &str,
@@ -181,10 +182,13 @@ pub fn sign(
         SigAlgKind::CompositeEd25519MlDsa => {
             let legs = split_pem_bundle(privkey_pem);
             if legs.len() != 2 {
-                return Err(Error::msg(format!(
-                    "composite key bundle expected 2 PEM blocks, got {}",
-                    legs.len()
-                )));
+                return Err(Error::InvalidArg {
+                    arg: "key",
+                    reason: format!(
+                        "composite key bundle expected 2 PEM blocks, got {}",
+                        legs.len()
+                    ),
+                });
             }
             let mut combined = Vec::new();
             for (i, leg_alg) in [SigAlgKind::Ed25519, SigAlgKind::MlDsa].iter().enumerate() {
@@ -206,15 +210,19 @@ pub fn sign(
 /// Verify `sig` over `msg` against `pubkey_pem`. Returns `Ok(true)` on
 /// a valid signature, `Ok(false)` on verification failure.
 /// For composite algorithms, ALL legs must verify.
+#[tracing::instrument(skip(pubkey_pem, msg, sig), fields(alg = ?kind, bytes = msg.len()))]
 pub fn verify(kind: SigAlgKind, pubkey_pem: &str, msg: &[u8], sig: &[u8]) -> Result<bool> {
     match kind {
         SigAlgKind::CompositeEd25519MlDsa => {
             let legs = split_pem_bundle(pubkey_pem);
             if legs.len() != 2 {
-                return Err(Error::msg(format!(
-                    "composite pubkey bundle expected 2 PEM blocks, got {}",
-                    legs.len()
-                )));
+                return Err(Error::InvalidArg {
+                    arg: "pubkey",
+                    reason: format!(
+                        "composite pubkey bundle expected 2 PEM blocks, got {}",
+                        legs.len()
+                    ),
+                });
             }
             // Parse length-prefixed signatures
             let mut offset = 0;
@@ -472,14 +480,19 @@ impl SigBundle {
         let mut lines = s.lines();
         let header = lines
             .next()
-            .ok_or_else(|| Error::msg("empty signature bundle"))?
+            .ok_or_else(|| Error::InvalidArg {
+                arg: "sig-bundle",
+                reason: "empty signature bundle".to_string(),
+            })?
             .trim();
         if header != Self::HEADER {
-            return Err(Error::msg(format!(
-                "unknown signature bundle header '{}' (expected '{}')",
-                header,
-                Self::HEADER
-            )));
+            return Err(Error::InvalidArg {
+                arg: "sig-bundle",
+                reason: format!(
+                    "unknown signature bundle header '{header}' (expected '{}')",
+                    Self::HEADER
+                ),
+            });
         }
         let mut entries = Vec::new();
         let mut alg: Option<SigAlgKind> = None;
@@ -498,19 +511,20 @@ impl SigBundle {
                 }
                 continue;
             }
-            let (k, v) = trimmed
-                .split_once(':')
-                .ok_or_else(|| Error::msg(format!("malformed bundle line '{}'", trimmed)))?;
+            let (k, v) = trimmed.split_once(':').ok_or_else(|| Error::InvalidArg {
+                arg: "sig-bundle",
+                reason: format!("malformed bundle line '{trimmed}'"),
+            })?;
             let v = v.trim();
             match k {
                 "alg" => alg = Some(v.parse()?),
                 "fp" => fp = Some(v.to_string()),
                 "sig" => sig = Some(hex::decode(v).map_err(Error::from)?),
                 _ => {
-                    return Err(Error::msg(format!(
-                        "unknown bundle field '{}' (expected alg/fp/sig)",
-                        k
-                    )));
+                    return Err(Error::InvalidArg {
+                        arg: "sig-bundle",
+                        reason: format!("unknown bundle field '{k}' (expected alg/fp/sig)"),
+                    });
                 }
             }
         }
@@ -523,7 +537,10 @@ impl SigBundle {
             });
         }
         if entries.is_empty() {
-            return Err(Error::msg("signature bundle has no entries"));
+            return Err(Error::InvalidArg {
+                arg: "sig-bundle",
+                reason: "signature bundle has no entries".to_string(),
+            });
         }
         Ok(SigBundle { entries })
     }
@@ -564,15 +581,15 @@ impl std::str::FromStr for KemAlgKind {
                 return Ok(*k);
             }
         }
-        Err(Error::msg(format!(
-            "unknown KEM algorithm '{}'; supported: {}",
-            s,
-            KemAlgKind::ALL
-                .iter()
-                .map(|k| k.name())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )))
+        let valid = KemAlgKind::ALL
+            .iter()
+            .map(|k| k.name())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(Error::InvalidArg {
+            arg: "kem-alg",
+            reason: format!("unknown KEM algorithm '{s}'; supported: {valid}"),
+        })
     }
 }
 

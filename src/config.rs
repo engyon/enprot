@@ -89,7 +89,7 @@ impl Config {
     /// being ignored. Known field values (lang, policy) are
     /// validated against the crate's const sets.
     pub fn from_toml_str(s: &str) -> Result<Self> {
-        let cfg: Self = toml::from_str(s).map_err(|e| Error::msg(format!("config parse: {e}")))?;
+        let cfg: Self = toml::from_str(s).map_err(|e| Error::Json(format!("config parse: {e}")))?;
         cfg.validate()?;
         Ok(cfg)
     }
@@ -104,21 +104,25 @@ impl Config {
                 .map(|(n, _, _)| *n)
                 .collect();
             if !valid.contains(&lang.as_str()) {
-                return Err(Error::msg(format!(
-                    "config: unknown lang '{}' (valid: {})",
-                    lang,
-                    valid.join(", ")
-                )));
+                return Err(Error::InvalidArg {
+                    arg: "lang",
+                    reason: format!(
+                        "config: unknown lang '{lang}' (valid: {})",
+                        valid.join(", ")
+                    ),
+                });
             }
         }
         if let Some(ref policy) = self.policy
             && !crate::consts::VALID_POLICIES.contains(&policy.as_str())
         {
-            return Err(Error::msg(format!(
-                "config: unknown policy '{}' (valid: {})",
-                policy,
-                crate::consts::VALID_POLICIES.join(", ")
-            )));
+            return Err(Error::InvalidArg {
+                arg: "policy",
+                reason: format!(
+                    "config: unknown policy '{policy}' (valid: {})",
+                    crate::consts::VALID_POLICIES.join(", ")
+                ),
+            });
         }
         Ok(())
     }

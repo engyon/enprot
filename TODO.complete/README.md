@@ -4,7 +4,8 @@ The authoritative list of enprot's outstanding work, organized by
 area and priority. Each entry links to a detailed spec file in this
 directory. The list is **MECE**: every work item lives in exactly
 one TODO, every TODO has one priority + one area, and together they
-cover everything from a 2026-07-31 audit of the codebase.
+cover everything from a 2026-07-31 audit of the codebase (refreshed
+2026-08-06).
 
 The earlier `TODO.completion/` directory is preserved as historical
 context — items there that are still open have been promoted into
@@ -14,6 +15,8 @@ removed from the active list and noted in `## Done` below.
 ## Status legend
 
 - **specified**: TODO file only; no implementation yet
+- **partial**: some implementation landed; remaining work tracked in the file
+- **scaffold**: foundation code in place; main feature still pending
 - **in-progress**: implementation started, on a branch
 - **done**: shipped to main
 
@@ -31,14 +34,14 @@ removed from the active list and noted in `## Done` below.
 | # | Title | Priority | Status |
 |---|---|---|---|
 | [01](01-ffi-pipeline-execution.md) | FFI: actually run the pipeline (not just validate JSON) | P0 | **done** (PR #212) |
-| [02](02-typed-errors.md) | Replace `Error::Msg(String)` with typed variants | P0 | **partial** — FFI classifier migrated to typed match (PR #215); ~47% of callsites still use `Error::msg` |
-| [03](03-sigstore-keyless-signing.md) | Sigstore keyless signing + verify path | P1 | **scaffold** — module + types land (PR #220); sigstore-rs integration pending |
-| [04](04-parallel-multi-file.md) | Parallelize multi-file processing with rayon | P1 | **foundation** — `CryptoPolicy: Send + Sync` (PR #214); rayon integration pending |
-| [05](05-streaming-io.md) | Streaming parse/transform/write for large files | P1 | specified |
-| [06](06-cas-backends.md) | S3 + Rekor CAS backends | P1 | specified |
-| [07](07-cli-rs-decomposition.md) | Decompose `src/cli.rs` into per-subcommand modules | P1 | specified |
-| [08](08-property-invariants.md) | Property-based invariant tests (round-trip, identity) | P1 | **partial** — store/fetch + CAS invariants (PR #219); encrypt/decrypt + commutativity pending |
-| [09](09-observability-tracing.md) | `tracing` subscriber + structured spans | P2 | specified |
+| [02](02-typed-errors.md) / [26](26-typed-errors-callsite-migration.md) | Typed errors: enum landed; ~106 callsites still use `Error::msg` | P0 | **partial** — variants + FFI shipped; callsite migration tracked in #26 |
+| [03](03-sigstore-keyless-signing.md) / [32](32-sigstore-keyless-fulcro-rekor.md) | Sigstore keyless signing + verify path | P1 | **partial** — local Ed25519 path shipped; Fulcio+Rekor integration tracked in #32 |
+| [04](04-parallel-multi-file.md) | Parallelize multi-file processing with scoped threads | P1 | **done** — `--jobs` flag shipped (#236); `CryptoPolicy: Send + Sync` (PR #214) |
+| [05](05-streaming-io.md) | Streaming parse/transform/write for large files | P1 | **partial** — `ParseEvent` + `Parser<R>` shipped (`src/etree/streaming.rs`); streaming transform + write pending |
+| [06](06-cas-backends.md) / [27](27-cas-backends-real.md) | S3 + IPFS + Rekor CAS backends | P1 | **scaffold** — `open_cas` dispatch + `MemoryCas` shipped; real backends tracked in #27 |
+| [07](07-cli-rs-decomposition.md) / [29](29-cli-decomposition-finalize.md) | Decompose `src/cli.rs` into per-subcommand modules | P1 | **partial** — 9 modules extracted, mod.rs 3260→1220 lines (#236); clap-struct + helper split tracked in #29 |
+| [08](08-property-invariants.md) | Property-based invariant tests (round-trip, identity) | P1 | **done** — store/fetch + CAS + encrypt/decrypt + idempotency + encrypt-store (PR #238) |
+| [09](09-observability-tracing.md) / [31](31-tracing-instrumentation-expand.md) | `tracing` subscriber + structured spans | P2 | **partial** — foundation + 3 instrumented fns shipped; full coverage tracked in #31 |
 | [10](10-dead-code-visibility-audit.md) | Dead code + module-visibility audit | P2 | specified |
 
 ### Tooling (P1–P2)
@@ -47,10 +50,10 @@ removed from the active list and noted in `## Done` below.
 |---|---|---|---|
 | [11](11-json-output-modes.md) | `--json` flag for `inspect` / `list` / `status` | P1 | **partial** — `inspect --format json` (PR #213); schemars-published JSON Schema pending |
 | [12](12-ept-directive-grammar.md) | Formal pest grammar + machine-readable EPT spec | P1 | **scaffold** — grammar file lands (PR #220); pest-as-parser integration pending |
-| [13](13-lsp-server.md) | LSP server (diagnostics, hover, goto-word) | P2 | specified |
-| [14](14-wasm-build.md) | WASM build for browser/edge runtimes | P2 | specified |
+| [13](13-lsp-server.md) | LSP server (diagnostics, hover, goto-word) | P2 | **scaffold** — minimal server ships (#236-era); feature surface pending |
+| [14](14-wasm-build.md) | WASM build for browser/edge runtimes | P2 | **scaffold** — feature flag exists; WASM-compatible crypto path pending |
 | [15](15-marketplace-publish.md) | Publish VS Code extension + GitHub Action to Marketplaces | P2 | **done** (PR #217) |
-| [16](16-ff-enprot-pipeline-ffi.md) | Standalone FFI subcommand runner (typed Config) | P2 | **foundation** — `RunConfig` typed dispatch (PR #218); serde derives pending |
+| [16](16-ff-enprot-pipeline-ffi.md) | Standalone FFI subcommand runner (typed Config) | P2 | **partial** — `RunConfig` typed dispatch (PR #218, moved to `cli/pipeline.rs` in #236); serde derives pending |
 
 ### Distribution (P2–P3)
 
@@ -65,7 +68,7 @@ removed from the active list and noted in `## Done` below.
 
 | # | Title | Priority | Status |
 |---|---|---|---|
-| [21](21-rsd-spec-conformance.md) | Ribose Standard for EPT — conformance test suite | P0 | specified |
+| [21](21-rsd-spec-conformance.md) / [30](30-rsd-conformance-expand.md) | Ribose Standard for EPT — conformance test suite | P0 | **partial** — 5 fixtures shipped (PR #219); expand to ~25 fixtures tracked in #30 |
 | [22](22-ept-wire-format-spec.md) | Machine-readable EPT wire-format spec (JSON Schema) | P1 | **done** (PR #216) |
 | [23](23-chain-anchor-spec.md) | CHAIN anchor format spec (verification rules, identity model) | P1 | **done** (PR #216) |
 | [24](24-extfield-schema-spec.md) | Extfield (`pbkdf:`/`cipher:`/`recipient:`) schema | P1 | **done** (PR #216) |
@@ -74,9 +77,9 @@ removed from the active list and noted in `## Done` below.
 
 | # | Title | Priority | Status |
 |---|---|---|---|
-| [25](25-capability-cli-surface.md) | Surface capability policy via CLI (`--cap-policy`, `--cap-attr`) | P2 | specified |
+| [25](25-capability-cli-surface.md) / [28](28-capability-policy-cli-surface.md) | Surface capability policy via CLI (`--cap-policy`, `--cap-attr`) | P2 | **partial** — `enprot cap` introspection (PR #219); policy surface tracked in #28 |
 
-## Done (this session, 2026-07-30/31)
+## Done (2026-07-30 — 2026-08-06)
 
 These items shipped during the multi-day adoption push and are no
 longer active:
@@ -92,14 +95,48 @@ longer active:
 - Language bindings matrix: Python, Node, Go, Ruby — all live
 - 14-recipe quickstart cookbook
 - 8 dependabot dep bumps merged (clap_complete, clap_mangen, toml, criterion, GHA action bumps)
+- **Stubs eliminated**: streaming parser, sigstore sign/verify, memory CAS (#236-era)
+- **CLI decomposition Phase 1**: 9 modules extracted, mod.rs 3260→1220 lines (#236)
+- **Windows CI fixed**: LNK1201 PDB race resolved via sequential enprot + enprot-ffi build (#237)
+- **OHOS CI fixed**: cross-compile librnp + deps via new ci/build-rnp-ohos.sh; QEMU for dockerharmony verify (#237)
+- **Property tests complete**: encrypt/decrypt/encrypt-store invariants (PR #238)
+- **Typed-error batch 1**: 5 new variants + 8 high-leverage callsite migrations + FFI classifier update (PR #239)
+- **Tracing expansion**: 8 crypto/CAS/PKI/ledger hot paths instrumented (PR #240)
+- **RSD conformance Phase 2**: 5 → 10 fixtures covering CHAIN/IMMUTABLE/MUTED/CONFLICT/INCLUDE (PR #241)
+- **ledger/anchor.rs typed-error migration**: 0 `Error::msg` callsites remaining (PR #242)
+- **Threat model + API stability + migration guide**: docs/threat-model.md, docs/api-stability.md, docs/migrations/{README,0.4-to-0.5}.md written (PR #251)
+- **Small-module typed-error migration**: 15 sites across capability/provenance/resolve/scm/cli/init/merge_cmd (PR #251)
+
+### Architecture (P1–P3) — continuation TODOs
+
+| # | Title | Priority | Status |
+|---|---|---|---|
+| [33](33-model-driven-config-validation.md) | Typed `EnprotConfig` with upfront validation | P1 | specified |
+| [34](34-capability-policy-as-rule-data.md) | `CapPolicy` as `Vec<Rule>` (OCP for policy rules) | P2 | specified |
+| [35](35-streaming-transform-write.md) | Streaming transform + write (finish #05) | P1 | specified |
+| [36](36-fuzz-targets.md) | `cargo fuzz` targets for parser + transform | P2 | specified |
+| [37](37-plugin-system.md) | Plugin ABI for custom CAS + transform backends | P3 | specified |
+| [38](38-opentelemetry-export.md) | OTLP export for distributed tracing + metrics | P3 | specified |
+| [39](39-threat-model-document.md) | Formal threat model document | P1 | **done** (PR #251) |
+| [40](40-api-stability-semver.md) | API stability classification + semver policy | P1 | **done** (PR #251) |
+| [41](41-benchmark-suite-expansion.md) | Pipeline / parallel / CAS / sigstore / memory benches | P2 | specified |
+| [42](42-migration-guide.md) | `docs/migrations/` + `enprot doctor` command | P2 | **partial** — docs/migrations/ scaffold + 0.4-to-0.5 retrospective (PR #251); `enprot doctor` still pending |
+| [43](43-mutation-testing.md) | Mutation testing with cargo-mutants | P2 | specified |
+| [44](44-snapshot-testing.md) | Snapshot testing harness (insta) | P2 | specified |
+| [45](45-reproducibility-verification.md) | Reproducibility verification | P1 | specified |
+| [46](46-cross-platform-matrix.md) | Cross-platform CI matrix expansion (arm64 native) | P2 | specified |
+| [47](47-ios-android-bindings.md) | iOS + Android mobile bindings | P3 | specified |
+| [48](48-mdbook-documentation-site.md) | mdbook documentation site | P2 | specified |
+| [49](49-code-coverage-gate.md) | Code coverage gate | P2 | specified |
 
 ## Reading order for new contributors
 
-1. [01-ffi-pipeline-execution](01-ffi-pipeline-execution.md) — biggest user-visible gap; concrete code work.
-2. [02-typed-errors](02-typed-errors.md) — architectural foundation for many of the other items.
-3. [03-sigstore-keyless-signing](03-sigstore-keyless-signing.md) — provenance story for CI.
-4. [07-cli-rs-decomposition](07-cli-rs-decomposition.md) — make the codebase navigable.
-5. [21-rsd-spec-conformance](21-rsd-spec-conformance.md) — single source of truth for behavior.
+1. [26-typed-errors-callsite-migration](26-typed-errors-callsite-migration.md) — concrete code work; mechanical; ~95 sites remain.
+2. [29-cli-decomposition-finalize](29-cli-decomposition-finalize.md) — make the codebase navigable (post-#236).
+3. [33-model-driven-config-validation](33-model-driven-config-validation.md) — architectural foundation; replace ad-hoc validation with a typed model.
+4. [30-rsd-conformance-expand](30-rsd-conformance-expand.md) — single source of truth for behavior; 10/25 fixtures done.
+5. [39-threat-model-document](39-threat-model-document.md) — security review foundation.
+6. [40-api-stability-semver](40-api-stability-semver.md) — defines what users can depend on.
 
 ## Maintenance
 
@@ -109,3 +146,15 @@ longer active:
 - A TODO that proves to be the wrong shape gets superseded: rename to
   `XX-name.superseded.md`, write a one-paragraph explanation in the
   body, and add the replacement to the index.
+- **Split vs extend**: when a TODO grows beyond ~500 lines of spec,
+  prefer splitting it (e.g. #02 → #02 + #26) over bloating the file.
+  The original keeps the high-level design; the new one details the
+  remaining work.
+- **OCP test for new TODOs**: a new TODO should describe an extension
+  point that doesn't require modifying existing code. If the spec
+  requires touching N files just to add one new behavior, the design
+  is wrong — rework it before landing.
+- **Split vs extend**: when a TODO grows beyond ~500 lines of spec,
+  prefer splitting it (e.g. #02 → #02 + #26) over bloating the file.
+  The original keeps the high-level design; the new one details the
+  remaining work.

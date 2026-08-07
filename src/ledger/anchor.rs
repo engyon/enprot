@@ -47,7 +47,7 @@ impl AnchorHash {
     pub fn from_hex(s: &str) -> Result<Self> {
         let bytes = hex::decode(s)?;
         if bytes.len() != 32 {
-            return Err(Error::msg(format!(
+            return Err(Error::Hex(format!(
                 "anchor hash must be 32 bytes (64 hex chars), got {}",
                 bytes.len()
             )));
@@ -116,16 +116,14 @@ impl FromStr for SignerId {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let (alg_str, fp_str) = s.split_once(':').ok_or_else(|| {
-            Error::msg(format!(
-                "malformed signer id '{}', expected '<alg>:<fp>'",
-                s
-            ))
+        let (alg_str, fp_str) = s.split_once(':').ok_or_else(|| Error::Extfield {
+            field: "signer",
+            reason: format!("malformed signer id '{s}', expected '<alg>:<fp>'"),
         })?;
         let alg: SigAlgKind = alg_str.parse()?;
         let fp_bytes = hex::decode(fp_str)?;
         if fp_bytes.len() != 32 {
-            return Err(Error::msg(format!(
+            return Err(Error::Hex(format!(
                 "signer fingerprint must be 32 bytes, got {}",
                 fp_bytes.len()
             )));
@@ -241,16 +239,20 @@ impl Anchor {
     ) -> Result<SignedAnchor> {
         let actual_fp = KeyFp::from_pem(pubkey_pem)?;
         if actual_fp != self.signer.fp {
-            return Err(Error::msg(format!(
-                "signer fingerprint mismatch: anchor says {}, pubkey PEM is {}",
-                self.signer.fp, actual_fp
-            )));
+            return Err(Error::SignatureVerify {
+                key_id: format!(
+                    "fingerprint mismatch: anchor={}, pubkey={}",
+                    self.signer.fp, actual_fp
+                ),
+            });
         }
         if alg != self.signer.alg {
-            return Err(Error::msg(format!(
-                "signer algorithm mismatch: anchor says {}, caller passed {}",
-                self.signer.alg, alg
-            )));
+            return Err(Error::SignatureVerify {
+                key_id: format!(
+                    "algorithm mismatch: anchor={}, caller={}",
+                    self.signer.alg, alg
+                ),
+            });
         }
         let mut rng = botan::RandomNumberGenerator::new_system().map_err(Error::botan)?;
         let sig = pki::sign(alg, privkey_pem, &self.signing_bytes(), &mut rng)?;
@@ -327,10 +329,12 @@ impl SignedAnchor {
     pub fn verify(&self, pubkey_pem: &str) -> Result<()> {
         let actual_fp = KeyFp::from_pem(pubkey_pem)?;
         if actual_fp != self.anchor.signer.fp {
-            return Err(Error::msg(format!(
-                "verifier fingerprint mismatch: anchor says {}, supplied pubkey is {}",
-                self.anchor.signer.fp, actual_fp
-            )));
+            return Err(Error::SignatureVerify {
+                key_id: format!(
+                    "fingerprint mismatch: anchor={}, pubkey={}",
+                    self.anchor.signer.fp, actual_fp
+                ),
+            });
         }
         let ok = pki::verify(
             self.anchor.signer.alg,
@@ -341,7 +345,9 @@ impl SignedAnchor {
         if ok {
             Ok(())
         } else {
-            Err(Error::msg("signature verification failed"))
+            Err(Error::SignatureVerify {
+                key_id: self.anchor.signer.to_string(),
+            })
         }
     }
 
@@ -355,25 +361,21 @@ impl SignedAnchor {
     {
         // Verify primary first.
         let primary_fp_hex = self.anchor.signer.fp.to_hex();
-        let primary_pem = resolver(&primary_fp_hex).ok_or_else(|| {
-            Error::msg(format!(
-                "no pubkey registered for primary signer {}",
-                primary_fp_hex
-            ))
+        let primary_pem = resolver(&primary_fp_hex).ok_or_else(|| Error::SignatureVerify {
+            key_id: format!("no pubkey registered for primary signer {primary_fp_hex}"),
         })?;
         self.verify(&primary_pem)?;
         // Then each co-signer in order.
         for (cs, cosig) in self.anchor.co_signers.iter().zip(self.co_signatures.iter()) {
             let fp_hex = cs.fp.to_hex();
-            let pem = resolver(&fp_hex).ok_or_else(|| {
-                Error::msg(format!("no pubkey registered for co-signer {}", fp_hex))
+            let pem = resolver(&fp_hex).ok_or_else(|| Error::SignatureVerify {
+                key_id: format!("no pubkey registered for co-signer {fp_hex}"),
             })?;
             let ok = pki::verify(cs.alg, &pem, &self.anchor.signing_bytes(), cosig)?;
             if !ok {
-                return Err(Error::msg(format!(
-                    "co-signer {} signature verification failed",
-                    fp_hex
-                )));
+                return Err(Error::SignatureVerify {
+                    key_id: format!("co-signer {fp_hex} signature verification failed"),
+                });
             }
         }
         Ok(())
@@ -388,10 +390,11 @@ impl SignedAnchor {
         // otherwise the primary signer signed different bytes than
         // the co-signer did, and verification will fail.
         if !self.anchor.co_signers.contains(&co_signer) {
-            return Err(Error::msg(format!(
-                "co-signer {} not in anchor.co_signers; append it before any signature is produced",
-                co_signer
-            )));
+            return Err(Error::SignatureVerify {
+                key_id: format!(
+                    "co-signer {co_signer} not in anchor.co_signers; append it before any signature is produced"
+                ),
+            });
         }
         self.co_signatures.push(signature);
         Ok(())
@@ -466,9 +469,10 @@ impl SignedAnchor {
     /// single-signer fields, the rest populate `co_signers` and
     /// `co_signatures`. Optional: `ts`, `mut`, `parents`.
     pub fn from_extfields(extfields: &std::collections::BTreeMap<String, String>) -> Result<Self> {
-        let payload_str = extfields
-            .get("payload")
-            .ok_or_else(|| Error::msg("CHAIN missing required 'payload' field"))?;
+        let payload_str = extfields.get("payload").ok_or_else(|| Error::Extfield {
+            field: "payload",
+            reason: "CHAIN missing required 'payload' field".to_string(),
+        })?;
         let payload_hash = PayloadHash::from_hex(payload_str)?;
 
         let parents: Vec<AnchorHash> = extfields
@@ -491,9 +495,10 @@ impl SignedAnchor {
         // older producers and consumers stay consistent.
         let (signer, co_signers, signature, co_signatures) =
             if let Some(signers_str) = extfields.get("signers") {
-                let sigs_str = extfields
-                    .get("sigs")
-                    .ok_or_else(|| Error::msg("multi-sig CHAIN missing 'sigs' field"))?;
+                let sigs_str = extfields.get("sigs").ok_or_else(|| Error::Extfield {
+                    field: "sigs",
+                    reason: "multi-sig CHAIN missing 'sigs' field".to_string(),
+                })?;
                 let signer_ids: Vec<SignerId> = signers_str
                     .split(',')
                     .map(|s| s.parse::<SignerId>())
@@ -503,14 +508,20 @@ impl SignedAnchor {
                     .map(|s| hex::decode(s).map_err(Error::from))
                     .collect::<Result<Vec<_>>>()?;
                 if signer_ids.len() != sigs.len() {
-                    return Err(Error::msg(format!(
-                        "multi-sig CHAIN: {} signers vs {} sigs (must match)",
-                        signer_ids.len(),
-                        sigs.len()
-                    )));
+                    return Err(Error::Extfield {
+                        field: "signers",
+                        reason: format!(
+                            "multi-sig CHAIN: {} signers vs {} sigs (must match)",
+                            signer_ids.len(),
+                            sigs.len()
+                        ),
+                    });
                 }
                 if signer_ids.is_empty() {
-                    return Err(Error::msg("multi-sig CHAIN: empty signers list"));
+                    return Err(Error::Extfield {
+                        field: "signers",
+                        reason: "multi-sig CHAIN: empty signers list".to_string(),
+                    });
                 }
                 let primary_signer = signer_ids[0].clone();
                 let primary_sig = sigs[0].clone();
@@ -518,13 +529,15 @@ impl SignedAnchor {
                 let co_signatures = sigs[1..].to_vec();
                 (primary_signer, co_signers, primary_sig, co_signatures)
             } else {
-                let signer_str = extfields
-                    .get("signer")
-                    .ok_or_else(|| Error::msg("CHAIN missing required 'signer' field"))?;
+                let signer_str = extfields.get("signer").ok_or_else(|| Error::Extfield {
+                    field: "signer",
+                    reason: "CHAIN missing required 'signer' field".to_string(),
+                })?;
                 let signer: SignerId = signer_str.parse()?;
-                let sig_str = extfields
-                    .get("sig")
-                    .ok_or_else(|| Error::msg("CHAIN missing required 'sig' field"))?;
+                let sig_str = extfields.get("sig").ok_or_else(|| Error::Extfield {
+                    field: "sig",
+                    reason: "CHAIN missing required 'sig' field".to_string(),
+                })?;
                 let signature = hex::decode(sig_str)?;
                 (signer, Vec::new(), signature, Vec::new())
             };

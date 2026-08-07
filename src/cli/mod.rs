@@ -1075,8 +1075,10 @@ pub(super) fn build_anchor_config(
     if !anchor_flag {
         return Ok(etree::AnchorConfig::disabled());
     }
-    let signer_path =
-        signer_path.ok_or_else(|| Error::msg("--anchor requires --signer <PRIV.pem>"))?;
+    let signer_path = signer_path.ok_or_else(|| Error::InvalidArg {
+        arg: "anchor",
+        reason: "--anchor requires --signer <PRIV.pem>".to_string(),
+    })?;
     let priv_pem = fs::read_to_string(signer_path)?;
     let op = op_kind
         .map(|k| k.label())
@@ -1159,10 +1161,10 @@ fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> 
         if let Some(p) = explicit_policy.as_deref()
             && p != "nist"
         {
-            return Err(Error::Msg(format!(
-                "Policy setting of '{}' conflicts with --fips",
-                p
-            )));
+            return Err(Error::InvalidArg {
+                arg: "--policy",
+                reason: format!("Policy setting of '{p}' conflicts with --fips"),
+            });
         }
         policy_name = "nist".to_string();
     }

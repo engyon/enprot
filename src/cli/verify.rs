@@ -41,7 +41,9 @@ pub fn run(common: CommonArgs, output: OutputArgs) -> Result<()> {
             Box::new(BufReader::new(std::io::stdin()))
         } else {
             Box::new(BufReader::new(File::open(path_in).map_err(|e| {
-                Error::Msg(format!("Failed to open {}: {}", path_in, e))
+                Error::Io(std::io::Error::other(format!(
+                    "Failed to open {path_in}: {e}"
+                )))
             })?))
         };
         paops.runtime.fname = path_in.clone();
@@ -66,7 +68,7 @@ pub fn run(common: CommonArgs, output: OutputArgs) -> Result<()> {
     }
 
     if issues > 0 {
-        return Err(Error::Msg(format!("{} issue(s) found", issues)));
+        return Err(Error::Cas(format!("{issues} issue(s) found")));
     }
     Ok(())
 }

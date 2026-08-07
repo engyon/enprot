@@ -197,9 +197,18 @@ fn classify_error(err: &enprot::Error) -> c_int {
         | Error::Cipher(_)
         | Error::Pbkdf(_)
         | Error::Policy(_)
-        | Error::PolicyViolation { .. } => ENPROT_ERR_CRYPTO,
-        Error::Parse { .. } | Error::Phc(_) | Error::Hex(_) | Error::Base64(_) => ENPROT_ERR_PARSE,
-        Error::Json(_) | Error::Msg(_) => ENPROT_ERR_INVALID,
+        | Error::PolicyViolation { .. }
+        | Error::SignatureVerify { .. } => ENPROT_ERR_CRYPTO,
+        Error::Parse { .. }
+        | Error::Phc(_)
+        | Error::Hex(_)
+        | Error::Base64(_)
+        | Error::Extfield { .. }
+        | Error::BlockShape { .. } => ENPROT_ERR_PARSE,
+        Error::Json(_)
+        | Error::Msg(_)
+        | Error::InvalidArg { .. }
+        | Error::ConflictResolve { .. } => ENPROT_ERR_INVALID,
     }
 }
 

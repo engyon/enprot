@@ -1,0 +1,7 @@
+Some plain content before.
+// <( CONFLICT WORD_A )>
+content from our side
+// <( OURS )>
+content from their side
+// <( END WORD_A )>
+More plain content after.

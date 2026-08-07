@@ -1,0 +1,8 @@
+// <( BEGIN WORD_A )>
+content for word A
+// <( END WORD_A )>
+plain text between
+// <( BEGIN WORD_B )>
+content for word B
+// <( END WORD_B )>
+final plain text

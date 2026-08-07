@@ -68,9 +68,10 @@ pub fn encrypt(
     rng: &mut botan::RandomNumberGenerator,
 ) -> Result<(Vec<u8>, BTreeMap<String, String>)> {
     if recipient_pub_pems.is_empty() {
-        return Err(Error::msg(
-            "multi-recipient encrypt: no recipients supplied",
-        ));
+        return Err(Error::InvalidArg {
+            arg: "recipients",
+            reason: "multi-recipient encrypt: no recipients supplied".to_string(),
+        });
     }
 
     let enc = cipher::encryption(cipher_alg)?;
@@ -92,12 +93,14 @@ pub fn encrypt(
         match &shared_seed {
             None => shared_seed = Some(shared.clone()),
             Some(existing) if existing != &shared => {
-                return Err(Error::msg(
-                    "ML-KEM produced different shared secrets for different recipients; \
+                return Err(Error::InvalidArg {
+                    arg: "recipients",
+                    reason: "ML-KEM produced different shared secrets for different recipients; \
                      this indicates the recipient pubkeys are not for the same group key \
                      (local-files mode requires all recipients to share a group key — \
-                     Confium handles per-recipient threshold coordination)",
-                ));
+                     Confium handles per-recipient threshold coordination)"
+                        .to_string(),
+                });
             }
             _ => {}
         }
@@ -142,17 +145,16 @@ pub fn decrypt(ct: &[u8], priv_pem: &str, extfields: &BTreeMap<String, String>) 
     let pub_pem = botan_pub.pem_encode().map_err(Error::botan)?;
     let priv_fp = crate::capability::KeyFp::from_pem(&pub_pem)?;
     let field = format!("recipient-mlkem-{}", priv_fp.to_hex());
-    let kem_ct_b64 = extfields.get(&field).ok_or_else(|| {
-        Error::msg(format!(
-            "no recipient entry for fingerprint {} in this Encrypted block",
-            priv_fp
-        ))
+    let kem_ct_b64 = extfields.get(&field).ok_or_else(|| Error::InvalidArg {
+        arg: "key",
+        reason: format!("no recipient entry for fingerprint {priv_fp} in this Encrypted block"),
     })?;
     let kem_ct = crate::utils::base64_decode(kem_ct_b64)
-        .map_err(|e| Error::msg(format!("invalid base64 in recipient ct: {e}")))?;
-    let cipher_str = extfields
-        .get("cipher")
-        .ok_or_else(|| Error::msg("Encrypted block missing 'cipher' field"))?;
+        .map_err(|e| Error::Base64(format!("invalid base64 in recipient ct: {e}")))?;
+    let cipher_str = extfields.get("cipher").ok_or_else(|| Error::Extfield {
+        field: "cipher",
+        reason: "Encrypted block missing 'cipher' field".to_string(),
+    })?;
     let (cipher_alg, iv) = crate::cipher::parse_cipher_extfield(cipher_str)?;
     let key_len = cipher::decryption(&cipher_alg)?.key_len_max();
     let shared_seed = pki::kem_decapsulate(priv_pem, &kem_ct, 32)?;
