@@ -181,10 +181,10 @@ pub fn run(cfg: RunConfig) -> Result<()> {
         if let Some(p) = explicit_policy.as_deref()
             && p != "nist"
         {
-            return Err(Error::Msg(format!(
-                "Policy setting of '{}' conflicts with --fips",
-                p
-            )));
+            return Err(Error::InvalidArg {
+                arg: "--policy",
+                reason: format!("Policy setting of '{p}' conflicts with --fips"),
+            });
         }
         policy_name = "nist".to_string();
     }
@@ -356,7 +356,7 @@ pub fn run(cfg: RunConfig) -> Result<()> {
                 .collect();
             for h in handles {
                 h.join()
-                    .map_err(|_| Error::msg("worker thread panicked"))??;
+                    .map_err(|_| Error::Io(std::io::Error::other("worker thread panicked")))??;
             }
             Ok(())
         })
@@ -429,10 +429,9 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
         match std::fs::File::open(path_in) {
             Ok(f) => Box::new(BufReader::new(f)),
             Err(e) => {
-                return Err(Error::Msg(format!(
-                    "Failed to open {} for reading: {}",
-                    path_in, e
-                )));
+                return Err(Error::Io(std::io::Error::other(format!(
+                    "Failed to open {path_in} for reading: {e}"
+                ))));
             }
         }
     };
@@ -444,13 +443,13 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
     };
 
     let tree_in = etree::parse(reader_in, paops)
-        .map_err(|e| Error::Msg(format!("{} in {}, aborting.", e, path_in)))?;
+        .map_err(|e| Error::Io(std::io::Error::other(format!("{e} in {path_in}, aborting"))))?;
 
     if paops.io.verbose {
         eprintln!("Transforming {}", path_in);
     }
     let mut tree_out = etree::transform(&tree_in, paops)
-        .map_err(|e| Error::Msg(format!("{} in {}, aborting.", e, path_in)))?;
+        .map_err(|e| Error::Io(std::io::Error::other(format!("{e} in {path_in}, aborting"))))?;
 
     // Optionally append a CHAIN block signing the new file state.
     // Must happen BEFORE tree_write so the anchor lands in the output.
@@ -469,16 +468,18 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
         match std::fs::File::create(path_out) {
             Ok(f) => Box::new(BufWriter::new(f)),
             Err(e) => {
-                return Err(Error::Msg(format!(
-                    "Failed to open {} for writing: {}",
-                    path_out, e
-                )));
+                return Err(Error::Io(std::io::Error::other(format!(
+                    "Failed to open {path_out} for writing: {e}"
+                ))));
             }
         }
     };
 
-    etree::tree_write(&mut writer_out, &tree_out, paops)
-        .map_err(|e| Error::Msg(format!("Write to {} failed: {}", path_out, e)))?;
+    etree::tree_write(&mut writer_out, &tree_out, paops).map_err(|e| {
+        Error::Io(std::io::Error::other(format!(
+            "Write to {path_out} failed: {e}"
+        )))
+    })?;
     Ok(())
 }
 
@@ -503,7 +504,10 @@ fn build_chain_anchor_node(
         .anchor
         .signer_priv_pem
         .clone()
-        .ok_or_else(|| Error::msg("anchor config missing signer_priv_pem"))?;
+        .ok_or_else(|| Error::InvalidArg {
+            arg: "anchor",
+            reason: "anchor config missing signer_priv_pem".to_string(),
+        })?;
 
     // Derive pubkey from privkey; compute fingerprint.
     let botan_priv = botan::Privkey::load_pem(&priv_pem).map_err(Error::botan)?;

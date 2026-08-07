@@ -27,9 +27,10 @@ pub fn keygen(_common: CommonArgs, a: KeygenSubcmd) -> Result<()> {
 
 pub fn sign(_common: CommonArgs, a: SignSubcmd) -> Result<()> {
     if a.key.is_empty() {
-        return Err(Error::Msg(
-            "sign: at least one --key-file is required".into(),
-        ));
+        return Err(Error::InvalidArg {
+            arg: "key-file",
+            reason: "sign: at least one --key-file is required".to_string(),
+        });
     }
     let kind: pki::SigAlgKind = a.alg.parse()?;
     let msg = read_file_or_stdin(a.input.as_deref())?;
@@ -82,18 +83,20 @@ pub fn sign(_common: CommonArgs, a: SignSubcmd) -> Result<()> {
 
 pub fn verify_sig(_common: CommonArgs, a: VerifySigSubcmd) -> Result<()> {
     if a.key.is_empty() {
-        return Err(Error::Msg(
-            "verify-sig: at least one --key-file is required".into(),
-        ));
+        return Err(Error::InvalidArg {
+            arg: "key-file",
+            reason: "verify-sig: at least one --key-file is required".to_string(),
+        });
     }
     let kind: pki::SigAlgKind = a.alg.parse()?;
     let sig_bytes = match (&a.sig, &a.input) {
         (Some(p), _) => fs::read(p)?,
         (None, Some(input)) => fs::read(append_sig_ext(input))?,
         (None, None) => {
-            return Err(Error::Msg(
-                "verify-sig: no signature file or input file given".into(),
-            ));
+            return Err(Error::InvalidArg {
+                arg: "sig",
+                reason: "verify-sig: no signature file or input file given".to_string(),
+            });
         }
     };
     let msg = read_file_or_stdin(a.input.as_deref())?;
@@ -105,21 +108,28 @@ pub fn verify_sig(_common: CommonArgs, a: VerifySigSubcmd) -> Result<()> {
         return if ok {
             Ok(())
         } else {
-            Err(Error::Msg("signature verification failed".into()))
+            Err(Error::SignatureVerify {
+                key_id: "verify-sig".to_string(),
+            })
         };
     }
 
     // Multi-sig bundle path. Parse the bundle and verify each
     // entry against the supplied pubkeys (matched by fingerprint).
-    let body = String::from_utf8(sig_bytes)
-        .map_err(|e| Error::Msg(format!("signature bundle is not UTF-8: {e}")))?;
+    let body = String::from_utf8(sig_bytes).map_err(|e| Error::InvalidArg {
+        arg: "sig",
+        reason: format!("signature bundle is not UTF-8: {e}"),
+    })?;
     let bundle = pki::SigBundle::parse(&body)?;
     if bundle.entries.len() != a.key.len() {
-        return Err(Error::Msg(format!(
-            "verify-sig: {} signatures in bundle but {} pubkeys supplied",
-            bundle.entries.len(),
-            a.key.len()
-        )));
+        return Err(Error::InvalidArg {
+            arg: "sig",
+            reason: format!(
+                "verify-sig: {} signatures in bundle but {} pubkeys supplied",
+                bundle.entries.len(),
+                a.key.len()
+            ),
+        });
     }
     // Build fp → pem lookup from the supplied pubkeys.
     let mut by_fp: HashMap<String, String> = HashMap::new();
@@ -129,15 +139,14 @@ pub fn verify_sig(_common: CommonArgs, a: VerifySigSubcmd) -> Result<()> {
         by_fp.insert(fp.to_hex(), pem);
     }
     for entry in &bundle.entries {
-        let pem = by_fp
-            .get(&entry.fp)
-            .ok_or_else(|| Error::Msg(format!("no pubkey for fp {}", entry.fp)))?;
+        let pem = by_fp.get(&entry.fp).ok_or_else(|| Error::SignatureVerify {
+            key_id: format!("no pubkey for fp {}", entry.fp),
+        })?;
         let ok = pki::verify(entry.alg, pem, &msg, &entry.sig)?;
         if !ok {
-            return Err(Error::Msg(format!(
-                "signature verification failed for fp {}",
-                entry.fp
-            )));
+            return Err(Error::SignatureVerify {
+                key_id: format!("fp {}", entry.fp),
+            });
         }
     }
     Ok(())

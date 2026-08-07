@@ -73,7 +73,9 @@ pub(super) fn run(common: CommonArgs, a: VerifyChainSubcmd) -> Result<()> {
     }
 
     if any_failure {
-        Err(Error::msg("one or more files failed chain verification"))
+        Err(Error::SignatureVerify {
+            key_id: "one or more files failed chain verification".to_string(),
+        })
     } else {
         Ok(())
     }
@@ -196,7 +198,9 @@ fn verify_chain_one_file(
         Box::new(BufReader::new(std::io::stdin()))
     } else {
         Box::new(BufReader::new(File::open(path_in).map_err(|e| {
-            Error::Msg(format!("Failed to open {}: {}", path_in, e))
+            Error::Io(std::io::Error::other(format!(
+                "Failed to open {path_in}: {e}"
+            )))
         })?))
     };
     let tree = etree::parse(reader, paops)?;
@@ -238,11 +242,13 @@ fn verify_chain_one_file(
     errors.extend(payload_errors);
 
     if !errors.is_empty() {
-        return Err(Error::msg(format!(
-            "{} anchor(s) failed verification: {}",
-            errors.len(),
-            errors.join("; ")
-        )));
+        return Err(Error::SignatureVerify {
+            key_id: format!(
+                "{} anchor(s) failed verification: {}",
+                errors.len(),
+                errors.join("; ")
+            ),
+        });
     }
     Ok(())
 }

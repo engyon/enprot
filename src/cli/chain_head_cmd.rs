@@ -50,10 +50,9 @@ pub fn pin(a: PinSubcmd) -> Result<()> {
         println!("OK");
         Ok(())
     } else {
-        Err(Error::msg(format!(
-            "chain head mismatch: expected {}, got {}",
-            a.expected, head
-        )))
+        Err(Error::SignatureVerify {
+            key_id: format!("chain head mismatch: expected {}, got {}", a.expected, head),
+        })
     }
 }
 
