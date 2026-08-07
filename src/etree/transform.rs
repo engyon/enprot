@@ -37,7 +37,10 @@ use crate::prot;
 #[tracing::instrument(skip(text_in, paops))]
 pub fn transform(text_in: &TextTree, paops: &mut crate::etree::ParseOps) -> Result<TextTree> {
     if paops.max_depth != 0 && paops.runtime.level > paops.max_depth {
-        return Err(Error::Msg("Maximum recursion depth!".into()));
+        return Err(Error::InvalidArg {
+            arg: "max_depth",
+            reason: "Maximum recursion depth exceeded".to_string(),
+        });
     }
     let mut out = Vec::with_capacity(text_in.len());
     for node in text_in {
@@ -90,11 +93,10 @@ fn transform_begin_end(
         let (ct, extfields) = if !paops.crypto.recipient_pubs.is_empty() {
             // KEM mode (TODO.roadmap/60): encrypt to recipient pubkeys
             // via ML-KEM instead of password-based PBKDF.
-            let rng = paops
-                .crypto
-                .rng
-                .as_mut()
-                .ok_or(Error::Msg("Missing RNG for KEM encrypt".into()))?;
+            let rng = paops.crypto.rng.as_mut().ok_or(Error::InvalidArg {
+                arg: "rng",
+                reason: "Missing RNG for KEM encrypt".to_string(),
+            })?;
             crate::kemenc::encrypt(
                 pt,
                 &paops.crypto.recipient_pubs,
@@ -182,11 +184,11 @@ fn transform_encrypted(
                 .recipient_privkeys
                 .get(keyw)
                 .or_else(|| paops.crypto.recipient_privkeys.values().next())
-                .ok_or_else(|| {
-                    Error::Msg(format!(
-                        "KEM-mode block for WORD {} but no --key-file privkey supplied",
-                        keyw
-                    ))
+                .ok_or_else(|| Error::InvalidArg {
+                    arg: "key-file",
+                    reason: format!(
+                        "KEM-mode block for WORD {keyw} but no --key-file privkey supplied"
+                    ),
                 })?;
             crate::kemenc::decrypt(&ct, priv_pem, extfields)?
         } else {

@@ -85,7 +85,7 @@ pub(crate) struct WordPolicy {
 
 impl CapPolicy {
     pub fn from_toml_str(s: &str) -> Result<Self> {
-        toml::from_str(s).map_err(|e| Error::msg(format!("policy parse: {e}")))
+        toml::from_str(s).map_err(|e| Error::Json(format!("policy parse: {e}")))
     }
 
     pub fn load_file(path: &Path) -> Result<Self> {

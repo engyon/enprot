@@ -172,10 +172,9 @@ impl AnchorDag {
             let fp_hex = signed.anchor.signer.fp.to_hex();
             let result = match pubkey_resolver(&fp_hex) {
                 Some(pubkey_pem) => signed.verify(&pubkey_pem),
-                None => Err(Error::msg(format!(
-                    "no pubkey registered for signer fingerprint {}",
-                    fp_hex
-                ))),
+                None => Err(Error::SignatureVerify {
+                    key_id: format!("no pubkey registered for signer fingerprint {fp_hex}"),
+                }),
             };
             let (ok, error) = match result {
                 Ok(()) => (true, None),

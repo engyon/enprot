@@ -68,14 +68,14 @@ pub fn verify_inline(ctx: &rnp::Context, signed_msg: &[u8]) -> Result<()> {
     if result.any_valid().map_err(rnp_err)? {
         Ok(())
     } else {
-        Err(Error::msg(
-            "OpenPGP signature verification failed: no valid signatures",
-        ))
+        Err(Error::SignatureVerify {
+            key_id: "OpenPGP inline signature".to_string(),
+        })
     }
 }
 
 fn rnp_err(e: rnp::Error) -> Error {
-    Error::msg(format!("OpenPGP (rnp): {e}"))
+    Error::Botan(format!("OpenPGP (rnp): {e}"))
 }
 
 #[cfg(test)]

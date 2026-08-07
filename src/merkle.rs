@@ -82,7 +82,7 @@ impl LeafHash {
     pub fn from_hex(s: &str) -> Result<Self> {
         let bytes = hex::decode(s)?;
         if bytes.len() != 32 {
-            return Err(Error::msg(format!(
+            return Err(Error::Hex(format!(
                 "leaf hash must be 32 bytes, got {}",
                 bytes.len()
             )));
@@ -230,7 +230,10 @@ impl MerkleTree {
     /// The root hash. `Err` for empty trees.
     pub fn root(&self) -> Result<MerkleRoot> {
         if self.is_empty() {
-            return Err(Error::msg("Merkle tree is empty; no root"));
+            return Err(Error::InvalidArg {
+                arg: "merkle_tree",
+                reason: "Merkle tree is empty; no root".to_string(),
+            });
         }
         let top = self.levels.last().unwrap();
         debug_assert_eq!(top.len(), 1);
@@ -246,15 +249,20 @@ impl MerkleTree {
     /// `idx` is out of bounds or the tree is empty.
     pub fn proof(&self, idx: usize) -> Result<MerkleProof> {
         if self.is_empty() {
-            return Err(Error::msg("Merkle tree is empty; no proofs"));
+            return Err(Error::InvalidArg {
+                arg: "merkle_tree",
+                reason: "Merkle tree is empty; no proofs".to_string(),
+            });
         }
         let leaves = self.leaves();
         if idx >= leaves.len() {
-            return Err(Error::msg(format!(
-                "leaf index {} out of bounds (tree has {} leaves)",
-                idx,
-                leaves.len()
-            )));
+            return Err(Error::InvalidArg {
+                arg: "idx",
+                reason: format!(
+                    "leaf index {idx} out of bounds (tree has {} leaves)",
+                    leaves.len()
+                ),
+            });
         }
         let leaf = leaves[idx];
         let mut steps = Vec::new();
