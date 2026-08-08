@@ -1032,7 +1032,22 @@ where
     F: FnOnce(CommonArgs) -> Result<()>,
 {
     let common = apply_config(common)?;
+    validate_common(&common);
     f(common)
+}
+
+/// Semantic validation of the fully-resolved common args. Runs after
+/// config merge so TOML-supplied values (e.g. `auto_anchor = true`)
+/// are considered. Prints warnings to stderr (not errors — the user
+/// might intentionally set --signer globally in config and only use
+/// --anchor on specific runs). Hard errors are returned.
+fn validate_common(common: &CommonArgs) {
+    if common.signer.is_some() && !common.anchor {
+        eprintln!(
+            "Warning: --signer is set but --anchor is not. \
+             The signer key will not be used for this operation."
+        );
+    }
 }
 
 /// (clap `default_value_t`) are treated as "not explicitly set" — they
