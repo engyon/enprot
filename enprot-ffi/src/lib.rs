@@ -192,9 +192,15 @@ fn json_to_argv(config: &serde_json::Value) -> Result<Vec<String>, String> {
 fn classify_error(err: &enprot::Error) -> c_int {
     use enprot::Error;
     match err {
-        Error::Io(_) | Error::Cas(_) => ENPROT_ERR_IO,
+        Error::Io(_)
+        | Error::Cas(_)
+        | Error::CasHashInvalid { .. }
+        | Error::CasHashMismatch { .. }
+        | Error::CasNotFound { .. }
+        | Error::CasUnsupported { .. } => ENPROT_ERR_IO,
         Error::Botan(_)
         | Error::Cipher(_)
+        | Error::CipherUnknown { .. }
         | Error::Pbkdf(_)
         | Error::Policy(_)
         | Error::PolicyViolation { .. }
