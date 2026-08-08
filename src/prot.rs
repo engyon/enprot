@@ -40,16 +40,8 @@ pub fn encrypt(
     cache: &mut Option<PBKDFCache>,
     policy: &dyn CryptoPolicy,
 ) -> Result<(Vec<u8>, BTreeMap<String, String>)> {
-    if pbkdfopts.alg == "legacy" {
-        eprintln!(
-            "Warning: --pbkdf legacy uses an unsalted SHA3-512 truncation and is \
-             retained only for compatibility with old blobs; use argon2, scrypt, \
-             or pbkdf2-sha{{256,512}} for new encryption."
-        );
-    }
-    // Validate cipher algorithm against the policy BEFORE creating the
-    // backend cipher. This way policy rejection fires even when the cipher
-    // backend is built without the requested algorithm.
+    warn_legacy_pbkdf(&pbkdfopts.alg);
+
     policy
         .check_cipher_alg(&cipheropts.alg)
         .map_err(Error::Policy)?;
@@ -63,47 +55,9 @@ pub fn encrypt(
         extfields.insert("pbkdf".to_string(), p);
     }
 
-    let is_det = cipheropts.alg.ends_with("-det");
-    let needs_iv = !cipheropts.alg.starts_with("aes-256-siv");
+    let (key, iv) = compute_iv(cipheropts, &master_key, &pt, key_len, enc.nonce_len(), rng)?;
 
-    let (key, iv): (Vec<u8>, Vec<u8>) = if is_det {
-        // Deterministic mode: domain-separate the master key into an
-        // encryption key and an IV-derivation key via HKDF, then derive
-        // the nonce from the plaintext via HMAC. Same (password, plaintext)
-        // → same (key, IV) → same ciphertext.
-        if !needs_iv {
-            return Err(Error::Cipher(format!(
-                "{} does not support deterministic mode (SIV is already deterministic)",
-                cipheropts.alg
-            )));
-        }
-        let enc_key = crypto::hkdf_sha256(&master_key, b"enprot-enc", key_len)?;
-        let iv_key = crypto::hkdf_sha256(&master_key, b"enprot-iv", 32)?;
-        let iv_full = crypto::hmac_sha256(&iv_key, &pt)?;
-        let iv = iv_full[..enc.nonce_len()].to_vec();
-        (enc_key, iv)
-    } else if needs_iv {
-        let iv = if let Some(myiv) = cipheropts.iv.clone() {
-            myiv
-        } else {
-            let ivlen = enc.nonce_len();
-            rng.as_mut()
-                .ok_or(Error::InvalidArg {
-                    arg: "rng",
-                    reason: "Missing RNG for non-deterministic encrypt".to_string(),
-                })?
-                .read(ivlen)
-                .map_err(Error::botan)?
-        };
-        (master_key, iv)
-    } else if cipheropts.iv.is_some() {
-        return Err(Error::Cipher("IV was supplied but not expected".into()));
-    } else {
-        // SIV: no IV needed.
-        (master_key, Vec::new())
-    };
-
-    if needs_iv {
+    if !cipheropts.alg.starts_with("aes-256-siv") {
         extfields.insert(
             "cipher".to_string(),
             format_cipher_extfield(&cipheropts.alg, &iv)?,
@@ -114,26 +68,96 @@ pub fn encrypt(
         .check_cipher(&cipheropts.alg, &key, &iv, &[])
         .map_err(Error::Policy)?;
 
-    // Optional compression (TODO.complete/68). Compress before
-    // encryption so the CAS stores smaller blobs. Only records the
-    // extfield when compression actually reduced the size.
-    let pt_final = if cipheropts.compress {
-        let (compressed, did_compress) = crate::compress::compress(&pt)?;
-        if did_compress {
-            extfields.insert(
-                "compress".to_string(),
-                crate::compress::COMPRESS_EXTFIELD.to_string(),
-            );
-            compressed
-        } else {
-            pt
-        }
-    } else {
-        pt
-    };
+    let pt_final = apply_compression(pt, cipheropts.compress, &mut extfields)?;
 
     let mut enc = enc;
     Ok((enc.process(&key, &iv, &[], &pt_final)?, extfields))
+}
+
+/// Warn when the deprecated legacy PBKDF is in use.
+fn warn_legacy_pbkdf(alg: &str) {
+    if alg == "legacy" {
+        eprintln!(
+            "Warning: --pbkdf legacy uses an unsalted SHA3-512 truncation and is \
+             retained only for compatibility with old blobs; use argon2, scrypt, \
+             or pbkdf2-sha{{256,512}} for new encryption."
+        );
+    }
+}
+
+/// Derive the AEAD key and nonce from the master key, plaintext, and
+/// cipher options. Three modes:
+///
+/// - **Deterministic** (`-det` suffix): HKDF domain-separation into
+///   enc-key + iv-key, then HMAC-derived nonce from plaintext. Same
+///   `(password, plaintext)` → same `(key, iv)` → same ciphertext.
+/// - **Random** (GCM etc.): RNG-generated or user-supplied IV.
+/// - **SIV** (deterministic by design): no IV, master key used directly.
+fn compute_iv(
+    cipheropts: &etree::CipherOptions,
+    master_key: &[u8],
+    pt: &[u8],
+    key_len: usize,
+    nonce_len: usize,
+    rng: &mut Option<botan::RandomNumberGenerator>,
+) -> Result<(Vec<u8>, Vec<u8>)> {
+    let is_det = cipheropts.alg.ends_with("-det");
+    let needs_iv = !cipheropts.alg.starts_with("aes-256-siv");
+
+    if is_det {
+        if !needs_iv {
+            return Err(Error::Cipher(format!(
+                "{} does not support deterministic mode (SIV is already deterministic)",
+                cipheropts.alg
+            )));
+        }
+        let enc_key = crypto::hkdf_sha256(master_key, b"enprot-enc", key_len)?;
+        let iv_key = crypto::hkdf_sha256(master_key, b"enprot-iv", 32)?;
+        let iv_full = crypto::hmac_sha256(&iv_key, pt)?;
+        let iv = iv_full[..nonce_len].to_vec();
+        Ok((enc_key, iv))
+    } else if needs_iv {
+        let iv = match &cipheropts.iv {
+            Some(v) => v.clone(),
+            None => rng
+                .as_mut()
+                .ok_or(Error::InvalidArg {
+                    arg: "rng",
+                    reason: "Missing RNG for non-deterministic encrypt".to_string(),
+                })?
+                .read(nonce_len)
+                .map_err(Error::botan)?,
+        };
+        Ok((master_key.to_vec(), iv))
+    } else if cipheropts.iv.is_some() {
+        Err(Error::Cipher("IV was supplied but not expected".into()))
+    } else {
+        Ok((master_key.to_vec(), Vec::new()))
+    }
+}
+
+/// Optionally compress plaintext before encryption. Adds the
+/// `compress:zlib` extfield only when compression actually reduced
+/// the size. Returns the original bytes unchanged when compression
+/// is disabled or ineffective.
+fn apply_compression(
+    pt: Vec<u8>,
+    compress: bool,
+    extfields: &mut BTreeMap<String, String>,
+) -> Result<Vec<u8>> {
+    if !compress {
+        return Ok(pt);
+    }
+    let (compressed, did_compress) = crate::compress::compress(&pt)?;
+    if did_compress {
+        extfields.insert(
+            "compress".to_string(),
+            crate::compress::COMPRESS_EXTFIELD.to_string(),
+        );
+        Ok(compressed)
+    } else {
+        Ok(pt)
+    }
 }
 
 #[tracing::instrument(skip(ct, password, pbkdf, cipher, cache, policy), fields(bytes = ct.len()))]
