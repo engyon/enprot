@@ -181,57 +181,67 @@ pub fn decrypt(
 
     let dec = cipher::decryption(&cipher_alg)?;
     let key_len = dec.key_len_max();
-    let mut no_rng: Option<botan::RandomNumberGenerator> = None;
-    let master_key = if let Some(p) = pbkdf {
-        let (alg, params, salt) = parse_phc(p)?;
-        let pbkdfopts = etree::PBKDFOptions {
-            alg,
-            saltlen: 0,
-            salt: Some(salt),
-            msec: None,
-            params: Some(params),
-        };
-        derive_key(password, key_len, &mut no_rng, &pbkdfopts, cache, policy)?.0
-    } else {
-        derive_key(
-            password,
-            key_len,
-            &mut no_rng,
-            &etree::PBKDFOptions {
-                alg: "legacy".to_string(),
-                saltlen: 0,
-                salt: None,
-                msec: None,
-                params: None,
-            },
-            cache,
-            policy,
-        )?
-        .0
-    };
-
-    // Deterministic variants domain-separated the master key via HKDF at
-    // encrypt time. Decrypt must do the same to recover the enc_key.
-    let key = if cipher_alg.ends_with("-det") {
-        crypto::hkdf_sha256(&master_key, b"enprot-enc", key_len)?
-    } else {
-        master_key
-    };
+    let master_key = derive_decrypt_key(password, pbkdf, key_len, cache, policy)?;
+    let key = recover_key(&cipher_alg, master_key, key_len)?;
 
     policy
         .check_cipher(&cipher_alg, &key, &iv, &[])
         .map_err(Error::Policy)?;
+
     let mut dec = dec;
     let pt = dec.process(&key, &iv, &[], &ct)?;
 
-    // Decompress if the extfield says the plaintext was compressed
-    // before encryption (TODO.complete/68).
     if let Some(alg) = compress
         && alg.as_str() == crate::compress::COMPRESS_EXTFIELD
     {
         crate::compress::decompress(&pt)
     } else {
         Ok(pt)
+    }
+}
+
+/// Derive the master decryption key from the password + PHC extfield.
+/// Falls back to the legacy unsalted SHA3-512 path when no PHC string
+/// is present (old blobs encrypted before PBKDF extfields existed).
+fn derive_decrypt_key(
+    password: &str,
+    pbkdf: &Option<&String>,
+    key_len: usize,
+    cache: &mut Option<PBKDFCache>,
+    policy: &dyn CryptoPolicy,
+) -> Result<Vec<u8>> {
+    let mut no_rng: Option<botan::RandomNumberGenerator> = None;
+    let pbkdfopts = match pbkdf {
+        Some(p) => {
+            let (alg, params, salt) = parse_phc(p)?;
+            etree::PBKDFOptions {
+                alg,
+                saltlen: 0,
+                salt: Some(salt),
+                msec: None,
+                params: Some(params),
+            }
+        }
+        None => etree::PBKDFOptions {
+            alg: "legacy".to_string(),
+            saltlen: 0,
+            salt: None,
+            msec: None,
+            params: None,
+        },
+    };
+    Ok(derive_key(password, key_len, &mut no_rng, &pbkdfopts, cache, policy)?.0)
+}
+
+/// Recover the AEAD key from the master key. For deterministic
+/// variants (`-det` suffix), the encrypt path domain-separated the
+/// key via HKDF; decrypt must do the same to recover it. For all
+/// other algorithms, the master key is used directly.
+fn recover_key(cipher_alg: &str, master_key: Vec<u8>, key_len: usize) -> Result<Vec<u8>> {
+    if cipher_alg.ends_with("-det") {
+        crypto::hkdf_sha256(&master_key, b"enprot-enc", key_len)
+    } else {
+        Ok(master_key)
     }
 }
 
