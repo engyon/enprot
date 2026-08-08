@@ -1,6 +1,6 @@
 # 67 — CAS integrity verification
 
-**Priority**: P1 | **Status**: specified
+**Priority**: P1 | **Status**: done
 
 ## Problem
 `enprot verify` checks file structure but not CAS integrity. Every

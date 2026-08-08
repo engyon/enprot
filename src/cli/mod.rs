@@ -39,6 +39,7 @@ use crate::etree::ParseOps;
 use crate::{Error, Result, capability, config, consts, crypto, etree, output, pki};
 
 mod cap;
+mod cas_cmd;
 /// Per-subcommand modules. Each one exposes a `pub fn run(args)` entry
 /// point that `app_main`'s match dispatches to.
 mod chain_head_cmd;
@@ -203,6 +204,12 @@ pub enum Command {
     /// customer-side verify entry point. Subcommand form:
     /// `enprot scm {init,add,deps,attest,verify,diff}`.
     Scm(ScmSubcmd),
+    /// CAS integrity operations (TODO.complete/67). Subcommand form:
+    /// `enprot cas {verify}`. `cas verify` walks the input file(s),
+    /// collects every STORED/INCLUDE/MUTED/KEY/CERT hash reference,
+    /// and confirms each resolves to a CAS blob whose SHA3-256
+    /// matches the declared hash.
+    Cas(cas_cmd::CasArgs),
 }
 
 /// `init` subcommand: scaffold a commented TOML config the user can
@@ -901,6 +908,7 @@ where
         Command::Conflicts(a) => merge_cmd::run_conflicts(a),
         Command::Inspect(a) => inspect::run(a, cli.common),
         Command::Cap(args) => cap::run(args, &cli.common),
+        Command::Cas(args) => cas_cmd::run(args, &cli.common),
         Command::Clean(a) => smudge::run(smudge::Mode::Clean, a, cli.common),
         Command::Smudge(a) => smudge::run(smudge::Mode::Smudge, a, cli.common),
         Command::Textconv(a) => smudge::run(smudge::Mode::Smudge, a, cli.common),
