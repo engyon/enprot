@@ -39,3 +39,5 @@ musl = "musl"
 libbotan = "libbotan"
 snapcraft = "snapcraft"
 Cargo = "Cargo"
+# Accepted verbatim — appears in CHANGELOG entries that quote the original misspelling.
+CHANGLOG = "CHANGLOG"
