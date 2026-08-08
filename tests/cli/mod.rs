@@ -3,6 +3,7 @@ mod audit_log;
 mod cap_policy;
 mod capabilities;
 mod cas_default;
+mod cas_gc;
 mod cas_verify;
 mod chain_directive;
 mod cipher;
