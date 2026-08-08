@@ -202,6 +202,9 @@ pub struct IoConfig {
     /// (CAS-referenced `STORED ct <hash>` is the merge-friendly
     /// default whenever CAS exists). See TODO.roadmap/42.
     pub inline_data: bool,
+    /// Dry-run mode (TODO.complete/69): parse + transform without
+    /// writing output files or CAS blobs.
+    pub dry_run: bool,
 }
 
 impl IoConfig {
@@ -290,6 +293,7 @@ impl ParseOps {
                 cas: Box::new(crate::cas::LocalCas::new(Path::new("").to_path_buf())),
                 verbose: false,
                 inline_data: false,
+                dry_run: false,
             },
             anchor: AnchorConfig::disabled(),
         })

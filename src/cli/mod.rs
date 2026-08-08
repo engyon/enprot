@@ -686,6 +686,12 @@ pub struct CommonArgs {
     /// independent ParseOps instance — no shared mutable state.
     #[arg(long, global = true, default_value_t = 1)]
     pub jobs: usize,
+
+    /// Parse and transform without writing output files (TODO.complete/69).
+    /// Prints what would change to stderr. No CAS writes. Useful for
+    /// previewing the effect of an operation before committing.
+    #[arg(long, global = true)]
+    pub dry_run: bool,
 }
 
 impl CommonArgs {
@@ -715,6 +721,7 @@ impl CommonArgs {
             inline: false,
             policy_file: None,
             jobs: 1,
+            dry_run: false,
         }
     }
 }
@@ -1214,6 +1221,7 @@ fn apply_common(common: &CommonArgs, paops: &mut ParseOps) {
     }
     paops.io.verbose = common.verbose && !common.quiet;
     paops.io.inline_data = common.inline || common.casdir.is_none();
+    paops.io.dry_run = common.dry_run;
     paops.max_depth = common.max_depth;
     let (left, right) = resolve_separators(common);
     paops.separators.left = left;

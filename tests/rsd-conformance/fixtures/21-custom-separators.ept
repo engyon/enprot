@@ -1,0 +1,4 @@
+// Custom separators test: uses /* <( and )> */ instead of // <( and )>
+/* <( BEGIN SECRET )>
+secret content
+/* <( END SECRET )>

@@ -1,0 +1,4 @@
+// <( UNKEY signing-key )>
+// <( BEGIN DATA )>
+some data that was previously signed by the unkey'd signing key
+// <( END DATA )>
