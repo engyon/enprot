@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(typo)* CHANGLOG → CHANGELOG in TODO #30
+- *(typo)* fixed misspelled CHANGELOG reference in TODO #30
 - *(deploy)* match release-plz per-crate tag pattern (enprot-v0.5.X)
 
 ### Other
