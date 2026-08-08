@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.14](https://github.com/engyon/enprot/compare/enprot-v0.5.13...enprot-v0.5.14) - 2026-08-08
+
+### Added
+
+- *(cas)* implement 'enprot cas gc' — CAS garbage collection (TODO #66)
+- *(cas)* implement 'enprot cas verify' — CAS integrity check (TODO #67)
+- implement --dry-run mode + reach 25-fixture conformance target
+- kemenc.rs typed errors + 3 conformance fixtures + TODOs #58-65
+- pki.rs typed errors + CODE_OF_CONDUCT + CONTRIBUTING expansion + TODOs #50-57 + 3 conformance fixtures
+- *(tracing)* instrument crypto + CAS + ledger + PKI hot paths
+- *(error)* add 5 typed variants + migrate signature/extfield/block sites
+- *(parallel)* implement --jobs flag for parallel multi-file processing
+- eliminate all stubs — streaming parser, sigstore sign/verify, memory CAS
+- *(lsp+wasm)* minimal LSP server + WASM feature flag
+- *(streaming+cas)* ParseEvent scaffold + CAS backend dispatch
+- *(observability)* add tracing crate + instrument key functions
+- *(cli)* add 'enprot cap' subcommand — capability policy queries
+- *(grammar+sigstore)* pest EPT grammar + Sigstore module scaffold
+- *(cli)* group run() parameters into RunConfig (typed dispatch)
+- *(distro)* deb/rpm + NixOS module + Chocolatey + Snap fix + Marketplace publish
+- *(ffi)* classify errors via typed match (no string matching)
+- *(policy)* require Send + Sync on CryptoPolicy trait
+- *(cli)* add --format json to `enprot inspect`
+- *(ffi)* actually run the pipeline — JSON config → argv → app_main
+
+### Fixed
+
+- *(typo)* CHANGLOG → CHANGELOG in TODO #30
+- *(deploy)* match release-plz per-crate tag pattern (enprot-v0.5.X)
+
+### Other
+
+- eliminate all #[allow(dead_code)] — TODO #10
+- bump actions/checkout from 4 to 7
+- fix .gitignore CAS blob pattern + untrack TODO.complete/
+- bump postcss from 8.5.22 to 8.5.26 in /docs ([#257](https://github.com/engyon/enprot/pull/257))
+- bump js-yaml from 4.3.0 to 4.3.1 in /docs ([#256](https://github.com/engyon/enprot/pull/256))
+- bump fast-uri from 3.1.4 to 3.1.5 in /docs ([#233](https://github.com/engyon/enprot/pull/233))
+- bump rnp-rs from 0.1.10 to 0.1.11 ([#250](https://github.com/engyon/enprot/pull/250))
+- bump toml from 1.1.3+spec-1.1.0 to 1.1.4+spec-1.1.0 ([#249](https://github.com/engyon/enprot/pull/249))
+- bump clap from 4.6.4 to 4.6.5 in the clap group ([#248](https://github.com/engyon/enprot/pull/248))
+- bump actions/setup-node from 4 to 7 ([#244](https://github.com/engyon/enprot/pull/244))
+- *(error)* migrate ALL extracted cli/ Error::msg sites — ZERO remaining
+- complete Display test coverage + CAS round-trip property + 4 conformance fixtures
+- *(error)* migrate ALL remaining small-module Error::msg sites + TODOs #66-73
+- *(todo)* sync README with PR #251 (docs execution + #43-49)
+- *(error)* migrate small-module Error::msg sites (continue #26)
+- *(todo)* update README with #33-42 + latest shipped items
+- *(error)* finish typed-error migration in ledger/anchor.rs
+- *(rsd)* add 5 conformance fixtures + 10 architectural TODOs
+- *(proptest)* add encrypt/decrypt/encrypt-store property tests
+- *(cli)* extract core transform pipeline into pipeline module
+- *(cli)* extract snapshot/pin/audit-log into chain_head_cmd module
+- *(cli)* extract keygen/sign/verify-sig/fingerprint into pki_cmd module
+- *(cli)* extract verify-chain into verify_chain module
+- *(cli)* extract verify_files into verify module
+- *(cli)* extract list_files into list module
+- *(cli)* extract manifest/attest/scm into provenance_cmd module
+- *(cli)* extract clean/smudge/textconv into smudge module
+- *(cli)* extract inspect subcommand into inspect module
+- *(ohos)* add QEMU emulation for dockerharmony (image is aarch64-only)
+- *(ohos)* set BINDGEN_EXTRA_CLANG_ARGS so rnp-rs bindgen uses OHOS sysroot
+- *(ohos)* manual install for sexpp (cmake install expects bin/sexpp)
+- *(ohos)* build only sexpp library target, not tests
+- *(ohos)* cross-compile librnp + deps via ci/build-rnp-ohos.sh
+- *(windows)* build enprot + enprot-ffi sequentially to avoid PDB collision
+- *(windows)* use Defender exclusion path instead of disabling realtime
+- *(windows)* disable Defender realtime monitoring to fix LNK1201
+- *(ohos)* revert vendored-rnp experiment
+- *(windows)* use -C debuginfo=1 to fix LNK1201 PDB race
+- *(windows)* use -C split-debuginfo=unpacked to fully fix LNK1201
+- *(windows)* set /DEBUG:FASTLINK via RUSTFLAGS env to bypass cargo override
+- *(schemas)* fix typos-checker failure on example typo
+- fix Windows LNK1201 PDB race + OHOS rnp-rs header panic
+- *(cli)* extract merge-driver/resolve/conflicts into merge_cmd module
+- eliminate all stale 'scaffold'/'stub'/'not yet' language from source
+- *(rsd)* conformance suite — 5 key fixtures
+- *(parse)* migrate max-depth error to typed Error::Parse variant
+- *(cli)* split cli.rs into cli/ module dir; extract init
+- downgrade unreachable pub to pub(crate) in private modules
+- *(todo)* update README statuses — 11 done, 4 partial, 10 specified
+- *(proptest)* add store/fetch + CAS invariants
+- remove build-cache hash files accidentally committed
+- *(specs)* EPT wire-format, CHAIN anchor, extfield JSON Schemas (v1)
+- remove build-cache hash files accidentally committed
+- *(todo)* comprehensive TODO.complete/ — 25 prioritized specs
+
 ## [0.5.13](https://github.com/engyon/enprot/compare/enprot-v0.5.12...enprot-v0.5.13) - 2026-07-31
 
 ### Other
