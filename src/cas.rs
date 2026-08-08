@@ -63,6 +63,23 @@ pub trait CasStore: Send + Sync {
     fn contains(&self, hash: &str, policy: &dyn crypto::CryptoPolicy) -> Result<bool> {
         Ok(self.load(hash, policy).is_ok())
     }
+
+    /// Enumerate all blob hashes in the store. Used by `cas gc` to
+    /// identify orphans. Backends that can't enumerate (e.g.,
+    /// append-only transparency logs) should leave the default.
+    fn list(&self) -> Result<Vec<String>> {
+        Err(Error::Cas(
+            "list() not supported by this CAS backend".to_string(),
+        ))
+    }
+
+    /// Delete a blob by hash. Used by `cas gc` to reclaim space.
+    /// Backends that don't support deletion should leave the default.
+    fn delete(&self, _hash: &str) -> Result<()> {
+        Err(Error::Cas(
+            "delete() not supported by this CAS backend".to_string(),
+        ))
+    }
 }
 
 /// Filesystem-backed CAS. The default; replaces the old
@@ -97,18 +114,38 @@ impl CasStore for LocalCas {
             return Ok(hexhash);
         }
 
-        let mut file_out = File::create(&path)
-            .map_err(|e| Error::Cas(format!("Failed to open {}: {}", path.display(), e)))?;
-        let bytes = file_out.write(blob).map_err(|e| {
+        // Atomic write: write to a temp file in the same directory,
+        // fsync, then rename. This prevents concurrent readers from
+        // seeing a partially-written blob. The PID suffix avoids
+        // collisions between concurrent processes.
+        let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+        {
+            let mut f = File::create(&tmp)
+                .map_err(|e| Error::Cas(format!("Failed to create {}: {}", tmp.display(), e)))?;
+            f.write_all(blob).map_err(|e| {
+                Error::Cas(format!(
+                    "Error writing {} bytes to {}: {}",
+                    blob.len(),
+                    tmp.display(),
+                    e
+                ))
+            })?;
+            f.sync_all()
+                .map_err(|e| Error::Cas(format!("Failed to fsync {}: {}", tmp.display(), e)))?;
+        }
+        std::fs::rename(&tmp, &path).map_err(|e| {
+            // Clean up the temp file if rename failed.
+            let _ = std::fs::remove_file(&tmp);
             Error::Cas(format!(
-                "Error writing {} bytes to {}: {}",
-                blob.len(),
+                "Failed to rename {} -> {}: {}",
+                tmp.display(),
                 path.display(),
                 e
             ))
         })?;
+
         if self.verbose {
-            eprintln!("cas::save(): {} bytes to {}", bytes, path.display());
+            eprintln!("cas::save(): {} bytes to {}", blob.len(), path.display());
         }
         Ok(hexhash)
     }
@@ -135,6 +172,35 @@ impl CasStore for LocalCas {
             )));
         }
         Ok(blob)
+    }
+
+    fn list(&self) -> Result<Vec<String>> {
+        let read = std::fs::read_dir(&self.root).map_err(|e| {
+            Error::Cas(format!(
+                "Failed to read CAS dir {}: {}",
+                self.root.display(),
+                e
+            ))
+        })?;
+        let mut hashes = Vec::new();
+        for entry in read {
+            let entry = entry.map_err(|e| Error::Cas(format!("dir entry error: {e}")))?;
+            let fname = entry.file_name();
+            let Some(name) = fname.to_str() else {
+                continue;
+            };
+            if name.len() == 64 && name.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
+                hashes.push(name.to_string());
+            }
+        }
+        Ok(hashes)
+    }
+
+    fn delete(&self, hash: &str) -> Result<()> {
+        hex::decode(hash).map_err(|_| Error::Cas(format!("Not a valid hex token: {}", hash)))?;
+        let path = self.path_for(hash);
+        std::fs::remove_file(&path)
+            .map_err(|e| Error::Cas(format!("Failed to delete {}: {}", path.display(), e)))
     }
 }
 
@@ -184,6 +250,15 @@ impl CasStore for MemoryCas {
 
     fn contains(&self, _hash: &str, _policy: &dyn crypto::CryptoPolicy) -> Result<bool> {
         Ok(self.entries.read().unwrap().contains_key(_hash))
+    }
+
+    fn list(&self) -> Result<Vec<String>> {
+        Ok(self.entries.read().unwrap().keys().cloned().collect())
+    }
+
+    fn delete(&self, hash: &str) -> Result<()> {
+        self.entries.write().unwrap().remove(hash);
+        Ok(())
     }
 }
 
@@ -282,6 +357,81 @@ mod tests {
         let h1 = store.save(blob, &*policy).unwrap();
         let h2 = store.save(blob, &*policy).unwrap();
         assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn local_cas_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LocalCas::new(dir.path().to_path_buf());
+        let policy = default_policy();
+
+        let h1 = store.save(b"blob one", &*policy).unwrap();
+        let h2 = store.save(b"blob two", &*policy).unwrap();
+
+        let mut listed = store.list().unwrap();
+        listed.sort();
+        let mut expected = vec![h1, h2];
+        expected.sort();
+        assert_eq!(listed, expected);
+    }
+
+    #[test]
+    fn local_cas_list_ignores_non_blobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LocalCas::new(dir.path().to_path_buf());
+        let policy = default_policy();
+
+        store.save(b"real blob", &*policy).unwrap();
+        std::fs::write(dir.path().join("README.txt"), b"not a blob").unwrap();
+
+        let listed = store.list().unwrap();
+        assert_eq!(listed.len(), 1);
+    }
+
+    #[test]
+    fn local_cas_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LocalCas::new(dir.path().to_path_buf());
+        let policy = default_policy();
+
+        let h = store.save(b"deletable", &*policy).unwrap();
+        assert!(store.contains(&h, &*policy).unwrap());
+
+        store.delete(&h).unwrap();
+        assert!(!store.contains(&h, &*policy).unwrap());
+        assert!(store.list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn local_cas_no_temp_files_after_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = LocalCas::new(dir.path().to_path_buf());
+        let policy = default_policy();
+
+        store.save(b"atomic write test", &*policy).unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(entries.len(), 1, "temp file left behind after save");
+    }
+
+    #[test]
+    fn memory_cas_list_and_delete() {
+        let store = MemoryCas::new();
+        let policy = default_policy();
+
+        let h1 = store.save(b"a", &*policy).unwrap();
+        let h2 = store.save(b"b", &*policy).unwrap();
+
+        let mut listed = store.list().unwrap();
+        listed.sort();
+        assert_eq!(listed, vec![h1.clone(), h2.clone()]);
+
+        store.delete(&h1).unwrap();
+        let listed = store.list().unwrap();
+        assert_eq!(listed, vec![h2]);
     }
 }
 

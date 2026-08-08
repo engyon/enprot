@@ -44,7 +44,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use clap::{Args, Subcommand};
@@ -305,17 +304,10 @@ fn run_verify(args: CasVerifyArgs, common: &CommonArgs) -> Result<()> {
 
 /// `enprot cas gc` — delete unreferenced CAS blobs.
 ///
-/// Walks the CAS directory (via `paops.io.casdir`), enumerates all
-/// 64-hex-char blob files, then parses the root file(s) to determine
-/// which hashes are still referenced. Unreferenced blobs older than
-/// `--min-age` are deleted. The global `--dry-run` flag suppresses
-/// deletion and prints what would be removed instead.
-///
-/// GC is a LocalCas-specific operation (directory listing + file
-/// deletion). Future backends that need GC should add their own
-/// implementation — the `CasStore` trait intentionally has no
-/// `list()` or `delete()` method because those operations are
-/// backend-specific.
+/// Uses `CasStore::list()` to enumerate all blobs and
+/// `CasStore::delete()` to remove orphans. Works with any backend
+/// that implements those methods. The global `--dry-run` flag
+/// suppresses deletion and prints what would be removed instead.
 fn run_gc(args: CasGcArgs, common: &CommonArgs) -> Result<()> {
     let policy = resolve_policy(common)?;
     let mut paops = ParseOps::new(policy)?;
@@ -326,33 +318,37 @@ fn run_gc(args: CasGcArgs, common: &CommonArgs) -> Result<()> {
         .map(|r| r.hash)
         .collect();
 
-    let all_blobs = list_cas_blobs(&paops.io.casdir)?;
+    let cas_store = paops.io.cas.as_ref();
+    let all_hashes = cas_store.list()?;
     let now = SystemTime::now();
+    let casdir = &paops.io.casdir;
 
-    let mut orphans: Vec<(String, PathBuf)> = Vec::new();
+    let mut orphans: Vec<String> = Vec::new();
     let mut kept = 0usize;
-    for (hash, path) in &all_blobs {
+    for hash in &all_hashes {
         if referenced.contains(hash.as_str()) {
             kept += 1;
             continue;
         }
-        if args.min_age > 0
-            && let Ok(meta) = std::fs::metadata(path)
-            && let Ok(modified) = meta.modified()
-            && let Ok(elapsed) = now.duration_since(modified)
-            && elapsed.as_secs() < args.min_age
-        {
-            kept += 1;
-            continue;
+        if args.min_age > 0 {
+            let path = casdir.join(hash);
+            if let Ok(meta) = std::fs::metadata(&path)
+                && let Ok(modified) = meta.modified()
+                && let Ok(elapsed) = now.duration_since(modified)
+                && elapsed.as_secs() < args.min_age
+            {
+                kept += 1;
+                continue;
+            }
         }
-        orphans.push((hash.clone(), path.clone()));
+        orphans.push(hash.clone());
     }
 
     let dry_run = common.dry_run;
 
     match common.format {
         output::OutputFormat::Text => {
-            for (hash, _) in &orphans {
+            for hash in &orphans {
                 if dry_run {
                     eprintln!("WOULD DELETE  {hash}");
                 } else {
@@ -365,61 +361,28 @@ fn run_gc(args: CasGcArgs, common: &CommonArgs) -> Result<()> {
                 if dry_run { "would delete" } else { "deleted" },
                 orphans.len(),
                 kept,
-                all_blobs.len(),
+                all_hashes.len(),
             );
         }
         output::OutputFormat::Json => {
             let payload = CasGcOutput {
-                total: all_blobs.len(),
+                total: all_hashes.len(),
                 kept,
                 deleted: orphans.len(),
                 dry_run,
-                orphans: orphans.iter().map(|(h, _)| h.as_str()).collect(),
+                orphans: orphans.iter().map(|h| h.as_str()).collect(),
             };
             println!("{}", output::to_json(&payload)?);
         }
     }
 
     if !dry_run {
-        for (_, path) in &orphans {
-            std::fs::remove_file(path).map_err(|e| {
-                Error::Io(std::io::Error::other(format!(
-                    "Failed to delete {}: {}",
-                    path.display(),
-                    e
-                )))
-            })?;
+        for hash in &orphans {
+            cas_store.delete(hash)?;
         }
     }
 
     Ok(())
-}
-
-/// List all CAS blobs in a directory. A CAS blob is a regular file
-/// whose name is exactly 64 lowercase hex chars (SHA3-256 hash).
-/// Non-matching entries (subdirs, files with extensions, etc.) are
-/// silently skipped.
-fn list_cas_blobs(casdir: &Path) -> Result<Vec<(String, PathBuf)>> {
-    let read = std::fs::read_dir(casdir).map_err(|e| {
-        Error::Io(std::io::Error::other(format!(
-            "Failed to read CAS dir {}: {}",
-            casdir.display(),
-            e
-        )))
-    })?;
-    let mut blobs = Vec::new();
-    for entry in read {
-        let entry =
-            entry.map_err(|e| Error::Io(std::io::Error::other(format!("dir entry error: {e}"))))?;
-        let fname = entry.file_name();
-        let Some(name) = fname.to_str() else {
-            continue;
-        };
-        if name.len() == 64 && name.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
-            blobs.push((name.to_string(), entry.path()));
-        }
-    }
-    Ok(blobs)
 }
 
 /// Recursively walk a parsed node, collecting every CAS hash
