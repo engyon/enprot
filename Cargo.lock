@@ -1427,9 +1427,9 @@ dependencies = [
 
 [[package]]
 name = "rnp-rs"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a2d89cee37da7283f21f7856fca63727d5e50d2d150d8f8b124d4fcd8c6a60b"
+checksum = "4d4c32a111f1eb0b5d8313cacd4507b90615a4d7e2639894952fffd3a0b0ebea"
 dependencies = [
  "bindgen",
  "pkg-config",
@@ -1439,9 +1439,9 @@ dependencies = [
 
 [[package]]
 name = "rnp-src"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "852eede0415d60b1b5b586a330b94ce014bd83df69f7388205f8cfee62840f49"
+checksum = "5e58977a76b203e920c5a96ec925fe3e126fe33f81a26681f8d3a834ad42e09c"
 dependencies = [
  "botan-src",
  "cmake",
