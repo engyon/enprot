@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.14](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.13...enprot-ffi-v0.5.14) - 2026-08-08
+
+### Other
+
+- updated the following local packages: enprot
+
 ## [0.5.13](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.12...enprot-ffi-v0.5.13) - 2026-08-08
 
 ### Other
