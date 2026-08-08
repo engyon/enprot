@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.15](https://github.com/engyon/enprot/compare/enprot-v0.5.14...enprot-v0.5.15) - 2026-08-08
+
+### Added
+
+- *(compress)* optional zlib compression before encryption (TODO #68)
+- *(cas)* CasStore trait completeness + atomic writes (#61, #74)
+
+### Fixed
+
+- *(typos)* correct CHANGLOG typo in CHANGELOG to pass spell check
+
 ## [0.5.14](https://github.com/engyon/enprot/compare/enprot-v0.5.13...enprot-v0.5.14) - 2026-08-08
 
 ### Added
