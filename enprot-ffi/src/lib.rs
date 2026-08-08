@@ -201,6 +201,7 @@ fn classify_error(err: &enprot::Error) -> c_int {
         Error::Botan(_)
         | Error::Cipher(_)
         | Error::CipherUnknown { .. }
+        | Error::AeadFailed { .. }
         | Error::Pbkdf(_)
         | Error::Policy(_)
         | Error::PolicyViolation { .. }

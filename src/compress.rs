@@ -56,7 +56,7 @@ pub fn compress(plaintext: &[u8]) -> Result<(Vec<u8>, bool)> {
     let mut compressed = Vec::new();
     encoder
         .read_to_end(&mut compressed)
-        .map_err(|e| Error::Cipher(format!("compression failed: {e}")))?;
+        .map_err(|e| Error::Io(std::io::Error::other(format!("compression failed: {e}"))))?;
     if compressed.len() < plaintext.len() {
         Ok((compressed, true))
     } else {
@@ -70,7 +70,7 @@ pub fn decompress(data: &[u8]) -> Result<Vec<u8>> {
     let mut decompressed = Vec::new();
     decoder
         .read_to_end(&mut decompressed)
-        .map_err(|e| Error::Cipher(format!("decompression failed: {e}")))?;
+        .map_err(|e| Error::Io(std::io::Error::other(format!("decompression failed: {e}"))))?;
     Ok(decompressed)
 }
 
