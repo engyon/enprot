@@ -7,8 +7,12 @@
 /fuzz/artifacts/
 /fuzz/target/
 
-# CAS blobs — content-addressed test artifacts. 64-char hex filenames.
-[0-9a-f]{64}
+# CAS blobs — content-addressed test artifacts. 64-char lowercase hex
+# filenames (SHA3-256 hashes) that leak into the repo root when enprot
+# runs without -c CASDIR and no ./cas/ dir exists. Anchored to root so
+# legitimate CAS dirs (cas/, .enprot/cas/) are unaffected.
+# NOTE: gitignore uses glob, not regex — [0-9a-f]{64} does NOT work.
+/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*
 
 # TODO files are conversation context, not shipped artifacts.
 /TODO.audit/
@@ -17,3 +21,4 @@
 /TODO.issues/
 /TODO.roadmap/
 /TODO.upgrade/
+/TODO.complete/
