@@ -143,8 +143,9 @@ impl HashCheck {
     fn print_text(&self) {
         match &self.status {
             HashStatus::Ok { bytes } => {
+                let label = super::color::green("OK");
                 eprintln!(
-                    "OK    {} {} ({} bytes) [{}]",
+                    "{label: <6} {} {} ({} bytes) [{}]",
                     self.hash,
                     self.kind,
                     bytes,
@@ -152,8 +153,9 @@ impl HashCheck {
                 );
             }
             HashStatus::Fail { reason } => {
+                let label = super::color::red("FAIL");
                 eprintln!(
-                    "FAIL  {} {} — {} [{}]",
+                    "{label: <6} {} {} — {} [{}]",
                     self.hash,
                     self.kind,
                     reason,
@@ -350,9 +352,11 @@ fn run_gc(args: CasGcArgs, common: &CommonArgs) -> Result<()> {
         output::OutputFormat::Text => {
             for hash in &orphans {
                 if dry_run {
-                    eprintln!("WOULD DELETE  {hash}");
+                    let prefix = super::color::yellow("WOULD DEL");
+                    eprintln!("{prefix} {hash}");
                 } else {
-                    eprintln!("DELETED       {hash}");
+                    let prefix = super::color::red("DELETED  ");
+                    eprintln!("{prefix} {hash}");
                 }
             }
             eprintln!("---");

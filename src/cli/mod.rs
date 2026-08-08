@@ -43,6 +43,7 @@ mod cas_cmd;
 /// Per-subcommand modules. Each one exposes a `pub fn run(args)` entry
 /// point that `app_main`'s match dispatches to.
 mod chain_head_cmd;
+mod color;
 mod init;
 mod inspect;
 mod list;
