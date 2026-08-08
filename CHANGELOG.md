@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(typos)* correct CHANGLOG typo in CHANGELOG to pass spell check
+- *(typos)* fix misspelled CHANGELOG reference that broke spell check
 
 ## [0.5.14](https://github.com/engyon/enprot/compare/enprot-v0.5.13...enprot-v0.5.14) - 2026-08-08
 
