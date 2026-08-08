@@ -113,8 +113,27 @@ pub fn encrypt(
     policy
         .check_cipher(&cipheropts.alg, &key, &iv, &[])
         .map_err(Error::Policy)?;
+
+    // Optional compression (TODO.complete/68). Compress before
+    // encryption so the CAS stores smaller blobs. Only records the
+    // extfield when compression actually reduced the size.
+    let pt_final = if cipheropts.compress {
+        let (compressed, did_compress) = crate::compress::compress(&pt)?;
+        if did_compress {
+            extfields.insert(
+                "compress".to_string(),
+                crate::compress::COMPRESS_EXTFIELD.to_string(),
+            );
+            compressed
+        } else {
+            pt
+        }
+    } else {
+        pt
+    };
+
     let mut enc = enc;
-    Ok((enc.process(&key, &iv, &[], &pt)?, extfields))
+    Ok((enc.process(&key, &iv, &[], &pt_final)?, extfields))
 }
 
 #[tracing::instrument(skip(ct, password, pbkdf, cipher, cache, policy), fields(bytes = ct.len()))]
@@ -123,6 +142,7 @@ pub fn decrypt(
     password: &str,
     pbkdf: &Option<&String>,
     cipher: &Option<&String>,
+    compress: &Option<&String>,
     cache: &mut Option<PBKDFCache>,
     policy: &dyn CryptoPolicy,
 ) -> Result<Vec<u8>> {
@@ -178,7 +198,17 @@ pub fn decrypt(
         .check_cipher(&cipher_alg, &key, &iv, &[])
         .map_err(Error::Policy)?;
     let mut dec = dec;
-    dec.process(&key, &iv, &[], &ct)
+    let pt = dec.process(&key, &iv, &[], &ct)?;
+
+    // Decompress if the extfield says the plaintext was compressed
+    // before encryption (TODO.complete/68).
+    if let Some(alg) = compress
+        && alg.as_str() == crate::compress::COMPRESS_EXTFIELD
+    {
+        crate::compress::decompress(&pt)
+    } else {
+        Ok(pt)
+    }
 }
 
 #[cfg(test)]

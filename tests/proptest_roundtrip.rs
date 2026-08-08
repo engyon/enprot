@@ -69,6 +69,7 @@ fn cipher_opts(alg: &str) -> CipherOptions {
     CipherOptions {
         alg: alg.to_string(),
         iv: None,
+        compress: false,
     }
 }
 
@@ -92,6 +93,7 @@ fn round_trip_with(pt: &[u8], password: &str, alg: &str) -> Vec<u8> {
         password,
         &extfields.get("pbkdf"),
         &extfields.get("cipher"),
+        &extfields.get("compress"),
         &mut cache,
         &*policy,
     )

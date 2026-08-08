@@ -65,16 +65,16 @@ pub fn run(mode: Mode, a: SmudgeCleanSubcmd, common: CommonArgs) -> Result<()> {
             paops.runtime.fname = "<smudge-stdin>".into();
             let cursor = std::io::Cursor::new(input);
             let tree = etree::parse(cursor, &mut paops)?;
-            let (ct, pbkdf, cipher) =
-                extract_first_encrypted(&tree, &a.word).ok_or_else(|| Error::BlockShape {
-                    word: a.word.clone(),
-                    reason: "no ENCRYPTED block for this WORD in input".to_string(),
-                })?;
+            let ext = extract_first_encrypted(&tree, &a.word).ok_or_else(|| Error::BlockShape {
+                word: a.word.clone(),
+                reason: "no ENCRYPTED block for this WORD in input".to_string(),
+            })?;
             let pt = prot::decrypt(
-                ct,
+                ext.ct,
                 paops.passwords.get(&a.word).unwrap(),
-                &pbkdf.as_ref(),
-                &cipher.as_ref(),
+                &ext.pbkdf.as_ref(),
+                &ext.cipher.as_ref(),
+                &ext.compress.as_ref(),
                 &mut paops.crypto.pbkdf_cache,
                 &*paops.crypto.policy,
             )?;
@@ -85,13 +85,18 @@ pub fn run(mode: Mode, a: SmudgeCleanSubcmd, common: CommonArgs) -> Result<()> {
     Ok(())
 }
 
+/// Fields extracted from an Encrypted block for the smudge decrypt path.
+struct EncryptedFields {
+    ct: Vec<u8>,
+    pbkdf: Option<String>,
+    cipher: Option<String>,
+    compress: Option<String>,
+}
+
 /// Walk a parsed tree and return the first Encrypted block's
 /// ciphertext payload (Data or Stored) plus its extfields for the
-/// named WORD. Returns (ct, pbkdf, cipher) — the values decrypt needs.
-fn extract_first_encrypted(
-    tree: &etree::TextTree,
-    word: &str,
-) -> Option<(Vec<u8>, Option<String>, Option<String>)> {
+/// named WORD.
+fn extract_first_encrypted(tree: &etree::TextTree, word: &str) -> Option<EncryptedFields> {
     for node in tree {
         match node {
             etree::TextNode::Encrypted {
@@ -105,9 +110,12 @@ fn extract_first_encrypted(
                         _ => None,
                     };
                     if let Some(ct) = payload {
-                        let pbkdf = extfields.get("pbkdf").cloned();
-                        let cipher = extfields.get("cipher").cloned();
-                        return Some((ct, pbkdf, cipher));
+                        return Some(EncryptedFields {
+                            ct,
+                            pbkdf: extfields.get("pbkdf").cloned(),
+                            cipher: extfields.get("cipher").cloned(),
+                            compress: extfields.get("compress").cloned(),
+                        });
                     }
                 }
             }

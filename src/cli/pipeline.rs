@@ -143,6 +143,7 @@ impl RunConfig {
                 if let Some(iv_hex) = enc_opts.cipher_iv.as_deref() {
                     paops.crypto.cipheropts.iv = Some(hex::decode(iv_hex).map_err(Error::from)?);
                 }
+                paops.crypto.cipheropts.compress = enc_opts.compress;
             }
         }
 

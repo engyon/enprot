@@ -36,6 +36,7 @@ pub mod capability;
 mod cappolicy;
 pub mod cas;
 mod cipher;
+mod compress;
 mod config;
 mod consts;
 pub mod crypto;
