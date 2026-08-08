@@ -140,13 +140,11 @@ impl CasStore for LocalCas {
 
 /// In-memory CAS for tests + library consumers that don't want
 /// filesystem side effects. Backed by a `BTreeMap` under a `RwLock`.
-#[allow(dead_code)]
 pub struct MemoryCas {
     entries: RwLock<std::collections::BTreeMap<String, Vec<u8>>>,
 }
 
 impl MemoryCas {
-    #[allow(dead_code)]
     pub fn new() -> Self {
         MemoryCas {
             entries: RwLock::new(std::collections::BTreeMap::new()),

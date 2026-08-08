@@ -466,10 +466,6 @@ mod tests {
         crate::etree::parse(Cursor::new(s.as_bytes()), &mut paops).unwrap()
     }
 
-    fn plain(s: &str) -> TextTree {
-        vec![TextNode::Plain(s.into())]
-    }
-
     #[test]
     fn identical_inputs_produce_identical_output_with_no_conflicts() {
         let a = parse_str("// <( BEGIN Agent_007 )>\nhi\n// <( END Agent_007 )>\n");
@@ -586,13 +582,5 @@ mod tests {
         assert!(s.contains("trailing"));
         assert!(s.contains("Agent_007"));
         let _ = Directive::Begin; // suppress unused-import warning if Directive not otherwise used
-    }
-
-    // `plain` helper is reserved for future tests that exercise
-    // free-form plain merging; suppress dead-code warning.
-    #[test]
-    #[allow(dead_code)]
-    fn plain_helper_compiles() {
-        let _ = plain("hello");
     }
 }

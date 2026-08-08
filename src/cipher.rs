@@ -36,11 +36,8 @@ pub static BOTAN_CIPHER_ALG_MAP: phf::Map<&'static str, &'static str> = phf_map!
 };
 
 pub trait SymmetricCipher {
-    #[allow(dead_code)]
     fn alg(&self) -> &str;
     fn nonce_len(&self) -> usize;
-    #[allow(dead_code)]
-    fn key_len_min(&self) -> usize;
     fn key_len_max(&self) -> usize;
     fn process(&mut self, key: &[u8], iv: &[u8], ad: &[u8], data: &[u8]) -> Result<Vec<u8>>;
 }
@@ -48,7 +45,6 @@ pub trait SymmetricCipher {
 struct BotanCipher {
     alg: String,
     nonce_len: usize,
-    key_len_min: usize,
     key_len_max: usize,
     obj: botan::Cipher,
 }
@@ -64,7 +60,6 @@ impl BotanCipher {
         Ok(BotanCipher {
             alg: alg.to_string(),
             nonce_len: obj.default_nonce_length(),
-            key_len_min: keyspec.minimum_keylength(),
             key_len_max: keyspec.maximum_keylength(),
             obj,
         })
@@ -78,13 +73,11 @@ impl SymmetricCipher for BotanCipher {
     fn nonce_len(&self) -> usize {
         self.nonce_len
     }
-    fn key_len_min(&self) -> usize {
-        self.key_len_min
-    }
     fn key_len_max(&self) -> usize {
         self.key_len_max
     }
     fn process(&mut self, key: &[u8], iv: &[u8], ad: &[u8], data: &[u8]) -> Result<Vec<u8>> {
+        tracing::trace!(cipher = %self.alg(), key_len = key.len(), "botan cipher process");
         self.obj.set_key(key).map_err(Error::botan)?;
         self.obj.set_associated_data(ad).map_err(Error::botan)?;
         self.obj.process(iv, data).map_err(Error::botan)
@@ -115,13 +108,11 @@ impl SymmetricCipher for AesGcmSivCipher {
     fn nonce_len(&self) -> usize {
         Self::NONCE_LEN
     }
-    fn key_len_min(&self) -> usize {
-        Self::KEY_LEN
-    }
     fn key_len_max(&self) -> usize {
         Self::KEY_LEN
     }
     fn process(&mut self, key: &[u8], iv: &[u8], ad: &[u8], data: &[u8]) -> Result<Vec<u8>> {
+        tracing::trace!(cipher = %self.alg(), key_len = key.len(), "aes-gcm-siv cipher process");
         use aes_gcm_siv::Aes256GcmSiv;
         use aes_gcm_siv::aead::{Aead, KeyInit, Payload};
 
@@ -226,7 +217,7 @@ mod tests {
         let enc = encryption("aes-256-gcm").unwrap();
         assert_eq!(enc.alg(), "aes-256-gcm");
         assert_eq!(enc.nonce_len(), 12);
-        assert_eq!(enc.key_len_min(), 32);
+        assert_eq!(enc.key_len_max(), 32);
         assert_eq!(enc.key_len_max(), 32);
         let mut enc = enc;
         let ct = enc.process(&key, &iv, &[], &pt).unwrap();
@@ -257,7 +248,7 @@ mod tests {
         let enc = encryption("aes-256-gcm-siv").unwrap();
         assert_eq!(enc.alg(), "aes-256-gcm-siv");
         assert_eq!(enc.nonce_len(), 12);
-        assert_eq!(enc.key_len_min(), 32);
+        assert_eq!(enc.key_len_max(), 32);
         assert_eq!(enc.key_len_max(), 32);
         let mut enc = enc;
         let ct = enc.process(&key, &iv, &[], &pt).unwrap();
