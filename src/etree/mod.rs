@@ -115,6 +115,7 @@ impl PBKDFOptions {
 pub struct CipherOptions {
     pub alg: String,
     pub iv: Option<Vec<u8>>,
+    pub compress: bool,
 }
 
 impl CipherOptions {
@@ -122,6 +123,7 @@ impl CipherOptions {
         CipherOptions {
             alg: policy.default_cipher_alg(),
             iv: None,
+            compress: false,
         }
     }
 }

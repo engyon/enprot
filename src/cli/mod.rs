@@ -763,6 +763,12 @@ pub struct EncryptOpts {
     /// Advanced option for testing, do not use.
     #[arg(long, value_name = "ALG", hide = true)]
     pub cipher_iv: Option<String>,
+
+    /// Compress plaintext with zlib deflate before encryption.
+    /// Reduces ciphertext size for text-heavy inputs. The `compress:zlib`
+    /// extfield is recorded so decrypt knows to decompress.
+    #[arg(long)]
+    pub compress: bool,
 }
 
 /// Input/output wiring: which WORDs to operate on, which files to read,

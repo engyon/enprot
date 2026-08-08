@@ -199,6 +199,7 @@ fn transform_encrypted(
                 &pass,
                 &extfields.get("pbkdf"),
                 &extfields.get("cipher"),
+                &extfields.get("compress"),
                 &mut paops.crypto.pbkdf_cache,
                 &*paops.crypto.policy,
             ) {
