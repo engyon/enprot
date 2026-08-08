@@ -82,6 +82,12 @@ impl<'a> EncryptedExtFields<'a> {
             .map(|s| s.as_str())
     }
 
+    /// The compression algorithm (currently always `zlib`). Absent
+    /// means the plaintext was not compressed before encryption.
+    pub fn compress(&self) -> Option<&str> {
+        self.map.get("compress").map(|s| s.as_str())
+    }
+
     /// Raw access to the underlying map for fields not covered by
     /// typed accessors (e.g., future fields).
     pub fn raw(&self) -> &BTreeMap<String, String> {
@@ -155,6 +161,8 @@ pub enum EncryptedExtField {
     Pbkdf(String),
     /// Cipher spec (e.g. `aes-256-gcm$iv=…`).
     Cipher(String),
+    /// Compression algorithm (currently always `zlib`).
+    Compress(String),
     /// Comma-separated recipient fingerprints for KEM-mode blocks.
     Recipients(String),
     /// Per-recipient KEM ciphertext, keyed by fingerprint.
@@ -172,6 +180,7 @@ impl EncryptedExtField {
         match self {
             EncryptedExtField::Pbkdf(v) => ("pbkdf".to_string(), v),
             EncryptedExtField::Cipher(v) => ("cipher".to_string(), v),
+            EncryptedExtField::Compress(v) => ("compress".to_string(), v),
             EncryptedExtField::Recipients(v) => ("recipients".to_string(), v),
             EncryptedExtField::RecipientMlKemCt { fp_hex, ct_base64 } => {
                 (format!("recipient-mlkem-{}", fp_hex), ct_base64)
@@ -188,6 +197,7 @@ impl EncryptedExtField {
         match key {
             "pbkdf" => EncryptedExtField::Pbkdf(value.to_string()),
             "cipher" => EncryptedExtField::Cipher(value.to_string()),
+            "compress" => EncryptedExtField::Compress(value.to_string()),
             "recipients" => EncryptedExtField::Recipients(value.to_string()),
             "attr" => EncryptedExtField::Attribute(value.to_string()),
             other if other.starts_with("recipient-mlkem-") => EncryptedExtField::RecipientMlKemCt {
@@ -322,6 +332,7 @@ mod tests {
         for original in [
             EncryptedExtField::Pbkdf("$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$hash".to_string()),
             EncryptedExtField::Cipher("aes-256-gcm$iv=MDEy".to_string()),
+            EncryptedExtField::Compress("zlib".to_string()),
             EncryptedExtField::Recipients("mlkem:abc...,mlkem:def...".to_string()),
             EncryptedExtField::RecipientMlKemCt {
                 fp_hex: "abc...".to_string(),
