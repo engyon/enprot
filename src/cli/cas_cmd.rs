@@ -23,7 +23,7 @@
 
 //! `enprot cas` subcommand — CAS integrity operations.
 //!
-//! Implements TODO.complete/67.
+//! Implements TODO.complete/67 (verify) and TODO.complete/66 (gc).
 //!
 //! `enprot cas verify` walks the input file(s), collects every CAS
 //! hash reference (STORED, INCLUDE, MUTED, KEY, CERT), and verifies
@@ -32,13 +32,20 @@
 //! `enprot verify` (which checks markup structure + extfields but
 //! does not confirm every CAS reference resolves).
 //!
-//! The command dispatches through the `CasStore` trait, so it works
-//! with any backend (LocalCas, MemoryCas, future S3/IPFS) — OCP: a
-//! new backend needs no change here.
+//! `enprot cas gc` walks the CAS directory, identifies blobs still
+//! referenced by the root file(s), and deletes the rest. Use the
+//! global `--dry-run` flag to preview without deleting. `--min-age`
+//! protects young blobs from concurrent-process races.
+//!
+//! Both commands share the `collect_refs` tree walker and the
+//! `collect_all_refs` file-reading helper — DRY: the hash-collection
+//! logic lives in exactly one place.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use clap::{Args, Subcommand};
 use serde::Serialize;
@@ -56,14 +63,18 @@ pub struct CasArgs {
     pub command: CasSubcmd,
 }
 
-/// `enprot cas` subcommand actions. Currently only `verify`; future
-/// actions (gc, repair, list) will be added here.
+/// `enprot cas` subcommand actions. `verify` checks integrity; `gc`
+/// reclaims space by deleting unreferenced blobs.
 #[derive(Subcommand, Debug, Clone)]
 pub enum CasSubcmd {
     /// Verify that every CAS hash referenced by the input file(s)
     /// resolves to a blob whose SHA3-256 matches the declared hash.
     /// Exits non-zero on any failure (CI-friendly).
     Verify(CasVerifyArgs),
+
+    /// Delete CAS blobs not referenced by any root file. Use the
+    /// global `--dry-run` flag to preview deletions without executing.
+    Gc(CasGcArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -74,10 +85,26 @@ pub struct CasVerifyArgs {
     pub files: Vec<String>,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct CasGcArgs {
+    /// Root EPT file(s) whose CAS references determine which blobs
+    /// are still needed. Blobs not referenced by any root file (and
+    /// older than `--min-age`) are deleted. "-" means stdin.
+    #[arg(value_name = "FILE", default_value = "-")]
+    pub files: Vec<String>,
+
+    /// Minimum age in seconds for a blob to be eligible for deletion.
+    /// Protects against removing blobs being actively written by a
+    /// concurrent process. Default: 0 (no protection).
+    #[arg(long, value_name = "SECONDS", default_value_t = 0)]
+    pub min_age: u64,
+}
+
 /// Entry point for `enprot cas`.
 pub fn run(args: CasArgs, common: &CommonArgs) -> Result<()> {
     match args.command {
         CasSubcmd::Verify(a) => run_verify(a, common),
+        CasSubcmd::Gc(a) => run_gc(a, common),
     }
 }
 
@@ -168,38 +195,44 @@ fn location(file: &str, label: Option<&str>) -> String {
     }
 }
 
+/// Open a reader for a file path, or stdin if `fname == "-"`.
+fn open_reader(fname: &str) -> Result<Box<dyn BufRead>> {
+    if fname == "-" {
+        Ok(Box::new(BufReader::new(std::io::stdin())))
+    } else {
+        Ok(Box::new(BufReader::new(File::open(fname).map_err(
+            |e| {
+                Error::Io(std::io::Error::other(format!(
+                    "Failed to open {fname}: {e}"
+                )))
+            },
+        )?)))
+    }
+}
+
+/// Parse each file, walk the resulting tree, and collect every CAS
+/// hash reference. Shared between `verify` and `gc` — DRY: the
+/// file-reading + parsing + ref-collection pipeline lives here.
+fn collect_all_refs(files: &[String], paops: &mut ParseOps) -> Result<Vec<HashRef>> {
+    let mut refs: Vec<HashRef> = Vec::new();
+    for fname in files {
+        let reader = open_reader(fname)?;
+        paops.runtime.fname = fname.clone();
+        let tree = etree::parse(reader, paops)
+            .map_err(|e| Error::Cas(format!("parse error in {fname}: {e}")))?;
+        for node in &tree {
+            collect_refs(node, fname, &mut refs);
+        }
+    }
+    Ok(refs)
+}
+
 fn run_verify(args: CasVerifyArgs, common: &CommonArgs) -> Result<()> {
     let policy = resolve_policy(common)?;
     let mut paops = ParseOps::new(policy)?;
     apply_common(common, &mut paops);
 
-    // Collect hash references across all input files.
-    let mut refs: Vec<HashRef> = Vec::new();
-
-    for fname in &args.files {
-        let reader: Box<dyn BufRead> = if fname == "-" {
-            Box::new(BufReader::new(std::io::stdin()))
-        } else {
-            Box::new(BufReader::new(File::open(fname).map_err(|e| {
-                Error::Io(std::io::Error::other(format!(
-                    "Failed to open {fname}: {e}"
-                )))
-            })?))
-        };
-        paops.runtime.fname = fname.clone();
-
-        let tree = match etree::parse(reader, &mut paops) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("FAIL {}: parse error: {}", fname, e);
-                return Err(Error::Cas(format!("parse error in {}: {}", fname, e)));
-            }
-        };
-
-        for node in &tree {
-            collect_refs(node, fname, &mut refs);
-        }
-    }
+    let refs = collect_all_refs(&args.files, &mut paops)?;
 
     // Deduplicate by hash: the same hash referenced from N sites
     // needs only one CAS lookup. Keep the first occurrence for
@@ -268,6 +301,125 @@ fn run_verify(args: CasVerifyArgs, common: &CommonArgs) -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// `enprot cas gc` — delete unreferenced CAS blobs.
+///
+/// Walks the CAS directory (via `paops.io.casdir`), enumerates all
+/// 64-hex-char blob files, then parses the root file(s) to determine
+/// which hashes are still referenced. Unreferenced blobs older than
+/// `--min-age` are deleted. The global `--dry-run` flag suppresses
+/// deletion and prints what would be removed instead.
+///
+/// GC is a LocalCas-specific operation (directory listing + file
+/// deletion). Future backends that need GC should add their own
+/// implementation — the `CasStore` trait intentionally has no
+/// `list()` or `delete()` method because those operations are
+/// backend-specific.
+fn run_gc(args: CasGcArgs, common: &CommonArgs) -> Result<()> {
+    let policy = resolve_policy(common)?;
+    let mut paops = ParseOps::new(policy)?;
+    apply_common(common, &mut paops);
+
+    let referenced: BTreeSet<String> = collect_all_refs(&args.files, &mut paops)?
+        .into_iter()
+        .map(|r| r.hash)
+        .collect();
+
+    let all_blobs = list_cas_blobs(&paops.io.casdir)?;
+    let now = SystemTime::now();
+
+    let mut orphans: Vec<(String, PathBuf)> = Vec::new();
+    let mut kept = 0usize;
+    for (hash, path) in &all_blobs {
+        if referenced.contains(hash.as_str()) {
+            kept += 1;
+            continue;
+        }
+        if args.min_age > 0
+            && let Ok(meta) = std::fs::metadata(path)
+            && let Ok(modified) = meta.modified()
+            && let Ok(elapsed) = now.duration_since(modified)
+            && elapsed.as_secs() < args.min_age
+        {
+            kept += 1;
+            continue;
+        }
+        orphans.push((hash.clone(), path.clone()));
+    }
+
+    let dry_run = common.dry_run;
+
+    match common.format {
+        output::OutputFormat::Text => {
+            for (hash, _) in &orphans {
+                if dry_run {
+                    eprintln!("WOULD DELETE  {hash}");
+                } else {
+                    eprintln!("DELETED       {hash}");
+                }
+            }
+            eprintln!("---");
+            eprintln!(
+                "{} {}, {} kept ({} total blobs)",
+                if dry_run { "would delete" } else { "deleted" },
+                orphans.len(),
+                kept,
+                all_blobs.len(),
+            );
+        }
+        output::OutputFormat::Json => {
+            let payload = CasGcOutput {
+                total: all_blobs.len(),
+                kept,
+                deleted: orphans.len(),
+                dry_run,
+                orphans: orphans.iter().map(|(h, _)| h.as_str()).collect(),
+            };
+            println!("{}", output::to_json(&payload)?);
+        }
+    }
+
+    if !dry_run {
+        for (_, path) in &orphans {
+            std::fs::remove_file(path).map_err(|e| {
+                Error::Io(std::io::Error::other(format!(
+                    "Failed to delete {}: {}",
+                    path.display(),
+                    e
+                )))
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+/// List all CAS blobs in a directory. A CAS blob is a regular file
+/// whose name is exactly 64 lowercase hex chars (SHA3-256 hash).
+/// Non-matching entries (subdirs, files with extensions, etc.) are
+/// silently skipped.
+fn list_cas_blobs(casdir: &Path) -> Result<Vec<(String, PathBuf)>> {
+    let read = std::fs::read_dir(casdir).map_err(|e| {
+        Error::Io(std::io::Error::other(format!(
+            "Failed to read CAS dir {}: {}",
+            casdir.display(),
+            e
+        )))
+    })?;
+    let mut blobs = Vec::new();
+    for entry in read {
+        let entry =
+            entry.map_err(|e| Error::Io(std::io::Error::other(format!("dir entry error: {e}"))))?;
+        let fname = entry.file_name();
+        let Some(name) = fname.to_str() else {
+            continue;
+        };
+        if name.len() == 64 && name.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
+            blobs.push((name.to_string(), entry.path()));
+        }
+    }
+    Ok(blobs)
 }
 
 /// Recursively walk a parsed node, collecting every CAS hash
@@ -365,4 +517,13 @@ struct HashCheckDto<'a> {
     bytes: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct CasGcOutput<'a> {
+    total: usize,
+    kept: usize,
+    deleted: usize,
+    dry_run: bool,
+    orphans: Vec<&'a str>,
 }
