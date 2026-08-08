@@ -230,6 +230,30 @@ pub fn parse_signer_arg(s: &str, alg: SigAlgKind) -> Result<Box<dyn SignerProvid
     }
 }
 
+/// How per-file AES keys are derived for WORD encryption (TODO.roadmap/11).
+///
+/// Implementations:
+/// - PBKDF over a password (today's behavior)
+/// - `MlKemProvider` — single-party ML-KEM encapsulation (roadmap 30)
+/// - `ConfiumKemProvider` — threshold ML-KEM (roadmap 21)
+///
+/// For password encryption, the "KEM" is conceptual: PBKDF derives
+/// the key directly. For public-key encryption, encapsulate produces
+/// a ciphertext that decapsulate converts back to the same key.
+pub trait KemProvider: Send + Sync + std::fmt::Debug {
+    /// Encryption side: produce (aes_key, recipient_ciphertext, fingerprint).
+    fn encapsulate(
+        &self,
+        rng: &mut botan::RandomNumberGenerator,
+    ) -> Result<(Vec<u8>, Vec<u8>, crate::capability::KeyFp)>;
+
+    /// Decryption side: recover aes_key from recipient_ciphertext.
+    fn decapsulate(&self, ciphertext: &[u8]) -> Result<Vec<u8>>;
+
+    /// The recipient key fingerprint.
+    fn fingerprint(&self) -> Result<crate::capability::KeyFp>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,77 +311,5 @@ mod tests {
     fn parse_pkcs11_uri_returns_not_yet_implemented() {
         let result = parse_signer_arg("pkcs11://token-1", SigAlgKind::Ed25519);
         assert!(result.is_err());
-    }
-}
-
-/// How per-file AES keys are derived for WORD encryption (TODO.roadmap/11).
-///
-/// Implementations:
-/// - [`PasswordKem`] — PBKDF over a password (today's behavior)
-/// - `MlKemProvider` — single-party ML-KEM encapsulation (roadmap 30)
-/// - `ConfiumKemProvider` — threshold ML-KEM (roadmap 21)
-///
-/// For password encryption, the "KEM" is conceptual: PBKDF derives
-/// the key directly. For public-key encryption, encapsulate produces
-/// a ciphertext that decapsulate converts back to the same key.
-pub trait KemProvider: Send + Sync + std::fmt::Debug {
-    /// Encryption side: produce (aes_key, recipient_ciphertext, fingerprint).
-    fn encapsulate(
-        &self,
-        rng: &mut botan::RandomNumberGenerator,
-    ) -> Result<(Vec<u8>, Vec<u8>, crate::capability::KeyFp)>;
-
-    /// Decryption side: recover aes_key from recipient_ciphertext.
-    fn decapsulate(&self, ciphertext: &[u8]) -> Result<Vec<u8>>;
-
-    /// The recipient key fingerprint.
-    fn fingerprint(&self) -> Result<crate::capability::KeyFp>;
-}
-
-/// Password-based "KEM" — wraps today's PBKDF path. The "ciphertext"
-/// is the PHC string (salt + params) stored in the extfield.
-///
-/// Debug is implemented manually to avoid leaking the password in
-/// log output. The full KemProvider impl lands when the encrypt
-/// pipeline is refactored to use trait objects (TODO.roadmap/30).
-#[allow(dead_code)]
-pub struct PasswordKem {
-    pub(crate) word: String,
-    pub(crate) password: String,
-}
-
-impl std::fmt::Debug for PasswordKem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PasswordKem")
-            .field("word", &self.word)
-            .field("password", &"<redacted>")
-            .finish()
-    }
-}
-
-impl PasswordKem {
-    pub fn new(word: impl Into<String>, password: impl Into<String>) -> Self {
-        PasswordKem {
-            word: word.into(),
-            password: password.into(),
-        }
-    }
-}
-
-#[cfg(test)]
-mod kem_tests {
-    use super::*;
-
-    #[test]
-    fn password_kem_debug_does_not_leak_password() {
-        let kem = PasswordKem::new("WORD", "secret123");
-        let dbg = format!("{:?}", kem);
-        // Debug should NOT contain the actual password value.
-        // (If it does, that's a security issue — passwords in logs.)
-        assert!(
-            !dbg.contains("secret123"),
-            "PasswordKem Debug leaked password: {}",
-            dbg
-        );
     }
 }

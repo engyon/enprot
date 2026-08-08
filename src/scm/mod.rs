@@ -546,12 +546,4 @@ hex = "0.4"
         let d = diff_manifests(&p1, &p2).unwrap();
         assert_eq!(d, "(no changes)\n");
     }
-
-    // Silence unused-import warnings when PathBuf isn't otherwise
-    // exercised in unit-test paths.
-    #[test]
-    #[allow(dead_code)]
-    fn _pathbuf_in_scope() {
-        let _: std::path::PathBuf = std::path::PathBuf::new();
-    }
 }
