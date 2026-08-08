@@ -430,15 +430,22 @@ pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
         return Ok(Box::new(MemoryCas::new()));
     }
     if spec.starts_with("s3://") {
-        return Err(crate::error::Error::Cas("S3 CAS requires --features s3 (not yet built); use 'memory:' for testing or a local path".to_string()));
+        return Err(crate::error::Error::InvalidArg {
+            arg: "--casdir",
+            reason: "S3 CAS requires --features s3 (not yet built); use 'memory:' for testing or a local path".to_string(),
+        });
     }
     if spec.starts_with("ipfs://") {
-        return Err(crate::error::Error::Cas("IPFS CAS requires --features ipfs (not yet built); use 'memory:' for testing or a local path".to_string()));
+        return Err(crate::error::Error::InvalidArg {
+            arg: "--casdir",
+            reason: "IPFS CAS requires --features ipfs (not yet built); use 'memory:' for testing or a local path".to_string(),
+        });
     }
     if spec == "rekor:" || spec.starts_with("rekor://") {
-        return Err(crate::error::Error::Cas(
-            "Rekor CAS requires --features sigstore (not yet built); use 'memory:' for testing or a local path".into(),
-        ));
+        return Err(crate::error::Error::InvalidArg {
+            arg: "--casdir",
+            reason: "Rekor CAS requires --features sigstore (not yet built); use 'memory:' for testing or a local path".to_string(),
+        });
     }
     // Default: treat as local filesystem path.
     Ok(Box::new(LocalCas {

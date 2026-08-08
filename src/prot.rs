@@ -106,10 +106,13 @@ fn compute_iv(
 
     if is_det {
         if !needs_iv {
-            return Err(Error::Cipher(format!(
-                "{} does not support deterministic mode (SIV is already deterministic)",
-                cipheropts.alg
-            )));
+            return Err(Error::InvalidArg {
+                arg: "--cipher",
+                reason: format!(
+                    "{} does not support deterministic mode (SIV is already deterministic)",
+                    cipheropts.alg
+                ),
+            });
         }
         let enc_key = crypto::hkdf_sha256(master_key, b"enprot-enc", key_len)?;
         let iv_key = crypto::hkdf_sha256(master_key, b"enprot-iv", 32)?;
@@ -130,7 +133,10 @@ fn compute_iv(
         };
         Ok((master_key.to_vec(), iv))
     } else if cipheropts.iv.is_some() {
-        Err(Error::Cipher("IV was supplied but not expected".into()))
+        Err(Error::InvalidArg {
+            arg: "--cipher-iv",
+            reason: "IV was supplied but not expected (SIV mode takes no IV)".to_string(),
+        })
     } else {
         Ok((master_key.to_vec(), Vec::new()))
     }

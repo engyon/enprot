@@ -219,8 +219,11 @@ fn collect_all_refs(files: &[String], paops: &mut ParseOps) -> Result<Vec<HashRe
     for fname in files {
         let reader = open_reader(fname)?;
         paops.runtime.fname = fname.clone();
-        let tree = etree::parse(reader, paops)
-            .map_err(|e| Error::Cas(format!("parse error in {fname}: {e}")))?;
+        let tree = etree::parse(reader, paops).map_err(|e| Error::Parse {
+            file: fname.clone(),
+            lineno: 0,
+            msg: e.to_string(),
+        })?;
         for node in &tree {
             collect_refs(node, fname, &mut refs);
         }

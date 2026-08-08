@@ -119,17 +119,29 @@ impl SymmetricCipher for AesGcmSivCipher {
         use aes_gcm_siv::Aes256GcmSiv;
         use aes_gcm_siv::aead::{Aead, KeyInit, Payload};
 
-        let cipher = Aes256GcmSiv::new_from_slice(key)
-            .map_err(|_| Error::Cipher("AES-256-GCM-SIV key must be 32 bytes".into()))?;
+        let cipher = Aes256GcmSiv::new_from_slice(key).map_err(|_| Error::InvalidArg {
+            arg: "key",
+            reason: "AES-256-GCM-SIV key must be 32 bytes".to_string(),
+        })?;
         let nonce = aes_gcm_siv::aead::generic_array::GenericArray::from_slice(iv);
         let payload = Payload { msg: data, aad: ad };
         match self.direction {
-            CipherDirection::Encrypt => cipher
-                .encrypt(nonce, payload)
-                .map_err(|_| Error::Cipher("AES-256-GCM-SIV encrypt failed".into())),
-            CipherDirection::Decrypt => cipher
-                .decrypt(nonce, payload)
-                .map_err(|_| Error::Cipher("AES-256-GCM-SIV decrypt failed".into())),
+            CipherDirection::Encrypt => {
+                cipher
+                    .encrypt(nonce, payload)
+                    .map_err(|_| Error::AeadFailed {
+                        alg: "aes-256-gcm-siv",
+                        op: "encrypt",
+                    })
+            }
+            CipherDirection::Decrypt => {
+                cipher
+                    .decrypt(nonce, payload)
+                    .map_err(|_| Error::AeadFailed {
+                        alg: "aes-256-gcm-siv",
+                        op: "decrypt",
+                    })
+            }
         }
     }
 }

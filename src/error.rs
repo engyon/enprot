@@ -57,6 +57,13 @@ pub enum Error {
     #[error("unknown cipher algorithm: {alg}")]
     CipherUnknown { alg: String },
 
+    /// AEAD encrypt or decrypt operation failed (authentication tag
+    /// mismatch, wrong key, corrupted ciphertext). The underlying
+    /// AEAD error is opaque (no structured data), so we carry the
+    /// algorithm name and operation for diagnostics.
+    #[error("AEAD {op} failed for {alg}")]
+    AeadFailed { alg: &'static str, op: &'static str },
+
     /// PBKDF parameter resolution or key derivation failure.
     #[error("pbkdf: {0}")]
     Pbkdf(String),
@@ -396,5 +403,14 @@ mod tests {
             alg: "aes-999".to_string(),
         };
         assert_eq!(e.to_string(), "unknown cipher algorithm: aes-999");
+    }
+
+    #[test]
+    fn display_aead_failed() {
+        let e = Error::AeadFailed {
+            alg: "aes-256-gcm-siv",
+            op: "decrypt",
+        };
+        assert_eq!(e.to_string(), "AEAD decrypt failed for aes-256-gcm-siv");
     }
 }
