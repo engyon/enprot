@@ -68,17 +68,13 @@ pub trait CasStore: Send + Sync {
     /// identify orphans. Backends that can't enumerate (e.g.,
     /// append-only transparency logs) should leave the default.
     fn list(&self) -> Result<Vec<String>> {
-        Err(Error::Cas(
-            "list() not supported by this CAS backend".to_string(),
-        ))
+        Err(Error::CasUnsupported { op: "list" })
     }
 
     /// Delete a blob by hash. Used by `cas gc` to reclaim space.
     /// Backends that don't support deletion should leave the default.
     fn delete(&self, _hash: &str) -> Result<()> {
-        Err(Error::Cas(
-            "delete() not supported by this CAS backend".to_string(),
-        ))
+        Err(Error::CasUnsupported { op: "delete" })
     }
 }
 
@@ -114,35 +110,16 @@ impl CasStore for LocalCas {
             return Ok(hexhash);
         }
 
-        // Atomic write: write to a temp file in the same directory,
-        // fsync, then rename. This prevents concurrent readers from
-        // seeing a partially-written blob. The PID suffix avoids
-        // collisions between concurrent processes.
         let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
         {
-            let mut f = File::create(&tmp)
-                .map_err(|e| Error::Cas(format!("Failed to create {}: {}", tmp.display(), e)))?;
-            f.write_all(blob).map_err(|e| {
-                Error::Cas(format!(
-                    "Error writing {} bytes to {}: {}",
-                    blob.len(),
-                    tmp.display(),
-                    e
-                ))
-            })?;
-            f.sync_all()
-                .map_err(|e| Error::Cas(format!("Failed to fsync {}: {}", tmp.display(), e)))?;
+            let mut f = File::create(&tmp)?;
+            f.write_all(blob)?;
+            f.sync_all()?;
         }
-        std::fs::rename(&tmp, &path).map_err(|e| {
-            // Clean up the temp file if rename failed.
+        if let Err(e) = std::fs::rename(&tmp, &path) {
             let _ = std::fs::remove_file(&tmp);
-            Error::Cas(format!(
-                "Failed to rename {} -> {}: {}",
-                tmp.display(),
-                path.display(),
-                e
-            ))
-        })?;
+            return Err(e.into());
+        }
 
         if self.verbose {
             eprintln!("cas::save(): {} bytes to {}", blob.len(), path.display());
@@ -151,40 +128,33 @@ impl CasStore for LocalCas {
     }
 
     fn load(&self, hash: &str, policy: &dyn crypto::CryptoPolicy) -> Result<Vec<u8>> {
-        hex::decode(hash).map_err(|_| Error::Cas(format!("Not a valid hex token: {}", hash)))?;
+        hex::decode(hash).map_err(|_| Error::CasHashInvalid {
+            hash: hash.to_string(),
+        })?;
         let path = self.path_for(hash);
 
-        let mut file_in = File::open(&path)
-            .map_err(|e| Error::Cas(format!("Failed to open {}: {}", path.display(), e)))?;
+        let mut file_in = File::open(&path)?;
         let mut blob = Vec::new();
-        let bytes = file_in
-            .read_to_end(&mut blob)
-            .map_err(|e| Error::Cas(format!("Error reading {}: {}", path.display(), e)))?;
+        let bytes = file_in.read_to_end(&mut blob)?;
         if self.verbose {
             eprintln!("cas::load(): {} bytes from {}", bytes, path.display());
         }
 
         let verify = crypto::hexdigest("sha3-256", &blob, policy)?;
         if hash != verify {
-            return Err(Error::Cas(format!(
-                "CONTENT HASH MISMATCH!\ninput = {}\ncheck = {}",
-                hash, verify
-            )));
+            return Err(Error::CasHashMismatch {
+                expected: hash.to_string(),
+                actual: verify,
+            });
         }
         Ok(blob)
     }
 
     fn list(&self) -> Result<Vec<String>> {
-        let read = std::fs::read_dir(&self.root).map_err(|e| {
-            Error::Cas(format!(
-                "Failed to read CAS dir {}: {}",
-                self.root.display(),
-                e
-            ))
-        })?;
+        let read = std::fs::read_dir(&self.root)?;
         let mut hashes = Vec::new();
         for entry in read {
-            let entry = entry.map_err(|e| Error::Cas(format!("dir entry error: {e}")))?;
+            let entry = entry?;
             let fname = entry.file_name();
             let Some(name) = fname.to_str() else {
                 continue;
@@ -197,10 +167,12 @@ impl CasStore for LocalCas {
     }
 
     fn delete(&self, hash: &str) -> Result<()> {
-        hex::decode(hash).map_err(|_| Error::Cas(format!("Not a valid hex token: {}", hash)))?;
+        hex::decode(hash).map_err(|_| Error::CasHashInvalid {
+            hash: hash.to_string(),
+        })?;
         let path = self.path_for(hash);
-        std::fs::remove_file(&path)
-            .map_err(|e| Error::Cas(format!("Failed to delete {}: {}", path.display(), e)))
+        std::fs::remove_file(&path)?;
+        Ok(())
     }
 }
 
@@ -236,14 +208,16 @@ impl CasStore for MemoryCas {
         let map = self.entries.read().unwrap();
         let blob = map
             .get(hash)
-            .ok_or_else(|| Error::Cas(format!("hash not present in memory CAS: {}", hash)))?
+            .ok_or_else(|| Error::CasNotFound {
+                hash: hash.to_string(),
+            })?
             .clone();
         let verify = crypto::hexdigest("sha3-256", &blob, policy)?;
         if hash != verify {
-            return Err(Error::Cas(format!(
-                "CONTENT HASH MISMATCH (memory)!\ninput = {}\ncheck = {}",
-                hash, verify
-            )));
+            return Err(Error::CasHashMismatch {
+                expected: hash.to_string(),
+                actual: verify,
+            });
         }
         Ok(blob)
     }
@@ -333,7 +307,7 @@ mod tests {
         let err = store.load(&bad_hash, &*policy);
         assert!(err.is_err());
         let msg = err.unwrap_err().to_string();
-        assert!(msg.contains("HASH MISMATCH"), "msg: {msg}");
+        assert!(msg.contains("hash mismatch"), "msg: {msg}");
     }
 
     #[test]

@@ -53,6 +53,10 @@ pub enum Error {
     #[error("cipher: {0}")]
     Cipher(String),
 
+    /// Cipher algorithm not recognized by any backend.
+    #[error("unknown cipher algorithm: {alg}")]
+    CipherUnknown { alg: String },
+
     /// PBKDF parameter resolution or key derivation failure.
     #[error("pbkdf: {0}")]
     Pbkdf(String),
@@ -77,8 +81,27 @@ pub enum Error {
     },
 
     /// CAS load/save failure (hash mismatch, missing file, etc.).
+    /// Prefer the structured variants below for new code; this remains
+    /// for cases that don't fit a specific category.
     #[error("CAS: {0}")]
     Cas(String),
+
+    /// CAS hash is not valid hex (wrong length or non-hex chars).
+    #[error("CAS hash invalid: {hash}")]
+    CasHashInvalid { hash: String },
+
+    /// CAS blob content doesn't match its declared hash.
+    #[error("CAS hash mismatch: expected {expected}, computed {actual}")]
+    CasHashMismatch { expected: String, actual: String },
+
+    /// CAS blob not found in the store.
+    #[error("CAS blob not found: {hash}")]
+    CasNotFound { hash: String },
+
+    /// CAS operation not supported by the backend (e.g., `list()` on
+    /// an append-only store).
+    #[error("CAS operation '{op}' not supported by this backend")]
+    CasUnsupported { op: &'static str },
 
     /// PHC string parse failure (missing `$`, non-numeric param value,
     /// bad base64 salt, etc.).
@@ -328,5 +351,50 @@ mod tests {
     fn display_msg() {
         let e = Error::Msg("something happened".to_string());
         assert_eq!(e.to_string(), "something happened");
+    }
+
+    #[test]
+    fn display_cas_hash_invalid() {
+        let e = Error::CasHashInvalid {
+            hash: "xyz".to_string(),
+        };
+        assert_eq!(e.to_string(), "CAS hash invalid: xyz");
+    }
+
+    #[test]
+    fn display_cas_hash_mismatch() {
+        let e = Error::CasHashMismatch {
+            expected: "aaa".to_string(),
+            actual: "bbb".to_string(),
+        };
+        assert_eq!(
+            e.to_string(),
+            "CAS hash mismatch: expected aaa, computed bbb"
+        );
+    }
+
+    #[test]
+    fn display_cas_not_found() {
+        let e = Error::CasNotFound {
+            hash: "abc123".to_string(),
+        };
+        assert_eq!(e.to_string(), "CAS blob not found: abc123");
+    }
+
+    #[test]
+    fn display_cas_unsupported() {
+        let e = Error::CasUnsupported { op: "list" };
+        assert_eq!(
+            e.to_string(),
+            "CAS operation 'list' not supported by this backend"
+        );
+    }
+
+    #[test]
+    fn display_cipher_unknown() {
+        let e = Error::CipherUnknown {
+            alg: "aes-999".to_string(),
+        };
+        assert_eq!(e.to_string(), "unknown cipher algorithm: aes-999");
     }
 }

@@ -51,10 +51,13 @@ struct BotanCipher {
 
 impl BotanCipher {
     fn create(alg: &str, direction: CipherDirection) -> Result<Self> {
-        let botan_alg = BOTAN_CIPHER_ALG_MAP
-            .get(alg)
-            .copied()
-            .ok_or_else(|| Error::Cipher(format!("Unrecognized cipher: {}", alg)))?;
+        let botan_alg =
+            BOTAN_CIPHER_ALG_MAP
+                .get(alg)
+                .copied()
+                .ok_or_else(|| Error::CipherUnknown {
+                    alg: alg.to_string(),
+                })?;
         let obj = botan::Cipher::new(botan_alg, direction).map_err(Error::botan)?;
         let keyspec = obj.key_spec().map_err(Error::botan)?;
         Ok(BotanCipher {
@@ -176,14 +179,18 @@ pub fn parse_cipher_extfield(value: &str) -> Result<(String, Vec<u8>)> {
     let mut it = value.split('$');
     let alg = it
         .next()
-        .ok_or_else(|| Error::Cipher("Invalid cipher extfield".into()))?
+        .ok_or_else(|| Error::Extfield {
+            field: "cipher",
+            reason: "empty extfield value".to_string(),
+        })?
         .to_string();
     let mut fields = std::collections::BTreeMap::new();
     for part in it {
         let mut kv = part.splitn(2, '=');
-        let k = kv
-            .next()
-            .ok_or_else(|| Error::Cipher("Missing field key".into()))?;
+        let k = kv.next().ok_or_else(|| Error::Extfield {
+            field: "cipher",
+            reason: "missing field key in $-segment".to_string(),
+        })?;
         let v = kv.collect::<String>();
         fields.insert(k, v);
     }
