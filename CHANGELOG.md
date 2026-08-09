@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.26](https://github.com/engyon/enprot/compare/enprot-v0.5.25...enprot-v0.5.26) - 2026-08-09
+
+### Fixed
+
+- *(docker)* add libclang-dev for bindgen (rnp-rs FFI generation)
+
 ## [0.5.25](https://github.com/engyon/enprot/compare/enprot-v0.5.24...enprot-v0.5.25) - 2026-08-09
 
 ### Fixed
