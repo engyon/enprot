@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       xz-utils \
       zlib1g-dev \
       libbz2-dev \
+      libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Build Botan 3 from source — Ubuntu 24.04 only ships Botan 2.
