@@ -243,7 +243,11 @@ fn extract_ciphertext(
     keyw: &str,
     paops: &mut crate::etree::ParseOps,
 ) -> Result<Vec<u8>> {
-    match &txt[0] {
+    let first = txt.first().ok_or_else(|| Error::BlockShape {
+        word: keyw.to_string(),
+        reason: "ENCRYPTED block has no children".to_string(),
+    })?;
+    match first {
         TextNode::Data(data) => Ok(data.clone()),
         TextNode::Stored { cas, .. } => cas::load(cas, paops),
         _ => Err(Error::BlockShape {
@@ -261,7 +265,11 @@ fn to_cas_pointer(
     keyw: &str,
     paops: &mut crate::etree::ParseOps,
 ) -> Result<String> {
-    match &txt[0] {
+    let first = txt.first().ok_or_else(|| Error::BlockShape {
+        word: keyw.to_string(),
+        reason: "ENCRYPTED block has no children".to_string(),
+    })?;
+    match first {
         TextNode::Data(data) => cas::save(data.clone(), paops),
         TextNode::Stored { cas, .. } => Ok(cas.clone()),
         _ => Err(Error::BlockShape {
