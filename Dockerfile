@@ -6,8 +6,10 @@ LABEL org.opencontainers.image.source="https://github.com/engyon/enprot"
 LABEL org.opencontainers.image.licenses="BSD-2-Clause"
 
 ARG TARGETARCH
+ARG BOTAN_VERSION=3.7.0
 
-# Install build dependencies for vendored-rnp + botan-src.
+# Install build dependencies. zlib + bzip2 dev headers are needed by
+# both Botan and librnp's transitive deps.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
       cmake \
@@ -17,7 +19,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 \
       g++ \
       pkg-config \
+      zlib1g-dev \
+      libbz2-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Build Botan 3 from source — Ubuntu 24.04 only ships Botan 2.
+RUN curl -LO https://botan.randombit.net/releases/Botan-${BOTAN_VERSION}.tar.xz && \
+    tar xf Botan-${BOTAN_VERSION}.tar.xz && \
+    cd Botan-${BOTAN_VERSION} && \
+    python3 configure.py --prefix=/usr/local --with-build-targets=static && \
+    make -j$(nproc) && \
+    make install && \
+    cd .. && \
+    rm -rf Botan-${BOTAN_VERSION} Botan-${BOTAN_VERSION}.tar.xz
+
+ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
