@@ -164,21 +164,9 @@ fn transform_encrypted(
     paops: &mut crate::etree::ParseOps,
 ) -> Result<TextNode> {
     if paops.transforms.decrypt.contains(keyw) {
-        let ct = match &txt[0] {
-            TextNode::Data(data) => data.clone(),
-            TextNode::Stored { cas: hexhash, .. } => cas::load(hexhash, paops)?,
-            _ => {
-                return Err(Error::BlockShape {
-                    word: keyw.to_string(),
-                    reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
-                });
-            }
-        };
+        let ct = extract_ciphertext(txt, keyw, paops)?;
 
         let pt = if extfields.contains_key("recipients") {
-            // KEM mode (TODO.roadmap/60): the Encrypted block was
-            // encrypted to recipient pubkeys. Look up the matching
-            // privkey by WORD, then KEM-decapsulate.
             let priv_pem = paops
                 .crypto
                 .recipient_privkeys
@@ -192,7 +180,6 @@ fn transform_encrypted(
                 })?;
             crate::kemenc::decrypt(&ct, priv_pem, extfields)?
         } else {
-            // Password mode (default).
             let pass = ensure_password(keyw, paops, false)?;
             match prot::decrypt(
                 ct,
@@ -222,16 +209,7 @@ fn transform_encrypted(
     }
 
     if paops.transforms.store.contains(keyw) {
-        let hexhash = match &txt[0] {
-            TextNode::Data(data) => cas::save(data.clone(), paops)?,
-            TextNode::Stored { cas: hexhash, .. } => hexhash.clone(),
-            _ => {
-                return Err(Error::BlockShape {
-                    word: keyw.to_string(),
-                    reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
-                });
-            }
-        };
+        let hexhash = to_cas_pointer(txt, keyw, paops)?;
         return Ok(TextNode::Encrypted {
             keyw: keyw.to_string(),
             txt: vec![TextNode::Stored {
@@ -243,16 +221,7 @@ fn transform_encrypted(
     }
 
     if paops.transforms.fetch.contains(keyw) {
-        let ct = match &txt[0] {
-            TextNode::Data(data) => data.clone(),
-            TextNode::Stored { cas: hexhash, .. } => cas::load(hexhash, paops)?,
-            _ => {
-                return Err(Error::BlockShape {
-                    word: keyw.to_string(),
-                    reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
-                });
-            }
-        };
+        let ct = extract_ciphertext(txt, keyw, paops)?;
         return Ok(TextNode::Encrypted {
             keyw: keyw.to_string(),
             txt: vec![TextNode::Data(ct)],
@@ -260,12 +229,46 @@ fn transform_encrypted(
         });
     }
 
-    // Caller already destructured; re-construct from references.
     Ok(TextNode::Encrypted {
         keyw: keyw.to_string(),
         txt: txt.clone(),
         extfields: extfields.clone(),
     })
+}
+
+/// Extract ciphertext bytes from the first child of an Encrypted
+/// block. Loads from CAS if the child is a Stored pointer.
+fn extract_ciphertext(
+    txt: &TextTree,
+    keyw: &str,
+    paops: &mut crate::etree::ParseOps,
+) -> Result<Vec<u8>> {
+    match &txt[0] {
+        TextNode::Data(data) => Ok(data.clone()),
+        TextNode::Stored { cas, .. } => cas::load(cas, paops),
+        _ => Err(Error::BlockShape {
+            word: keyw.to_string(),
+            reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
+        }),
+    }
+}
+
+/// Convert the first child of an Encrypted block to a CAS pointer.
+/// Saves to CAS if the child is inline Data; returns the existing
+/// hash if already Stored.
+fn to_cas_pointer(
+    txt: &TextTree,
+    keyw: &str,
+    paops: &mut crate::etree::ParseOps,
+) -> Result<String> {
+    match &txt[0] {
+        TextNode::Data(data) => cas::save(data.clone(), paops),
+        TextNode::Stored { cas, .. } => Ok(cas.clone()),
+        _ => Err(Error::BlockShape {
+            word: keyw.to_string(),
+            reason: "ENCRYPTED block has no DATA or STORED child".to_string(),
+        }),
+    }
 }
 
 /// Transform a `Stored` pointer. Takes the variant's fields directly.
