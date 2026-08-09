@@ -90,7 +90,10 @@ fn to_botan_pbkdf(alg: &str) -> Result<std::borrow::Cow<'static, str>> {
     match alg {
         "argon2" => Ok("Argon2id".into()),
         "scrypt" => Ok("Scrypt".into()),
-        _ => Err(Error::Pbkdf(format!("Invalid KDF: '{}'", alg))),
+        _ => Err(Error::InvalidArg {
+            arg: "--pbkdf",
+            reason: format!("Invalid KDF: '{}'", alg),
+        }),
     }
 }
 
@@ -111,12 +114,19 @@ pub fn derive_key_from_password(
         if param.is_empty() {
             continue;
         }
-        params[i] = params_map
-            .remove(*param)
-            .ok_or_else(|| Error::Pbkdf("Missing PBKDF parameter".into()))?;
+        params[i] = params_map.remove(*param).ok_or_else(|| Error::InvalidArg {
+            arg: "--pbkdf-params",
+            reason: format!("Missing PBKDF parameter: {param}"),
+        })?;
     }
     if !params_map.is_empty() {
-        return Err(Error::Pbkdf("Extraneous PBKDF parameters".into()));
+        return Err(Error::InvalidArg {
+            arg: "--pbkdf-params",
+            reason: format!(
+                "Extraneous PBKDF parameters: {}",
+                params_map.keys().cloned().collect::<Vec<_>>().join(", ")
+            ),
+        });
     }
     let key = botan::derive_key_from_password(
         &to_botan_pbkdf(alg)?,

@@ -166,17 +166,20 @@ pub(crate) fn derive_key(
     let mut salt = match opts.salt.clone() {
         Some(s) => s,
         None => {
-            let r = rng
-                .as_mut()
-                .ok_or_else(|| Error::Pbkdf("PBKDF requires an RNG to generate salt".into()))?;
-            r.read(opts.saltlen)
-                .map_err(|e| Error::Pbkdf(format!("RNG failure during salt generation: {e}")))?
+            let r = rng.as_mut().ok_or_else(|| Error::InvalidArg {
+                arg: "rng",
+                reason: "PBKDF requires an RNG to generate salt".to_string(),
+            })?;
+            r.read(opts.saltlen).map_err(Error::botan)?
         }
     };
 
     let botan_param_order = BOTAN_PBKDF_PARAM_MAP
         .get(opts.alg.as_str())
-        .ok_or_else(|| Error::Pbkdf(format!("Missing PBKDF param mapping for '{}'", opts.alg)))?;
+        .ok_or_else(|| Error::InvalidArg {
+            arg: "--pbkdf",
+            reason: format!("Unknown PBKDF algorithm: '{}'", opts.alg),
+        })?;
 
     if let Some(params) = opts.params.as_ref() {
         let key = if let Some(entry) = cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
@@ -212,9 +215,10 @@ pub(crate) fn derive_key(
         return Ok((key, Some(format_phc(&opts.alg, params, &salt)?)));
     }
 
-    let msec = opts
-        .msec
-        .ok_or_else(|| Error::Pbkdf("Missing PBKDF msec".into()))?;
+    let msec = opts.msec.ok_or_else(|| Error::InvalidArg {
+        arg: "--pbkdf-msec",
+        reason: "Missing PBKDF msec".to_string(),
+    })?;
     let (key, params) = if let Some(entry) =
         cache.as_ref().unwrap_or(&Vec::new()).iter().find(|e| {
             e.password == password && e.alg == opts.alg && e.key.len() == key_len && e.msec == msec
