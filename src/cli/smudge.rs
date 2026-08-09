@@ -72,9 +72,9 @@ pub fn run(mode: Mode, a: SmudgeCleanSubcmd, common: CommonArgs) -> Result<()> {
             let pt = prot::decrypt(
                 ext.ct,
                 paops.passwords.get(&a.word).unwrap(),
-                &ext.pbkdf.as_ref(),
-                &ext.cipher.as_ref(),
-                &ext.compress.as_ref(),
+                ext.pbkdf.as_deref(),
+                ext.cipher.as_deref(),
+                ext.compress.as_deref(),
                 &mut paops.crypto.pbkdf_cache,
                 &*paops.crypto.policy,
             )?;
