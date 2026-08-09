@@ -63,7 +63,8 @@ pub struct CasArgs {
 }
 
 /// `enprot cas` subcommand actions. `verify` checks integrity; `gc`
-/// reclaims space by deleting unreferenced blobs.
+/// reclaims space by deleting unreferenced blobs; `list` enumerates
+/// all blobs in the store.
 #[derive(Subcommand, Debug, Clone)]
 pub enum CasSubcmd {
     /// Verify that every CAS hash referenced by the input file(s)
@@ -74,6 +75,10 @@ pub enum CasSubcmd {
     /// Delete CAS blobs not referenced by any root file. Use the
     /// global `--dry-run` flag to preview deletions without executing.
     Gc(CasGcArgs),
+
+    /// List all blob hashes in the CAS store. Useful for inventory
+    /// and scripting. One hash per line (text) or JSON array.
+    List,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -104,6 +109,7 @@ pub fn run(args: CasArgs, common: &CommonArgs) -> Result<()> {
     match args.command {
         CasSubcmd::Verify(a) => run_verify(a, common),
         CasSubcmd::Gc(a) => run_gc(a, common),
+        CasSubcmd::List => run_list(common),
     }
 }
 
@@ -392,6 +398,35 @@ fn run_gc(args: CasGcArgs, common: &CommonArgs) -> Result<()> {
     Ok(())
 }
 
+/// `enprot cas list` — enumerate all blob hashes in the CAS store.
+fn run_list(common: &CommonArgs) -> Result<()> {
+    let policy = resolve_policy(common)?;
+    let mut paops = ParseOps::new(policy)?;
+    apply_common(common, &mut paops);
+
+    let cas_store = paops.io.cas.as_ref();
+    let mut hashes = cas_store.list()?;
+    hashes.sort();
+
+    match common.format {
+        output::OutputFormat::Text => {
+            for hash in &hashes {
+                println!("{hash}");
+            }
+            eprintln!("{} blobs", hashes.len());
+        }
+        output::OutputFormat::Json => {
+            let payload = CasListOutput {
+                count: hashes.len(),
+                blobs: hashes,
+            };
+            println!("{}", output::to_json(&payload)?);
+        }
+    }
+
+    Ok(())
+}
+
 /// Recursively walk a parsed node, collecting every CAS hash
 /// reference. References come from directives that point into the
 /// CAS: STORED, INCLUDE, MUTED, KEY, CERT.
@@ -496,4 +531,10 @@ struct CasGcOutput<'a> {
     deleted: usize,
     dry_run: bool,
     orphans: Vec<&'a str>,
+}
+
+#[derive(Serialize)]
+struct CasListOutput {
+    count: usize,
+    blobs: Vec<String>,
 }
