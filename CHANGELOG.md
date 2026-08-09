@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.22](https://github.com/engyon/enprot/compare/enprot-v0.5.21...enprot-v0.5.22) - 2026-08-09
+
+### Other
+
+- *(error)* eliminate Error::Pbkdf(String) — ZERO remaining
+- *(extfield)* eliminate raw string keys in prot.rs — DRY migration
+
 ## [0.5.21](https://github.com/engyon/enprot/compare/enprot-v0.5.20...enprot-v0.5.21) - 2026-08-09
 
 ### Other
