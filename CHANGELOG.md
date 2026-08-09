@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.24](https://github.com/engyon/enprot/compare/enprot-v0.5.23...enprot-v0.5.24) - 2026-08-09
+
+### Other
+
+- *(prot)* idiomatic decrypt signature — Option<&str> instead of &Option<&String>
+
 ## [0.5.23](https://github.com/engyon/enprot/compare/enprot-v0.5.22...enprot-v0.5.23) - 2026-08-09
 
 ### Added
