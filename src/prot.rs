@@ -214,7 +214,10 @@ fn derive_decrypt_key(
     let mut no_rng: Option<botan::RandomNumberGenerator> = None;
     let pbkdfopts = match pbkdf {
         Some(p) => {
-            let (alg, params, salt) = parse_phc(p)?;
+            let (alg, params, salt) = parse_phc(p).map_err(|e| Error::Extfield {
+                field: "pbkdf",
+                reason: e.to_string(),
+            })?;
             etree::PBKDFOptions {
                 alg,
                 saltlen: 0,
