@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.28](https://github.com/engyon/enprot/compare/enprot-v0.5.27...enprot-v0.5.28) - 2026-08-09
+
+### Fixed
+
+- *(ci)* docs deploy non-blocking — continue-on-error when Pages not enabled
+
 ## [0.5.27](https://github.com/engyon/enprot/compare/enprot-v0.5.26...enprot-v0.5.27) - 2026-08-09
 
 ### Other
