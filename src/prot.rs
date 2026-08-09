@@ -167,9 +167,9 @@ fn apply_compression(
 pub fn decrypt(
     ct: Vec<u8>,
     password: &str,
-    pbkdf: &Option<&String>,
-    cipher: &Option<&String>,
-    compress: &Option<&String>,
+    pbkdf: Option<&str>,
+    cipher: Option<&str>,
+    compress: Option<&str>,
     cache: &mut Option<PBKDFCache>,
     policy: &dyn CryptoPolicy,
 ) -> Result<Vec<u8>> {
@@ -194,9 +194,7 @@ pub fn decrypt(
     let mut dec = dec;
     let pt = dec.process(&key, &iv, &[], &ct)?;
 
-    if let Some(alg) = compress
-        && alg.as_str() == crate::compress::COMPRESS_EXTFIELD
-    {
+    if compress == Some(crate::compress::COMPRESS_EXTFIELD) {
         crate::compress::decompress(&pt)
     } else {
         Ok(pt)
@@ -208,7 +206,7 @@ pub fn decrypt(
 /// is present (old blobs encrypted before PBKDF extfields existed).
 fn derive_decrypt_key(
     password: &str,
-    pbkdf: &Option<&String>,
+    pbkdf: Option<&str>,
     key_len: usize,
     cache: &mut Option<PBKDFCache>,
     policy: &dyn CryptoPolicy,

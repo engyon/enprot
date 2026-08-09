@@ -181,12 +181,13 @@ fn transform_encrypted(
             crate::kemenc::decrypt(&ct, priv_pem, extfields)?
         } else {
             let pass = ensure_password(keyw, paops, false)?;
+            let ef = crate::extfield::EncryptedExtFields::from_map(extfields);
             match prot::decrypt(
                 ct,
                 &pass,
-                &extfields.get("pbkdf"),
-                &extfields.get("cipher"),
-                &extfields.get("compress"),
+                ef.pbkdf(),
+                ef.cipher(),
+                ef.compress(),
                 &mut paops.crypto.pbkdf_cache,
                 &*paops.crypto.policy,
             ) {

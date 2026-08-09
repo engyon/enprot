@@ -91,9 +91,9 @@ fn round_trip_with(pt: &[u8], password: &str, alg: &str) -> Vec<u8> {
     decrypt(
         ct,
         password,
-        &extfields.get("pbkdf"),
-        &extfields.get("cipher"),
-        &extfields.get("compress"),
+        extfields.get("pbkdf").map(String::as_str),
+        extfields.get("cipher").map(String::as_str),
+        extfields.get("compress").map(String::as_str),
         &mut cache,
         &*policy,
     )
