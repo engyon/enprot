@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 \
       g++ \
       pkg-config \
+      xz-utils \
       zlib1g-dev \
       libbz2-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -33,7 +34,7 @@ RUN curl -LO https://botan.randombit.net/releases/Botan-${BOTAN_VERSION}.tar.xz 
     cd .. && \
     rm -rf Botan-${BOTAN_VERSION} Botan-${BOTAN_VERSION}.tar.xz
 
-ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
+ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig"
 
 # Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
