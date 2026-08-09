@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.25](https://github.com/engyon/enprot/compare/enprot-v0.5.24...enprot-v0.5.25) - 2026-08-09
+
+### Fixed
+
+- *(docker)* correct Botan configure.py flag — --build-targets not --with-build-targets
+- *(docker)* add xz-utils + fix PKG_CONFIG_PATH warning
+- *(docker)* build Botan 3 from source in Docker image
+
+### Other
+
+- *(docker)* add .dockerignore — exclude target/, .git/, node_modules/
+
 ## [0.5.24](https://github.com/engyon/enprot/compare/enprot-v0.5.23...enprot-v0.5.24) - 2026-08-09
 
 ### Other
