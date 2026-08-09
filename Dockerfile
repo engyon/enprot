@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -LO https://botan.randombit.net/releases/Botan-${BOTAN_VERSION}.tar.xz && \
     tar xf Botan-${BOTAN_VERSION}.tar.xz && \
     cd Botan-${BOTAN_VERSION} && \
-    python3 configure.py --prefix=/usr/local --with-build-targets=static && \
+    python3 configure.py --prefix=/usr/local --build-targets=static && \
     make -j$(nproc) && \
     make install && \
     cd .. && \
