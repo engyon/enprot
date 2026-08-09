@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.21](https://github.com/engyon/enprot/compare/enprot-v0.5.20...enprot-v0.5.21) - 2026-08-09
+
+### Other
+
+- *(transform)* DRY extract ciphertext helpers — eliminate 3x duplication
+- bump actions/setup-python from 5 to 7
+- bump taiki-e/install-action from 2.85.3 to 2.85.8
+
 ## [0.5.20](https://github.com/engyon/enprot/compare/enprot-v0.5.19...enprot-v0.5.20) - 2026-08-08
 
 ### Other
