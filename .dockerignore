@@ -1,0 +1,15 @@
+target/
+.git/
+.claude/
+docs/node_modules/
+docs/dist/
+TODO.complete/
+TODO.audit/
+TODO.finalize/
+TODO.completion/
+TODO.issues/
+TODO.roadmap/
+TODO.upgrade/
+*.tmp
+*.swp
+.DS_Store
