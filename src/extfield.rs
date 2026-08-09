@@ -190,6 +190,14 @@ impl EncryptedExtField {
         }
     }
 
+    /// Convenience: convert to (key, value) and insert into a map.
+    /// Eliminates raw string keys at call sites — the field name is
+    /// compile-time checked via the enum variant.
+    pub fn insert_into(self, map: &mut BTreeMap<String, String>) {
+        let (k, v) = self.into_entry();
+        map.insert(k, v);
+    }
+
     /// Parse a wire-format (key, value) pair into the typed enum.
     /// Known keys produce their variant; unknown keys produce
     /// [`EncryptedExtField::Unknown`] so they survive round-trips.

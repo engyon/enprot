@@ -28,6 +28,7 @@ use crate::cipher::{format_cipher_extfield, parse_cipher_extfield};
 use crate::crypto::{self, CryptoPolicy};
 use crate::error::{Error, Result};
 use crate::etree;
+use crate::extfield::EncryptedExtField;
 use crate::pbkdf::{PBKDFCache, derive_key, parse_phc};
 
 #[tracing::instrument(skip(pt, password, rng, pbkdfopts, cipheropts, cache, policy), fields(bytes = pt.len(), alg = %cipheropts.alg))]
@@ -52,16 +53,14 @@ pub fn encrypt(
 
     let mut extfields: BTreeMap<String, String> = BTreeMap::new();
     if let Some(p) = pbkdf {
-        extfields.insert("pbkdf".to_string(), p);
+        EncryptedExtField::Pbkdf(p).insert_into(&mut extfields);
     }
 
     let (key, iv) = compute_iv(cipheropts, &master_key, &pt, key_len, enc.nonce_len(), rng)?;
 
     if !cipheropts.alg.starts_with("aes-256-siv") {
-        extfields.insert(
-            "cipher".to_string(),
-            format_cipher_extfield(&cipheropts.alg, &iv)?,
-        );
+        EncryptedExtField::Cipher(format_cipher_extfield(&cipheropts.alg, &iv)?)
+            .insert_into(&mut extfields);
     }
 
     policy
@@ -156,10 +155,8 @@ fn apply_compression(
     }
     let (compressed, did_compress) = crate::compress::compress(&pt)?;
     if did_compress {
-        extfields.insert(
-            "compress".to_string(),
-            crate::compress::COMPRESS_EXTFIELD.to_string(),
-        );
+        EncryptedExtField::Compress(crate::compress::COMPRESS_EXTFIELD.to_string())
+            .insert_into(extfields);
         Ok(compressed)
     } else {
         Ok(pt)
