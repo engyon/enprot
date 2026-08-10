@@ -362,7 +362,10 @@ pub fn run(cfg: RunConfig) -> Result<()> {
             Ok(())
         })
     } else {
-        for (path_in, path_out) in &files {
+        for (i, (path_in, path_out)) in files.iter().enumerate() {
+            if files.len() > 1 && !common.quiet {
+                eprintln!("[{}/{}] {}", i + 1, files.len(), path_in);
+            }
             process_one_file(path_in, path_out, &mut paops)?;
         }
         Ok(())
