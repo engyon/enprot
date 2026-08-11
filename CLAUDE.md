@@ -110,7 +110,9 @@ Field access is through the nested paths: `paops.separators.left`, `paops.transf
 
 ### Error handling (src/error.rs)
 
-`Result<T>` is `std::result::Result<T, Error>` where `Error` is a `thiserror::Error` enum. Every public function returns `Result<T>`; no `Result<T, &'static str>` anywhere. `From<std::io::Error>`, `From<botan::Error>`, and `From<hex::FromHexError>` are implemented so `?` works at IO/FFI boundaries. `Error::botan(e)` and `Error::msg(s)` constructors cover the rest.
+`Result<T>` is `std::result::Result<T, Error>` where `Error` is a `thiserror::Error` enum with 22 variants. Every public function returns `Result<T>`; no `Result<T, &'static str>` anywhere. `From<std::io::Error>`, `From<botan::Error>`, and `From<hex::FromHexError>` are implemented so `?` works at IO/FFI boundaries.
+
+Structured variants include `CasHashInvalid`, `CasHashMismatch`, `CasNotFound`, `CasUnsupported`, `CipherUnknown`, `AeadFailed`, `InvalidArg`, `Extfield`, `SignatureVerify`, `BlockShape`, `ConflictResolve`. The remaining `String`-carrying variants (`Botan`, `Hex`, `Base64`, `Policy`, `Phc`, `Json`, `Cas`, `Msg`) wrap external library errors or aggregate messages. The FFI classifier (`enprot-ffi/src/lib.rs`) maps each variant to one of `ENPROT_ERR_{PARSE,CRYPTO,IO,INVALID}`.
 
 ### Crypto stack
 
@@ -121,8 +123,10 @@ Field access is through the nested paths: `paops.separators.left`, `paops.transf
   - `encryption(alg)` / `decryption(alg)` strip the `-det` suffix before dispatching. The cipher wire format (`format_cipher_extfield` / `parse_cipher_extfield` / `DEFAULT_CIPHER_ALG`) lives here too.
   - Trait methods take `&mut self` because botan 0.11+ requires it.
 - `src/pbkdf.rs` — `derive_key()` with three modes: `legacy` (plain SHA3-512 truncation, deprecated), timed (msec → Botan picks params), and manual (`--pbkdf-params`). `format_phc` / `parse_phc` are the PHC wire-format helpers.
-- `src/cas.rs` — content-addressed storage. Filename = SHA3-256 hex of the blob; `save()` is idempotent. Non-constant-time hash comparison is fine (content-derived, not secret-derived).
-- `src/prot.rs` — high-level `encrypt()`/`decrypt()`. `encrypt()` validates cipher alg against policy BEFORE backend creation (`check_cipher_alg`), then handles IV (random for non-det, HKDF-derived for `-det`). `decrypt()` mirrors HKDF for det variants.
+- `src/cas.rs` — content-addressed storage via the `CasStore` trait (save/load/contains/list/delete). `LocalCas` is the filesystem backend with atomic writes (temp + rename + fsync). `MemoryCas` for tests. Filename = SHA3-256 hex; `save()` is idempotent. CLI subcommands: `enprot cas {verify, gc, list}`.
+- `src/compress.rs` — optional zlib compression before encryption (`--compress` flag). Only compresses if smaller; records `compress:zlib` extfield.
+- `src/extfield.rs` — typed extfield system. Write-side: `EncryptedExtField`/`AnchorExtField` enums with `insert_into()`. Read-side: `EncryptedExtFields`/`AnchorExtFields` zero-cost views with typed accessors. Raw string keys exist only here.
+- `src/prot.rs` — high-level `encrypt()`/`decrypt()`, decomposed into focused helpers: `compute_iv` (det/random/SIV modes), `derive_decrypt_key` (PHC/legacy), `recover_key` (HKDF for det), `apply_compression`. `encrypt()` validates cipher alg against policy BEFORE backend creation, then handles IV. `decrypt()` takes `Option<&str>` for extfield values (idiomatic).
 - `src/password.rs` — TTY-aware password reading. Interactive uses `prompt_password` (echo suppression); piped uses `prompt_password_with_config`. Repeat-verification is skipped when stdin isn't a TTY.
 
 ### Policy layer (src/policy/)
