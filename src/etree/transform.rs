@@ -166,7 +166,8 @@ fn transform_encrypted(
     if paops.transforms.decrypt.contains(keyw) {
         let ct = extract_ciphertext(txt, keyw, paops)?;
 
-        let pt = if extfields.contains_key("recipients") {
+        let ef = crate::extfield::EncryptedExtFields::from_map(extfields);
+        let pt = if ef.is_kem_mode() {
             let priv_pem = paops
                 .crypto
                 .recipient_privkeys
@@ -181,7 +182,6 @@ fn transform_encrypted(
             crate::kemenc::decrypt(&ct, priv_pem, extfields)?
         } else {
             let pass = ensure_password(keyw, paops, false)?;
-            let ef = crate::extfield::EncryptedExtFields::from_map(extfields);
             match prot::decrypt(
                 ct,
                 &pass,
