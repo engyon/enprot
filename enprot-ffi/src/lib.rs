@@ -185,10 +185,10 @@ fn json_to_argv(config: &serde_json::Value) -> Result<Vec<String>, String> {
 ///
 /// | `enprot::Error` variant        | FFI code               |
 /// |--------------------------------|------------------------|
-/// | `Io`, `Cas`                    | `ENPROT_ERR_IO`        |
-/// | `Botan`, `Cipher`, `Pbkdf`, `Policy`, `PolicyViolation` | `ENPROT_ERR_CRYPTO` |
-/// | `Parse`, `Phc`, `Hex`, `Base64` | `ENPROT_ERR_PARSE`    |
-/// | `Json`, `Msg`                  | `ENPROT_ERR_INVALID`   |
+/// | `Io`, `Cas`, `CasHash*`, `CasNotFound`, `CasUnsupported` | `ENPROT_ERR_IO` |
+/// | `Botan`, `CipherUnknown`, `AeadFailed`, `Policy`, `PolicyViolation`, `SignatureVerify` | `ENPROT_ERR_CRYPTO` |
+/// | `Parse`, `Phc`, `Hex`, `Base64`, `Extfield`, `BlockShape` | `ENPROT_ERR_PARSE` |
+/// | `Json`, `Msg`, `InvalidArg`, `ConflictResolve` | `ENPROT_ERR_INVALID` |
 fn classify_error(err: &enprot::Error) -> c_int {
     use enprot::Error;
     match err {
@@ -199,10 +199,8 @@ fn classify_error(err: &enprot::Error) -> c_int {
         | Error::CasNotFound { .. }
         | Error::CasUnsupported { .. } => ENPROT_ERR_IO,
         Error::Botan(_)
-        | Error::Cipher(_)
         | Error::CipherUnknown { .. }
         | Error::AeadFailed { .. }
-        | Error::Pbkdf(_)
         | Error::Policy(_)
         | Error::PolicyViolation { .. }
         | Error::SignatureVerify { .. } => ENPROT_ERR_CRYPTO,
@@ -386,11 +384,14 @@ mod tests {
             ENPROT_ERR_CRYPTO
         );
         assert_eq!(
-            classify_error(&Error::Cipher("bad key".into())),
+            classify_error(&Error::CipherUnknown { alg: "foo".into() }),
             ENPROT_ERR_CRYPTO
         );
         assert_eq!(
-            classify_error(&Error::Pbkdf("weak".into())),
+            classify_error(&Error::AeadFailed {
+                alg: "aes-256-gcm-siv",
+                op: "decrypt"
+            }),
             ENPROT_ERR_CRYPTO
         );
         assert_eq!(

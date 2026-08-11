@@ -48,11 +48,6 @@ pub enum Error {
     #[error("base64: {0}")]
     Base64(String),
 
-    /// Cipher creation or processing failure (unknown algorithm, wrong key
-    /// length, authentication failure on decrypt, etc.).
-    #[error("cipher: {0}")]
-    Cipher(String),
-
     /// Cipher algorithm not recognized by any backend.
     #[error("unknown cipher algorithm: {alg}")]
     CipherUnknown { alg: String },
@@ -63,10 +58,6 @@ pub enum Error {
     /// algorithm name and operation for diagnostics.
     #[error("AEAD {op} failed for {alg}")]
     AeadFailed { alg: &'static str, op: &'static str },
-
-    /// PBKDF parameter resolution or key derivation failure.
-    #[error("pbkdf: {0}")]
-    Pbkdf(String),
 
     /// `CryptoPolicy` rejected the requested algorithm or parameters.
     #[error("policy violation: {0}")]
@@ -294,18 +285,6 @@ mod tests {
     fn display_base64() {
         let e = Error::Base64("invalid char".to_string());
         assert_eq!(e.to_string(), "base64: invalid char");
-    }
-
-    #[test]
-    fn display_cipher() {
-        let e = Error::Cipher("wrong key length".to_string());
-        assert_eq!(e.to_string(), "cipher: wrong key length");
-    }
-
-    #[test]
-    fn display_pbkdf() {
-        let e = Error::Pbkdf("iterations below floor".to_string());
-        assert_eq!(e.to_string(), "pbkdf: iterations below floor");
     }
 
     #[test]
