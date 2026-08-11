@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.29](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.28...enprot-ffi-v0.5.29) - 2026-08-11
+
+### Other
+
+- *(error)* remove dead Cipher(String) and Pbkdf(String) variants
+
 ## [0.5.28](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.27...enprot-ffi-v0.5.28) - 2026-08-11
 
 ### Other
