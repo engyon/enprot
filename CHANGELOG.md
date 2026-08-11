@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.32](https://github.com/engyon/enprot/compare/enprot-v0.5.31...enprot-v0.5.32) - 2026-08-11
+
+### Other
+
+- update CLAUDE.md with CAS subsystem, extfield, compression, errors
+
 ## [0.5.31](https://github.com/engyon/enprot/compare/enprot-v0.5.30...enprot-v0.5.31) - 2026-08-11
 
 ### Other
