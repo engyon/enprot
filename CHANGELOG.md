@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.30](https://github.com/engyon/enprot/compare/enprot-v0.5.29...enprot-v0.5.30) - 2026-08-11
+
+### Other
+
+- *(extfield)* complete typed view migration — eliminate last raw string key
+
 ## [0.5.29](https://github.com/engyon/enprot/compare/enprot-v0.5.28...enprot-v0.5.29) - 2026-08-10
 
 ### Added
