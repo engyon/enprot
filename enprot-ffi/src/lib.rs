@@ -188,7 +188,7 @@ fn json_to_argv(config: &serde_json::Value) -> Result<Vec<String>, String> {
 /// | `Io`, `Cas`, `CasHash*`, `CasNotFound`, `CasUnsupported` | `ENPROT_ERR_IO` |
 /// | `Botan`, `CipherUnknown`, `AeadFailed`, `Policy`, `PolicyViolation`, `SignatureVerify` | `ENPROT_ERR_CRYPTO` |
 /// | `Parse`, `Phc`, `Hex`, `Base64`, `Extfield`, `BlockShape` | `ENPROT_ERR_PARSE` |
-/// | `Json`, `Msg`, `InvalidArg`, `ConflictResolve` | `ENPROT_ERR_INVALID` |
+/// | `Json`, `InvalidArg`, `ConflictResolve` | `ENPROT_ERR_INVALID` |
 fn classify_error(err: &enprot::Error) -> c_int {
     use enprot::Error;
     match err {
@@ -210,10 +210,9 @@ fn classify_error(err: &enprot::Error) -> c_int {
         | Error::Base64(_)
         | Error::Extfield { .. }
         | Error::BlockShape { .. } => ENPROT_ERR_PARSE,
-        Error::Json(_)
-        | Error::Msg(_)
-        | Error::InvalidArg { .. }
-        | Error::ConflictResolve { .. } => ENPROT_ERR_INVALID,
+        Error::Json(_) | Error::InvalidArg { .. } | Error::ConflictResolve { .. } => {
+            ENPROT_ERR_INVALID
+        }
     }
 }
 
@@ -437,10 +436,6 @@ mod tests {
         use enprot::Error;
         assert_eq!(
             classify_error(&Error::Json("bad json".into())),
-            ENPROT_ERR_INVALID
-        );
-        assert_eq!(
-            classify_error(&Error::Msg("anything".into())),
             ENPROT_ERR_INVALID
         );
     }
