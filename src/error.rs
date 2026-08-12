@@ -110,16 +110,10 @@ pub enum Error {
     #[error("JSON: {0}")]
     Json(String),
 
-    /// Catch-all for one-off messages that don't fit a more specific
-    /// variant. Prefer adding a new variant when the same message shape
-    /// appears in more than one place.
-    #[error("{0}")]
-    Msg(String),
-
     /// Invalid argument value supplied by the caller. `arg` is the
     /// flag/parameter name; `reason` is the human-readable validation
     /// failure. Distinguished from `Policy` (algorithm-gating) and
-    /// `Msg` (generic) so the FFI can return `ENPROT_ERR_INVALID`.
+    /// `Json` (serialization) so the FFI can return `ENPROT_ERR_INVALID`.
     #[error("invalid argument {arg}: {reason}")]
     InvalidArg { arg: &'static str, reason: String },
 
@@ -154,29 +148,9 @@ impl Error {
         Error::Botan(e.to_string())
     }
 
-    /// Construct `Error::Msg` from anything stringifiable.
-    pub fn msg(s: impl Into<String>) -> Self {
-        Error::Msg(s.into())
-    }
-
     /// Construct `Error::Json` from anything stringifiable.
     pub fn json(e: impl std::fmt::Display) -> Self {
         Error::Json(e.to_string())
-    }
-
-    /// Wrap this error with additional context (file path, WORD,
-    /// operation name). Produces a richer Display string without
-    /// changing the error type. Usage:
-    ///
-    /// ```ignore
-    /// KeyFp::from_pem(&pem)
-    ///     .map_err(|e| e.with_context(format!("loading {}", path.display())))?
-    /// ```
-    ///
-    /// The Display output becomes:
-    /// `"loading builder.pem: signer fingerprint mismatch"`
-    pub fn with_context(self, ctx: impl std::fmt::Display) -> Self {
-        Error::Msg(format!("{}: {}", ctx, self))
     }
 }
 
@@ -194,7 +168,18 @@ impl From<hex::FromHexError> for Error {
 
 impl From<crate::ledger::DagError> for Error {
     fn from(e: crate::ledger::DagError) -> Self {
-        Error::msg(e.to_string())
+        match e {
+            crate::ledger::DagError::ForwardReference { missing_parent, .. } => {
+                Error::CasNotFound {
+                    hash: missing_parent.to_string(),
+                }
+            }
+            crate::ledger::DagError::Cycle { anchor } => Error::InvalidArg {
+                arg: "chain",
+                reason: format!("cycle detected at {anchor}"),
+            },
+            crate::ledger::DagError::Internal(inner) => inner,
+        }
     }
 }
 
@@ -331,12 +316,6 @@ mod tests {
     fn display_json() {
         let e = Error::Json("unexpected EOF".to_string());
         assert_eq!(e.to_string(), "JSON: unexpected EOF");
-    }
-
-    #[test]
-    fn display_msg() {
-        let e = Error::Msg("something happened".to_string());
-        assert_eq!(e.to_string(), "something happened");
     }
 
     #[test]

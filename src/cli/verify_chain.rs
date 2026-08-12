@@ -327,8 +327,7 @@ pub(super) fn collect_chain_anchors(
         match node {
             etree::TextNode::Chain { extfields } => {
                 let signed = ledger::SignedAnchor::from_extfields(extfields)?;
-                dag.push(signed)
-                    .map_err(|e| Error::from(e).with_context("DAG construction failed"))?;
+                dag.push(signed).map_err(Error::from)?;
             }
             etree::TextNode::BeginEnd { txt, .. } | etree::TextNode::Encrypted { txt, .. } => {
                 collect_chain_anchors(txt, dag)?;
