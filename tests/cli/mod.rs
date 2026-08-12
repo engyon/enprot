@@ -8,6 +8,7 @@ mod cas_list;
 mod cas_verify;
 mod chain_directive;
 mod cipher;
+mod compress_roundtrip;
 mod config_file;
 mod conflicts;
 mod detached_multi_sig;
