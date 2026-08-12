@@ -63,22 +63,21 @@ pub trait SignerProvider: Send + Sync + std::fmt::Debug {
 /// feature most users don't need. Dual trait keeps sync consumers
 /// sync; async consumers opt in via [`AnySigner`] or by calling
 /// `AsyncSignerProvider::sign_async` directly.
+/// Pinned boxed future for async signing. Used by
+/// [`AsyncSignerProvider::sign_async`].
+pub type SignFuture<'a> = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<(SigAlgKind, Vec<u8>, KeyFp)>> + Send + 'a>,
+>;
+
 pub trait AsyncSignerProvider: Send + Sync + std::fmt::Debug {
     /// Sign a message asynchronously. Same return shape as
     /// [`SignerProvider::sign`].
-    #[allow(clippy::type_complexity)]
-    fn sign_async(
-        &self,
-        msg: &[u8],
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<(SigAlgKind, Vec<u8>, KeyFp)>> + Send + '_>,
-    >;
+    fn sign_async(&self, msg: &[u8]) -> SignFuture<'_>;
 
     /// The key fingerprint this provider signs under.
     fn fingerprint(&self) -> Result<KeyFp>;
 }
 
-#[allow(clippy::type_complexity)]
 /// Bridge enum so callers can dispatch over either trait without
 /// caring which. CLI uses [`AnySigner::sign_blocking`]; library
 /// callers that want concurrency call `sign_async` directly on the
