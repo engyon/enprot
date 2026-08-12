@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.34](https://github.com/engyon/enprot/compare/enprot-v0.5.33...enprot-v0.5.34) - 2026-08-12
+
+### Other
+
+- *(error)* eliminate Error::Msg entirely — DagError mapped to structured variants
+
 ## [0.5.33](https://github.com/engyon/enprot/compare/enprot-v0.5.32...enprot-v0.5.33) - 2026-08-12
 
 ### Other
