@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.36](https://github.com/engyon/enprot/compare/enprot-v0.5.35...enprot-v0.5.36) - 2026-08-12
+
+### Added
+
+- *(cli)* validate --jobs >= 1 — hard error on zero (TODO #33)
+
 ## [0.5.35](https://github.com/engyon/enprot/compare/enprot-v0.5.34...enprot-v0.5.35) - 2026-08-12
 
 ### Other
