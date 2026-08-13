@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.41](https://github.com/engyon/enprot/compare/enprot-v0.5.40...enprot-v0.5.41) - 2026-08-13
+
+### Fixed
+
+- *(security)* update nanoid to 3.3.18 — fixes high-severity CVE
+
+### Other
+
+- integration tests for 'enprot cas stats'
+
 ## [0.5.40](https://github.com/engyon/enprot/compare/enprot-v0.5.39...enprot-v0.5.40) - 2026-08-13
 
 ### Added
