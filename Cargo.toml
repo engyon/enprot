@@ -135,6 +135,10 @@ harness = false
 name = "comparison"
 harness = false
 
+[[bench]]
+name = "cas"
+harness = false
+
 [[test]]
 name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip.rs"
