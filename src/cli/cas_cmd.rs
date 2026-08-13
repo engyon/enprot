@@ -62,9 +62,7 @@ pub struct CasArgs {
     pub command: CasSubcmd,
 }
 
-/// `enprot cas` subcommand actions. `verify` checks integrity; `gc`
-/// reclaims space by deleting unreferenced blobs; `list` enumerates
-/// all blobs in the store.
+/// `enprot cas` subcommand actions.
 #[derive(Subcommand, Debug, Clone)]
 pub enum CasSubcmd {
     /// Verify that every CAS hash referenced by the input file(s)
@@ -79,6 +77,9 @@ pub enum CasSubcmd {
     /// List all blob hashes in the CAS store. Useful for inventory
     /// and scripting. One hash per line (text) or JSON array.
     List,
+
+    /// Show CAS statistics: blob count, total disk usage, size range.
+    Stats,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -110,6 +111,7 @@ pub fn run(args: CasArgs, common: &CommonArgs) -> Result<()> {
         CasSubcmd::Verify(a) => run_verify(a, common),
         CasSubcmd::Gc(a) => run_gc(a, common),
         CasSubcmd::List => run_list(common),
+        CasSubcmd::Stats => run_stats(common),
     }
 }
 
@@ -427,6 +429,54 @@ fn run_list(common: &CommonArgs) -> Result<()> {
     Ok(())
 }
 
+/// `enprot cas stats` — show CAS blob count, total disk usage, size range.
+fn run_stats(common: &CommonArgs) -> Result<()> {
+    let policy = resolve_policy(common)?;
+    let mut paops = ParseOps::new(policy)?;
+    apply_common(common, &mut paops);
+
+    let cas_store = paops.io.cas.as_ref();
+    let hashes = cas_store.list()?;
+    let casdir = &paops.io.casdir;
+
+    let mut sizes: Vec<u64> = Vec::with_capacity(hashes.len());
+    for hash in &hashes {
+        let path = casdir.join(hash);
+        if let Ok(meta) = std::fs::metadata(&path) {
+            sizes.push(meta.len());
+        }
+    }
+
+    let count = sizes.len();
+    let total: u64 = sizes.iter().sum();
+    let min = sizes.iter().min().copied().unwrap_or(0);
+    let max = sizes.iter().max().copied().unwrap_or(0);
+    let avg = if count > 0 { total / count as u64 } else { 0 };
+
+    match common.format {
+        output::OutputFormat::Text => {
+            eprintln!("CAS statistics:");
+            eprintln!("  Blobs:     {count}");
+            eprintln!("  Total:     {total} bytes");
+            eprintln!("  Smallest:  {min} bytes");
+            eprintln!("  Largest:   {max} bytes");
+            eprintln!("  Average:   {avg} bytes");
+        }
+        output::OutputFormat::Json => {
+            let payload = CasStatsOutput {
+                blobs: count,
+                total_bytes: total,
+                min_bytes: min,
+                max_bytes: max,
+                avg_bytes: avg,
+            };
+            println!("{}", output::to_json(&payload)?);
+        }
+    }
+
+    Ok(())
+}
+
 /// Recursively walk a parsed node, collecting every CAS hash
 /// reference. References come from directives that point into the
 /// CAS: STORED, INCLUDE, MUTED, KEY, CERT.
@@ -537,4 +587,13 @@ struct CasGcOutput<'a> {
 struct CasListOutput {
     count: usize,
     blobs: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct CasStatsOutput {
+    blobs: usize,
+    total_bytes: u64,
+    min_bytes: u64,
+    max_bytes: u64,
+    avg_bytes: u64,
 }
