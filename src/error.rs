@@ -78,11 +78,9 @@ pub enum Error {
         msg: String,
     },
 
-    /// CAS load/save failure (hash mismatch, missing file, etc.).
-    /// Prefer the structured variants below for new code; this remains
-    /// for cases that don't fit a specific category.
-    #[error("CAS: {0}")]
-    Cas(String),
+    /// Multiple structural issues found during `enprot verify`.
+    #[error("{issues} integrity issue(s) found")]
+    VerifyFailed { issues: usize },
 
     /// CAS hash is not valid hex (wrong length or non-hex chars).
     #[error("CAS hash invalid: {hash}")]
@@ -301,9 +299,9 @@ mod tests {
     }
 
     #[test]
-    fn display_cas() {
-        let e = Error::Cas("hash mismatch".to_string());
-        assert_eq!(e.to_string(), "CAS: hash mismatch");
+    fn display_verify_failed() {
+        let e = Error::VerifyFailed { issues: 3 };
+        assert_eq!(e.to_string(), "3 integrity issue(s) found");
     }
 
     #[test]

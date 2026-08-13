@@ -68,7 +68,7 @@ pub fn run(common: CommonArgs, output: OutputArgs) -> Result<()> {
     }
 
     if issues > 0 {
-        return Err(Error::Cas(format!("{issues} issue(s) found")));
+        return Err(Error::VerifyFailed { issues });
     }
     Ok(())
 }
