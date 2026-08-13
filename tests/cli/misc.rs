@@ -151,3 +151,17 @@ fn output_multiple() {
         &fs::read_to_string("test-data/simple-encrypt-agent007.ept").unwrap()
     );
 }
+
+#[test]
+fn jobs_zero_rejected() {
+    let ept = Fixture::copy("sample/test.ept");
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("--jobs")
+        .arg("0")
+        .arg("passthrough")
+        .arg(&ept.path)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("must be at least 1"));
+}
