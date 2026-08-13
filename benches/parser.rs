@@ -77,5 +77,44 @@ fn bench_passthrough(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_parse, bench_tree_write, bench_passthrough);
+/// End-to-end encrypt pipeline: parse → transform(encrypt) → write.
+/// This is the canonical hot path for `enprot encrypt` and the bench
+/// that catches cross-cutting regressions (parse + crypto + write
+/// combined). Each segment's WORD is added to `transforms.encrypt`
+/// with a shared password. (TODO.complete/41.)
+///
+/// Range is capped at 64 segments because each encrypt transform
+/// runs the configured PBKDF — by design expensive. Larger ranges
+/// make the bench take minutes; the scaling shape is visible enough
+/// at 1/8/64.
+fn bench_encrypt_pipeline(c: &mut Criterion) {
+    let mut group = c.benchmark_group("encrypt_pipeline");
+    for n in [1, 8, 64].iter() {
+        let src = make_ept(*n);
+        group.bench_with_input(BenchmarkId::from_parameter(n), &src, |b, s| {
+            b.iter(|| {
+                let mut p = paops();
+                for i in 0..*n {
+                    let word = format!("WORD_{i}");
+                    p.transforms.encrypt.insert(word.clone());
+                    p.passwords.insert(word, "bench-password".to_string());
+                }
+                let tree = etree::parse(Cursor::new(s.as_bytes()), &mut p).unwrap();
+                let tree = etree::transform(&tree, &mut p).unwrap();
+                let mut out: Vec<u8> = Vec::with_capacity(s.len());
+                etree::tree_write(&mut out, &tree, &mut p).unwrap();
+                out
+            })
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_parse,
+    bench_tree_write,
+    bench_passthrough,
+    bench_encrypt_pipeline
+);
 criterion_main!(benches);
