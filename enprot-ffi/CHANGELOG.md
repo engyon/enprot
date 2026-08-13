@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.36](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.35...enprot-ffi-v0.5.36) - 2026-08-13
+
+### Other
+
+- *(error)* replace Cas(String) with VerifyFailed — last catch-all eliminated
+
 ## [0.5.35](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.34...enprot-ffi-v0.5.35) - 2026-08-13
 
 ### Other
