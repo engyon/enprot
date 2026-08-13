@@ -5,6 +5,7 @@ mod capabilities;
 mod cas_default;
 mod cas_gc;
 mod cas_list;
+mod cas_stats;
 mod cas_verify;
 mod chain_directive;
 mod cipher;
