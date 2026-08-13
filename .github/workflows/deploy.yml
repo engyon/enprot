@@ -31,6 +31,11 @@ env:
   BOTAN_VERSION: 3.7.0
   PROJECT_NAME: enprot
   EXE_NAME: enprot
+  # Reproducible-build timestamp: pinned to the deploy tag's commit
+  # time so rustc/linker timestamps are stable across reruns (see
+  # docs/reproducible-builds.md). Overridden per-job from git after
+  # checkout.
+  SOURCE_DATE_EPOCH: '0'
   # Resolved tag for both trigger types:
   #   tag push → github.ref_name = "enprot-v0.5.13" or "v0.5.13"
   #   workflow_dispatch → inputs.tag = "enprot-v0.5.13"
@@ -167,6 +172,8 @@ jobs:
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
           echo "PREFIX=${PREFIX-$GITHUB_WORKSPACE/installs}" >> $GITHUB_ENV
           echo "EXE_PATH=target/$TARGET/release/$EXE_NAME" >> $GITHUB_ENV
+          # Reproducible-build timestamp: pin to the tag's commit time.
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
       - name: Set environment (windows)
         if: startsWith(matrix.os, 'windows')
         env: ${{ matrix.env }}
@@ -177,6 +184,9 @@ jobs:
           $Prefix = (Join-Path $PWD 'installs').Replace('\', '/')
           "PREFIX=$Prefix" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
           "EXE_PATH=target/release/$Env:EXE_NAME" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
+          # Reproducible-build timestamp: pin to the tag's commit time.
+          $CommitEpoch = git log -1 --format=%ct
+          "SOURCE_DATE_EPOCH=$CommitEpoch" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
 
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@stable
