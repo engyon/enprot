@@ -52,6 +52,7 @@ mod pipeline;
 mod pki_cmd;
 mod provenance_cmd;
 mod smudge;
+mod validate;
 mod verify;
 mod verify_chain;
 
@@ -1038,22 +1039,12 @@ where
 
 /// Semantic validation of the fully-resolved common args. Runs after
 /// config merge so TOML-supplied values (e.g. `auto_anchor = true`)
-/// are considered. Prints warnings to stderr; returns Err for
-/// hard validation failures.
+/// are considered. Delegates to [`validate::collect`] + [`validate::report`]
+/// so every semantic rule lives in one MECE location and adding a new
+/// rule is a single variant + branch (OCP), not a new ad-hoc branch here.
 fn validate_common(common: &CommonArgs) -> Result<()> {
-    if common.signer.is_some() && !common.anchor {
-        eprintln!(
-            "Warning: --signer is set but --anchor is not. \
-             The signer key will not be used for this operation."
-        );
-    }
-    if common.jobs == 0 {
-        return Err(Error::InvalidArg {
-            arg: "--jobs",
-            reason: "must be at least 1".to_string(),
-        });
-    }
-    Ok(())
+    let issues = validate::collect(common);
+    validate::report(&issues)
 }
 
 /// (clap `default_value_t`) are treated as "not explicitly set" — they
