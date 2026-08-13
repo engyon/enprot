@@ -182,9 +182,16 @@ pub fn run(cfg: RunConfig) -> Result<()> {
         if let Some(p) = explicit_policy.as_deref()
             && p != "nist"
         {
+            // Defense in depth: cli::validate catches the user-set
+            // --fips case earlier. This branch still fires when FIPS
+            // was auto-engaged from /proc/sys/crypto/fips_enabled at
+            // runtime — library callers that bypass validate_common
+            // also land here.
             return Err(Error::InvalidArg {
                 arg: "--policy",
-                reason: format!("Policy setting of '{p}' conflicts with --fips"),
+                reason: format!(
+                    "--fips forces --policy=nist but --policy={p} was set"
+                ),
             });
         }
         policy_name = "nist".to_string();
