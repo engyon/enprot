@@ -221,7 +221,7 @@ fn fips_flag() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "Policy setting of 'default' conflicts with --fips",
+            "--fips forces --policy=nist but --policy=default was set",
         ));
 }
 
