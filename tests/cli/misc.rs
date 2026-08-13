@@ -165,3 +165,53 @@ fn jobs_zero_rejected() {
         .failure()
         .stderr(predicate::str::contains("must be at least 1"));
 }
+
+/// Regression for the typed ConfigIssue gate (TODO.complete/33).
+/// `--fips` + explicit `--policy default` must fail with the new
+/// typed message, and the message must mention both flags so the
+/// user sees the conflict in one read.
+#[test]
+fn fips_policy_conflict_typed_message() {
+    let ept = Fixture::copy("sample/test.ept");
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("--fips")
+        .arg("--policy")
+        .arg("default")
+        .arg("passthrough")
+        .arg(&ept.path)
+        .assert()
+        .failure()
+        .stderr(
+            predicates::str::contains("--fips forces --policy=nist")
+                .and(predicates::str::contains("--policy=default")),
+        );
+}
+
+/// The signer-without-anchor warning should not block execution —
+/// passthrough still produces output. This locks in the warning-only
+/// severity that ConfigIssue::SignerWithoutAnchor carries.
+#[test]
+fn signer_without_anchor_is_warning_only() {
+    let ept = Fixture::copy("sample/test.ept");
+    // Generate a real ed25519 keypair so the signer path is exercised
+    // end-to-end. The warning fires at validate time, before the key
+    // is loaded; passthrough doesn't load it regardless.
+    let dir = tempfile::tempdir().unwrap();
+    let priv_pem = dir.path().join("priv.pem");
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["keygen", "ed25519", "--out-priv"])
+        .arg(&priv_pem)
+        .assert()
+        .success();
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("--signer")
+        .arg(&priv_pem)
+        .arg("passthrough")
+        .arg(&ept.path)
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("warning:"));
+}
