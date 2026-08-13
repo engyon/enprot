@@ -189,9 +189,7 @@ pub fn run(cfg: RunConfig) -> Result<()> {
             // also land here.
             return Err(Error::InvalidArg {
                 arg: "--policy",
-                reason: format!(
-                    "--fips forces --policy=nist but --policy={p} was set"
-                ),
+                reason: format!("--fips forces --policy=nist but --policy={p} was set"),
             });
         }
         policy_name = "nist".to_string();
