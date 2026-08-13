@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.40](https://github.com/engyon/enprot/compare/enprot-v0.5.39...enprot-v0.5.40) - 2026-08-13
+
+### Added
+
+- *(cas)* implement 'enprot cas stats' — blob count, size range
+
 ## [0.5.39](https://github.com/engyon/enprot/compare/enprot-v0.5.38...enprot-v0.5.39) - 2026-08-13
 
 ### Other
