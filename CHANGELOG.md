@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.42](https://github.com/engyon/enprot/compare/enprot-v0.5.41...enprot-v0.5.42) - 2026-08-14
+
+### Added
+
+- *(cli)* typed ConfigIssue validation gate (TODO #33 phase 1)
+
+### Other
+
+- *(cli)* DRY — single source for FIPS+policy conflict check
+- *(cli)* integration tests for typed ConfigIssue gate
+- *(bench)* end-to-end encrypt pipeline bench (TODO #41)
+- *(cli)* align defense-in-depth FIPS message with upfront validation
+- *(reproducibility)* SOURCE_DATE_EPOCH + reproducible-builds.md (TODO #45 phase 1)
+
 ## [0.5.41](https://github.com/engyon/enprot/compare/enprot-v0.5.40...enprot-v0.5.41) - 2026-08-13
 
 ### Fixed
