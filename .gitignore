@@ -22,3 +22,6 @@
 /TODO.roadmap/
 /TODO.upgrade/
 /TODO.complete/
+
+# cargo-mutants scratch output (TODO.complete/43).
+mutants.out*
