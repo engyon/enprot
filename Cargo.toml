@@ -87,7 +87,7 @@ regex          = "1"
 # Botan does not implement AES-GCM-SIV (RFC 8452). The RustCrypto crate
 # remains the backend for `aes-256-gcm-siv`; the other ciphers route through
 # Botan.
-aes-gcm-siv    = "0.11"
+aes-gcm-siv    = "0.12"
 zeroize        = { version = "1", features = ["alloc"] }
 flate2         = "1"
 # OpenPGP signature support via librnp (the OpenPGP C library from
