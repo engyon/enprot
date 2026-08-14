@@ -316,3 +316,229 @@ fn ensure_password(keyw: &str, paops: &mut crate::etree::ParseOps, repeat: bool)
 fn cas_default_applies(paops: &crate::etree::ParseOps) -> bool {
     !paops.io.inline_data
 }
+
+/// Transform spec (TODO.complete/49): the non-crypto branches of the
+/// state machine — passthrough directives, the Encrypted store/fetch
+/// moves, the Stored fetch restore, and the BlockShape error paths.
+/// The crypto arms (encrypt/decrypt round-trips) are covered by the
+/// e2e tests in `etree::tests` and `tests/cli`.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::etree::{ParseOps, TextNode};
+    use std::collections::BTreeMap;
+
+    fn paops_with_cas() -> (ParseOps, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut p = ParseOps::new(crate::crypto::default_policy()).unwrap();
+        p.io.casdir = dir.path().to_path_buf();
+        (p, dir)
+    }
+
+    fn encrypted_with(child: TextNode) -> TextNode {
+        TextNode::Encrypted {
+            keyw: "W".into(),
+            txt: vec![child],
+            extfields: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn integrity_and_binding_directives_pass_through() {
+        let (mut p, _d) = paops_with_cas();
+        let tree = vec![
+            TextNode::Immutable {
+                name: "L".into(),
+                hashalg: "sha384".into(),
+                hash: "AB".into(),
+                txt: vec![TextNode::Plain("text".into())],
+            },
+            TextNode::Muted {
+                name: "L".into(),
+                hashalg: "sha384".into(),
+                hash: "AB".into(),
+            },
+            TextNode::Key {
+                name: "k".into(),
+                hashalg: "sha256".into(),
+                hash: "11".into(),
+            },
+            TextNode::Unkey { name: "k".into() },
+            TextNode::Cert {
+                name: "c".into(),
+                hashalg: "sha256".into(),
+                hash: "22".into(),
+            },
+            TextNode::Uncert { name: "c".into() },
+        ];
+        let out = transform(&tree, &mut p).unwrap();
+        assert_eq!(out, tree, "no transform set: every node passes through");
+    }
+
+    #[test]
+    fn begin_end_without_transform_passes_through() {
+        let (mut p, _d) = paops_with_cas();
+        let tree = vec![TextNode::BeginEnd {
+            keyw: "W".into(),
+            txt: vec![TextNode::Plain("body".into())],
+        }];
+        let out = transform(&tree, &mut p).unwrap();
+        assert_eq!(out, tree);
+    }
+
+    #[test]
+    fn encrypted_store_moves_inline_data_to_cas() {
+        let (mut p, _d) = paops_with_cas();
+        p.transforms.store.insert("W".into());
+        let tree = vec![encrypted_with(TextNode::Data(vec![1, 2, 3]))];
+        let out = transform(&tree, &mut p).unwrap();
+        match &out[0] {
+            TextNode::Encrypted { txt, .. } => match &txt[0] {
+                TextNode::Stored { keyw, cas } => {
+                    assert_eq!(keyw, "ct");
+                    assert_eq!(cas.len(), 64, "CAS id is a SHA3-256 hex hash");
+                }
+                other => panic!("expected Stored child, got {other:?}"),
+            },
+            other => panic!("expected Encrypted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn encrypted_store_keeps_existing_pointer() {
+        // Already stored → the hash is returned as-is, no re-save.
+        let (mut p, _d) = paops_with_cas();
+        p.transforms.store.insert("W".into());
+        let hash = "a".repeat(64);
+        let tree = vec![encrypted_with(TextNode::Stored {
+            keyw: "ct".into(),
+            cas: hash.clone(),
+        })];
+        let out = transform(&tree, &mut p).unwrap();
+        match &out[0] {
+            TextNode::Encrypted { txt, .. } => match &txt[0] {
+                TextNode::Stored { cas, .. } => assert_eq!(cas, &hash),
+                other => panic!("expected Stored child, got {other:?}"),
+            },
+            other => panic!("expected Encrypted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn encrypted_fetch_inlines_stored_ciphertext() {
+        // Round-trip with the store test: save a blob, fetch it back.
+        let (mut p, _d) = paops_with_cas();
+        let blob = vec![9, 8, 7];
+        let hash = crate::cas::save(blob.clone(), &mut p).unwrap();
+        p.transforms.fetch.insert("W".into());
+        let tree = vec![encrypted_with(TextNode::Stored {
+            keyw: "ct".into(),
+            cas: hash,
+        })];
+        let out = transform(&tree, &mut p).unwrap();
+        match &out[0] {
+            TextNode::Encrypted { txt, extfields, .. } => {
+                assert!(extfields.is_empty(), "fetch drops extfields");
+                match &txt[0] {
+                    TextNode::Data(d) => assert_eq!(d, &blob, "CAS content inlined"),
+                    other => panic!("expected Data child, got {other:?}"),
+                }
+            }
+            other => panic!("expected Encrypted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn encrypted_without_transform_passes_through() {
+        let (mut p, _d) = paops_with_cas();
+        let tree = vec![encrypted_with(TextNode::Data(vec![5]))];
+        let out = transform(&tree, &mut p).unwrap();
+        assert_eq!(out, tree);
+    }
+
+    #[test]
+    fn stored_fetch_restores_begin_end_block() {
+        // Store a valid EPT body in CAS, then fetch via a Stored node.
+        let (mut p, _d) = paops_with_cas();
+        let body = b"restored line\n".to_vec();
+        let hash = crate::cas::save(body, &mut p).unwrap();
+        p.transforms.fetch.insert("W".into());
+        let tree = vec![TextNode::Stored {
+            keyw: "W".into(),
+            cas: hash,
+        }];
+        let out = transform(&tree, &mut p).unwrap();
+        match &out[0] {
+            TextNode::BeginEnd { keyw, txt } => {
+                assert_eq!(keyw, "W");
+                assert!(matches!(&txt[0], TextNode::Plain(s) if s.contains("restored")));
+            }
+            other => panic!("expected BeginEnd, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn stored_without_fetch_passes_through() {
+        let (mut p, _d) = paops_with_cas();
+        let tree = vec![TextNode::Stored {
+            keyw: "W".into(),
+            cas: "f".repeat(64),
+        }];
+        let out = transform(&tree, &mut p).unwrap();
+        assert_eq!(out, tree);
+    }
+
+    #[test]
+    fn empty_encrypted_block_is_a_shape_error() {
+        // decrypt / fetch / store on a childless Encrypted block must
+        // produce a typed BlockShape error, never a panic.
+        for mode in ["decrypt", "fetch", "store"] {
+            let (mut p, _d) = paops_with_cas();
+            match mode {
+                "decrypt" => {
+                    p.transforms.decrypt.insert("W".into());
+                    p.passwords.insert("W".into(), "pw".into());
+                }
+                "fetch" => {
+                    p.transforms.fetch.insert("W".into());
+                }
+                _ => {
+                    p.transforms.store.insert("W".into());
+                }
+            }
+            let tree = vec![TextNode::Encrypted {
+                keyw: "W".into(),
+                txt: vec![],
+                extfields: BTreeMap::new(),
+            }];
+            let err = transform(&tree, &mut p).unwrap_err();
+            assert!(
+                matches!(err, crate::error::Error::BlockShape { .. }),
+                "{mode}: expected BlockShape, got {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_payload_child_is_a_shape_error() {
+        // A Plain child inside Encrypted is not a payload carrier.
+        for mode in ["decrypt", "store"] {
+            let (mut p, _d) = paops_with_cas();
+            match mode {
+                "decrypt" => {
+                    p.transforms.decrypt.insert("W".into());
+                    p.passwords.insert("W".into(), "pw".into());
+                }
+                _ => {
+                    p.transforms.store.insert("W".into());
+                }
+            }
+            let tree = vec![encrypted_with(TextNode::Plain("text".into()))];
+            let err = transform(&tree, &mut p).unwrap_err();
+            assert!(
+                matches!(err, crate::error::Error::BlockShape { .. }),
+                "{mode}: expected BlockShape, got {err}"
+            );
+        }
+    }
+}
