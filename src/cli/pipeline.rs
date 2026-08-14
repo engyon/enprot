@@ -7,17 +7,16 @@
 //! parallel-processing path (`--jobs > 1`) builds one `ParseOps` per
 //! scoped thread via [`RunConfig::build_paops`].
 
-use std::fs;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
 use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps};
-use crate::{capability, cappolicy, consts};
+use crate::{capability, cappolicy};
 
 use super::{
     CommonArgs, EncryptOpts, Operation, OutputArgs, build_anchor_config, make_policy,
-    resolve_separators, walk_for_chains,
+    resolve_policy_name, resolve_separators, walk_for_chains,
 };
 
 /// Typed configuration for the four core transform operations
@@ -167,34 +166,13 @@ pub fn run(cfg: RunConfig) -> Result<()> {
         recipient_pubs,
         recipient_privs,
     } = cfg;
-    let explicit_policy = common.policy.clone();
-    let mut policy_name = explicit_policy
-        .clone()
-        .unwrap_or_else(|| consts::DEFAULT_POLICY.to_string());
-
-    let fips = common.fips
-        || (cfg!(unix)
-            && match fs::read_to_string("/proc/sys/crypto/fips_enabled") {
-                Ok(s) => s.starts_with('1'),
-                Err(_) => false,
-            });
-    if fips {
-        if let Some(p) = explicit_policy.as_deref()
-            && p != "nist"
-        {
-            // Defense in depth: cli::validate catches the user-set
-            // --fips case earlier. This branch still fires when FIPS
-            // was auto-engaged from /proc/sys/crypto/fips_enabled at
-            // runtime — library callers that bypass validate_common
-            // also land here.
-            return Err(Error::InvalidArg {
-                arg: "--policy",
-                reason: format!("--fips forces --policy=nist but --policy={p} was set"),
-            });
-        }
-        policy_name = "nist".to_string();
-    }
-
+    // Resolve policy via the shared `resolve_policy_name` helper —
+    // single source of truth for the FIPS+policy conflict check
+    // (DRY). The upfront `validate_common` gate catches the user-set
+    // --fips case for CLI callers; this remains defense-in-depth for
+    // the /proc/sys/crypto/fips_enabled runtime auto-engage path and
+    // for library callers that bypass validate_common.
+    let policy_name = resolve_policy_name(&common)?;
     let policy = make_policy(&policy_name);
     let mut paops = if let Some(defaults) = common.defaults.as_deref() {
         let mut p = ParseOps::new(make_policy(defaults))?;
@@ -344,7 +322,7 @@ pub fn run(cfg: RunConfig) -> Result<()> {
         );
         let jobs = common.jobs.min(files.len());
         let chunk_size = files.len().div_ceil(jobs);
-        let policy = &policy_name;
+        let policy_name_ref = &policy_name;
         let cfg_ref = &cfg_parallel;
         let chunks: Vec<&[(String, String)]> = files.chunks(chunk_size).collect();
         std::thread::scope(|s| {
@@ -352,7 +330,7 @@ pub fn run(cfg: RunConfig) -> Result<()> {
                 .iter()
                 .map(|chunk| {
                     s.spawn(move || -> Result<()> {
-                        let mut local_paops = cfg_ref.build_paops(policy)?;
+                        let mut local_paops = cfg_ref.build_paops(policy_name_ref)?;
                         for (path_in, path_out) in chunk.iter() {
                             process_one_file(path_in, path_out, &mut local_paops)?;
                         }
