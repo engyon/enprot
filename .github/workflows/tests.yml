@@ -122,8 +122,12 @@ jobs:
         uses: taiki-e/install-action@v2.85.11
         with:
           tool: cargo-llvm-cov
-      - name: Generate coverage
-        run: cargo llvm-cov --lcov --output-path lcov.info
+      - name: Generate coverage (gated)
+        # TODO.complete/49: coverage gate. Floor is just under the
+        # current baseline (82.25% as of 2026-08-14, after the
+        # etree/write.rs wire-format spec landed). Raise the floor as
+        # coverage grows; never lower it.
+        run: cargo llvm-cov --lcov --output-path lcov.info --fail-under-lines 81
       - name: Upload to Codecov
         uses: codecov/codecov-action@v7
         with:
