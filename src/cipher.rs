@@ -117,13 +117,17 @@ impl SymmetricCipher for AesGcmSivCipher {
     fn process(&mut self, key: &[u8], iv: &[u8], ad: &[u8], data: &[u8]) -> Result<Vec<u8>> {
         tracing::trace!(cipher = %self.alg(), key_len = key.len(), "aes-gcm-siv cipher process");
         use aes_gcm_siv::Aes256GcmSiv;
+        use aes_gcm_siv::Nonce;
         use aes_gcm_siv::aead::{Aead, KeyInit, Payload};
 
         let cipher = Aes256GcmSiv::new_from_slice(key).map_err(|_| Error::InvalidArg {
             arg: "key",
             reason: "AES-256-GCM-SIV key must be 32 bytes".to_string(),
         })?;
-        let nonce = aes_gcm_siv::aead::generic_array::GenericArray::from_slice(iv);
+        let nonce: &Nonce = iv.try_into().map_err(|_| Error::InvalidArg {
+            arg: "iv",
+            reason: "AES-256-GCM-SIV nonce must be 12 bytes".to_string(),
+        })?;
         let payload = Payload { msg: data, aad: ad };
         match self.direction {
             CipherDirection::Encrypt => {
