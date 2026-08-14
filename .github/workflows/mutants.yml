@@ -1,0 +1,55 @@
+name: mutation-testing
+
+# Mutation testing (TODO.complete/43): introduce small bugs
+# automatically and check that the test suite notices. Runs weekly
+# (not per-PR — each mutant re-runs the unit tests, ~10s each).
+#
+# Scope: the fast, pure-logic modules. The crypto-heavy modules
+# (crypto/cipher/prot/pbkdf) have ~160ms-per-derivation tests;
+# mutating them is possible but each run costs hours. Extend the
+# -f list below as test speed allows.
+#
+# The job does not gate merges: uncaught mutants are triaged into
+# (a) a new test that catches them, or (b) an entry in
+# .cargo/mutants.toml's exclude_re with a justification comment.
+
+on:
+  schedule:
+    - cron: '0 3 * * 1' # Mondays 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Install cargo-mutants
+        uses: taiki-e/install-action@v2.85.11
+        with:
+          tool: cargo-mutants
+      - name: Run cargo mutants
+        # --cargo-test-arg=--lib scopes each per-mutant run to the
+        # unit tests; the integration suite spawns the built binary
+        # and is too slow to repeat per mutant.
+        run: |
+          cargo mutants \
+            --cargo-test-arg=--lib \
+            -f 'src/cappolicy.rs' \
+            -f 'src/extfield.rs' \
+            -f 'src/output.rs' \
+            -f 'src/utils.rs' \
+            -f 'src/consts.rs' \
+            -f 'src/error.rs' \
+            --jobs 4
+      - name: Upload outcomes
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-outcomes
+          path: mutants.out*
+          if-no-files-found: warn
