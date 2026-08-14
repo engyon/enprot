@@ -376,3 +376,85 @@ mod tests {
         String::from_utf8(buf).unwrap()
     }
 }
+
+#[cfg(test)]
+mod render_tests {
+    use super::*;
+    use crate::etree::TextNode;
+    use std::collections::BTreeMap;
+
+    /// print_tree renders every TextNode kind without panicking on
+    /// short hashes (`&cas[..min(16)]` slicing) — one node of each
+    /// variant, including hash values shorter than 16 chars.
+    #[test]
+    fn print_tree_renders_every_node_kind() {
+        let tree: TextTree = vec![
+            TextNode::Plain("plain text".into()),
+            TextNode::Data(vec![1, 2, 3]),
+            TextNode::Stored {
+                keyw: "W".into(),
+                cas: "short".into(), // shorter than 16 — slicing must not panic
+            },
+            TextNode::Encrypted {
+                keyw: "W".into(),
+                txt: vec![],
+                extfields: BTreeMap::new(),
+            },
+            TextNode::BeginEnd {
+                keyw: "W".into(),
+                txt: vec![],
+            },
+            TextNode::Chain {
+                extfields: BTreeMap::new(),
+            },
+            TextNode::Include {
+                hash: "inc".into(), // shorter than 16
+            },
+            TextNode::Conflict {
+                keyw: "W".into(),
+                ours: vec![],
+                theirs: vec![],
+            },
+            TextNode::Immutable {
+                name: "L".into(),
+                hashalg: "sha384".into(),
+                hash: "AB".into(),
+                txt: vec![],
+            },
+            TextNode::Muted {
+                name: "L".into(),
+                hashalg: "sha384".into(),
+                hash: "AB".into(),
+            },
+            TextNode::Key {
+                name: "k".into(),
+                hashalg: "sha256".into(),
+                hash: "11".into(),
+            },
+            TextNode::Unkey { name: "k".into() },
+            TextNode::Cert {
+                name: "c".into(),
+                hashalg: "sha256".into(),
+                hash: "22".into(),
+            },
+            TextNode::Uncert { name: "c".into() },
+        ];
+        let mut out = Vec::new();
+        print_tree(&mut out, &tree, "  ").unwrap();
+        let s = String::from_utf8(out).unwrap();
+        assert!(s.contains("plain text"), "{s}");
+        assert!(s.contains("<3 data bytes>"), "{s}");
+        assert!(s.contains("STORED W short"), "{s}");
+        assert!(s.contains("ENCRYPTED W"), "{s}");
+        assert!(s.contains("BEGIN/END W"), "{s}");
+        assert!(s.contains("CHAIN"), "{s}");
+        assert!(s.contains("INCLUDE inc"), "{s}");
+        assert!(s.contains("CONFLICT W"), "{s}");
+        assert!(s.contains("IMMUTABLE L sha384=…"), "{s}");
+        assert!(s.contains("MUTED L"), "{s}");
+        assert!(s.contains("KEY k"), "{s}");
+        assert!(s.contains("UNKEY k"), "{s}");
+        assert!(s.contains("CERT c"), "{s}");
+        assert!(s.contains("UNCERT c"), "{s}");
+    }
+}
