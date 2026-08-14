@@ -885,3 +885,312 @@ fn parse_uncert(
     });
     Ok(())
 }
+
+/// Wire-format spec for `parse` (TODO.complete/49).
+///
+/// Two parts:
+///
+/// 1. **Malformed-input table** — every error branch the parser can
+///    take, driven from a (input, expected-message) row. Table-driven
+///    so a new branch is one row, not one test function (OCP).
+/// 2. **Shape tests** — the positive forms the error table can't
+///    reach: Conflict round-trip, keyword-less END, the ENCRYPTED
+///    2-parameter CAS form, DATA concatenation, and Plain folding.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::BufReader;
+
+    fn paops() -> ParseOps {
+        let mut p = ParseOps::new(crate::crypto::default_policy()).unwrap();
+        p.runtime.fname = "<spec>".into();
+        p
+    }
+
+    fn parse_input(input: &str) -> std::result::Result<TextTree, crate::error::Error> {
+        let mut p = paops();
+        parse(BufReader::new(input.as_bytes()), &mut p)
+    }
+
+    fn assert_err(input: &str, expect: &str) {
+        let err = parse_input(input)
+            .err()
+            .unwrap_or_else(|| panic!("expected error containing {expect:?} for input {input:?}"));
+        assert!(
+            err.to_string().contains(expect),
+            "input {input:?}\n  got:  {err}\n  want: …{expect}…"
+        );
+    }
+
+    #[test]
+    fn malformed_inputs_are_rejected_with_specific_messages() {
+        let cases: &[(&str, &str)] = &[
+            // Structural errors.
+            ("// <( BEGIN W", "Right separator"), // no `)>`
+            ("// <( FROBNICATE W )>", "Unknown section 'FROBNICATE'"),
+            // Arity / shape errors per directive.
+            ("// <( DATA !!!not-base64!!! )>", "Error decoding base64"),
+            ("// <( BEGIN )>", "BEGIN needs a single keyword"),
+            ("// <( BEGIN A B )>", "BEGIN needs a single keyword"),
+            (
+                "// <( ENCRYPTED W cipher:a cipher:a )>",
+                "Duplicate extended field",
+            ),
+            ("// <( ENCRYPTED W short )>", "Invalid CAS identifier"),
+            ("// <( ENCRYPTED )>", "wrong number of parameters"),
+            ("// <( END W )>", "END without a start clause"),
+            ("// <( STORED W )>", "STORED needs two parameters"),
+            ("// <( CHAIN )>", "CHAIN needs at least one key:value field"),
+            ("// <( INCLUDE )>", "INCLUDE needs exactly one hash"),
+            ("// <( CONFLICT A B )>", "CONFLICT needs a single keyword"),
+            ("// <( OURS )>", "OURS outside of CONFLICT block"),
+            ("// <( THEIRS )>", "THEIRS outside of CONFLICT block"),
+            (
+                "// <( BEGIN W )>\n// <( OURS )>",
+                "OURS inside non-CONFLICT",
+            ),
+            (
+                "// <( BEGIN W )>\n// <( THEIRS )>",
+                "THEIRS inside non-CONFLICT",
+            ),
+            (
+                "// <( IMMUTABLE N )>",
+                "IMMUTABLE needs <name> <hashalg>=<hash>",
+            ),
+            ("// <( MUTABLE N )>", "MUTABLE without IMMUTABLE"),
+            (
+                "// <( BEGIN W )>\n// <( MUTABLE N )>",
+                "MUTABLE inside non-IMMUTABLE",
+            ),
+            ("// <( MUTED N )>", "MUTED needs <name> <hashalg>=<hash>"),
+            ("// <( KEY N )>", "KEY needs <name> <hashalg>=<hash>"),
+            ("// <( UNKEY )>", "UNKEY needs a single name"),
+            ("// <( CERT N )>", "CERT needs <name> <hashalg>=<hash>"),
+            ("// <( UNCERT )>", "UNCERT needs a single name"),
+            // Hash-spec errors shared by IMMUTABLE/MUTED/KEY/CERT.
+            ("// <( KEY N noequals )>", "KEY needs <hashalg>=<hash>"),
+            ("// <( KEY N sha256= )>", "KEY hash is empty"),
+        ];
+        for (input, expect) in cases {
+            assert_err(input, expect);
+        }
+    }
+
+    #[test]
+    fn mismatched_closers_are_rejected() {
+        assert_err(
+            "// <( BEGIN A )>\n// <( END B )>",
+            "END mismatch (expected 'A')",
+        );
+        assert_err(
+            "// <( ENCRYPTED A )>\n// <( DATA QUJD )>\n// <( END B )>",
+            "END mismatch (expected 'A')",
+        );
+        assert_err(
+            "// <( CONFLICT A )>\n// <( OURS )>\n// <( END B )>",
+            "END mismatch (expected 'A')",
+        );
+        assert_err(
+            "// <( IMMUTABLE N sha256=ab )>\n// <( END N )>",
+            "END inside IMMUTABLE N",
+        );
+        assert_err(
+            "// <( IMMUTABLE N sha256=ab )>\n// <( MUTABLE M )>",
+            "MUTABLE mismatch (expected 'N')",
+        );
+        assert_err("// <( END W extra )>\n", "Unknown padding in END");
+    }
+
+    #[test]
+    fn encrypted_block_must_hold_exactly_one_payload() {
+        // Two DATA directives inside one ENCRYPTED block still parse
+        // (concatenated into one Data node) — the shape error is for
+        // *elements*, so force two elements with a Stored + Data mix.
+        assert_err(
+            "// <( ENCRYPTED A )>\n// <( DATA QUJD )>\n// <( STORED ct x )>\n// <( END A )>",
+            "must be a single DATA or STORED",
+        );
+        // A Plain line inside ENCRYPTED is not a payload element.
+        assert_err(
+            "// <( ENCRYPTED A )>\nnot a payload\n// <( END A )>",
+            "Not DATA or STORED element",
+        );
+    }
+
+    #[test]
+    fn conflict_mode_switches_are_ordered() {
+        // OURS after THEIRS is ambiguous → error.
+        assert_err(
+            "// <( CONFLICT A )>\n// <( OURS )>\n// <( THEIRS )>\n// <( OURS )>\n// <( END A )>",
+            "OURS after THEIRS",
+        );
+        // THEIRS after THEIRS would silently drop the middle side.
+        assert_err(
+            "// <( CONFLICT A )>\n// <( OURS )>\n// <( THEIRS )>\n// <( THEIRS )>\n// <( END A )>",
+            "THEIRS after THEIRS",
+        );
+    }
+
+    #[test]
+    fn unclosed_sections_report_their_kind() {
+        assert_err("// <( BEGIN A )>", "Unclosed section");
+        assert_err(
+            "// <( ENCRYPTED A )>\n// <( DATA QUJD )>",
+            "Unclosed section",
+        );
+        assert_err("// <( CONFLICT A )>\n// <( OURS )>", "Unclosed section");
+        assert_err("// <( IMMUTABLE N sha256=ab )>", "Unclosed section");
+    }
+
+    #[test]
+    fn max_depth_is_enforced_at_entry() {
+        let mut p = paops();
+        p.max_depth = 2;
+        p.runtime.level = 3;
+        let err = parse(BufReader::new(b"plain\n".as_ref()), &mut p).unwrap_err();
+        assert!(
+            err.to_string().contains("maximum recursion depth"),
+            "got: {err}"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Positive shapes (error table can't reach these).
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn conflict_block_round_trips_into_ours_theirs() {
+        let tree = parse_input(
+            "// <( CONFLICT W )>\n// <( OURS )>\nour line\n// <( THEIRS )>\ntheir line\n// <( END W )>\n",
+        )
+        .unwrap();
+        match &tree[0] {
+            TextNode::Conflict { keyw, ours, theirs } => {
+                assert_eq!(keyw, "W");
+                assert_eq!(ours.len(), 1, "ours: {ours:?}");
+                assert_eq!(theirs.len(), 1, "theirs: {theirs:?}");
+            }
+            other => panic!("expected Conflict, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn conflict_content_before_ours_becomes_ours() {
+        // Text between CONFLICT and OURS belongs to the ours side.
+        let tree = parse_input(
+            "// <( CONFLICT W )>\nleading\n// <( OURS )>\n// <( THEIRS )>\nt\n// <( END W )>\n",
+        )
+        .unwrap();
+        match &tree[0] {
+            TextNode::Conflict { ours, .. } => {
+                assert!(
+                    ours.iter()
+                        .any(|n| matches!(n, TextNode::Plain(p) if p.contains("leading")))
+                );
+            }
+            other => panic!("expected Conflict, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn end_without_keyword_closes_innermost() {
+        // `END` bare (no WORD) is accepted and closes the innermost block.
+        let tree = parse_input("// <( BEGIN W )>\nbody\n// <( END )>\n").unwrap();
+        assert!(matches!(&tree[0], TextNode::BeginEnd { keyw, .. } if keyw == "W"));
+    }
+
+    #[test]
+    fn encrypted_two_param_form_builds_stored_child() {
+        let cas64 = "a".repeat(64);
+        let tree = parse_input(&format!("// <( ENCRYPTED W {cas64} )>\n")).unwrap();
+        match &tree[0] {
+            TextNode::Encrypted { keyw, txt, .. } => {
+                assert_eq!(keyw, "W");
+                match &txt[0] {
+                    TextNode::Stored { keyw, cas } => {
+                        assert_eq!(keyw, "ct");
+                        assert_eq!(cas, &cas64);
+                    }
+                    other => panic!("expected Stored child, got {other:?}"),
+                }
+            }
+            other => panic!("expected Encrypted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn data_tokens_concatenate_into_one_node() {
+        // "QUJD" (ABC) twice → one Data node holding "ABCABC".
+        let tree = parse_input("// <( DATA QUJD )>\n// <( DATA QUJD )>\n").unwrap();
+        match &tree[0] {
+            TextNode::Data(d) => assert_eq!(d.as_slice(), b"ABCABC"),
+            other => panic!("expected Data, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plain_lines_fold_into_a_single_node() {
+        let tree = parse_input("one\ntwo\nthree\n").unwrap();
+        assert_eq!(tree.len(), 1, "expected folded Plain, got {tree:?}");
+        match &tree[0] {
+            TextNode::Plain(s) => assert_eq!(s, "one\ntwo\nthree"),
+            other => panic!("expected Plain, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn directive_after_plain_starts_a_new_plain_run() {
+        // A directive interrupts the Plain run; following plain lines
+        // open a fresh node (not appended to the pre-directive one).
+        let tree = parse_input("before\n// <( STORED W h )>\nafter\n").unwrap();
+        assert_eq!(tree.len(), 3, "got {tree:?}");
+        assert!(matches!(&tree[0], TextNode::Plain(s) if s == "before"));
+        assert!(matches!(&tree[1], TextNode::Stored { .. }));
+        assert!(matches!(&tree[2], TextNode::Plain(s) if s == "after"));
+    }
+
+    #[test]
+    fn chain_directive_collects_extfields() {
+        let tree = parse_input("// <( CHAIN parents:ab signer:ed25519:9f )>\n").unwrap();
+        match &tree[0] {
+            TextNode::Chain { extfields } => {
+                assert_eq!(extfields.get("parents").map(String::as_str), Some("ab"));
+                assert_eq!(
+                    extfields.get("signer").map(String::as_str),
+                    Some("ed25519:9f")
+                );
+            }
+            other => panic!("expected Chain, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_directive_line_is_ignored() {
+        // `// <( )>` has no keyword → skipped without a node.
+        let tree = parse_input("// <( )>\nplain\n").unwrap();
+        assert_eq!(tree.len(), 1);
+    }
+
+    #[test]
+    fn encrypted_multiline_form_collects_data_child() {
+        let tree = parse_input(
+            "// <( ENCRYPTED W cipher:aes-256-siv )>\n// <( DATA QUJD )>\n// <( END W )>\n",
+        )
+        .unwrap();
+        match &tree[0] {
+            TextNode::Encrypted {
+                keyw,
+                txt,
+                extfields,
+            } => {
+                assert_eq!(keyw, "W");
+                assert_eq!(
+                    extfields.get("cipher").map(String::as_str),
+                    Some("aes-256-siv")
+                );
+                assert!(matches!(&txt[0], TextNode::Data(_)));
+            }
+            other => panic!("expected Encrypted, got {other:?}"),
+        }
+    }
+}
