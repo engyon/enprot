@@ -1,6 +1,6 @@
 [package]
 name = "enprot-ffi"
-version = "0.5.41"
+version = "0.5.42"
 edition = "2024"
 rust-version = "1.88"
 license = "BSD-2-Clause"
@@ -21,7 +21,7 @@ name = "enprot"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-enprot = { path = "..", version = "0.5.43", default-features = false }
+enprot = { path = "..", version = "0.5.44", default-features = false }
 serde_json = "1"
 
 [features]
