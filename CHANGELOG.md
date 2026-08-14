@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.43](https://github.com/engyon/enprot/compare/enprot-v0.5.42...enprot-v0.5.43) - 2026-08-14
+
+### Fixed
+
+- *(cipher)* adapt to aes-gcm-siv 0.12 / aead 0.6 API
+
+### Other
+
+- bump aes-gcm-siv from 0.11.1 to 0.12.0 in the rustcrypto group
+- bump docker/setup-qemu-action from 3 to 4
+- bump clap_complete from 4.6.8 to 4.6.9
+- bump clap_mangen from 0.3.0 to 0.3.2
+- bump taiki-e/install-action from 2.85.8 to 2.85.11
+- bump thiserror from 2.0.19 to 2.0.20 in the tracing-logging group
+- bump docker/login-action from 3 to 4
+- bump clap from 4.6.5 to 4.6.6 in the clap group
+- bump actions/upload-artifact from 4 to 7
+- bump docker/setup-buildx-action from 3 to 4
+
 ## [0.5.42](https://github.com/engyon/enprot/compare/enprot-v0.5.41...enprot-v0.5.42) - 2026-08-14
 
 ### Added
