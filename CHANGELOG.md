@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.44](https://github.com/engyon/enprot/compare/enprot-v0.5.43...enprot-v0.5.44) - 2026-08-14
+
+### Other
+
+- *(provider,resolve)* AnySigner bridge + print_tree specs
+- *(etree)* wire-format spec for parse + transform state machine
+- *(etree)* wire-format spec for tree_write + CI coverage gate (TODO #49)
+
 ## [0.5.43](https://github.com/engyon/enprot/compare/enprot-v0.5.42...enprot-v0.5.43) - 2026-08-14
 
 ### Fixed
