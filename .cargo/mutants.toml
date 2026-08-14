@@ -1,0 +1,31 @@
+# cargo-mutants configuration (TODO.complete/43).
+#
+# Mutation testing flips the question from "do tests pass?" to "if I
+# introduce a bug, does a test notice?". Run locally with:
+#
+#   cargo mutants --cargo-test-arg=--lib
+#
+# `--cargo-test-arg=--lib` scopes the per-mutant test run to the unit
+# tests; the integration suite spawns the built binary and is far too
+# slow to repeat per mutant.
+
+# Don't mutate non-product code.
+exclude_globs = [
+    "benches/*",
+    "examples/*",
+    "tests/*",
+    "fuzz/*",
+]
+
+# Safety margin over the auto-detected test timeout.
+timeout_multiplier = 3.0
+
+# Equivalent mutants, reviewed and accepted (do not "fix" these):
+#
+# 1. src/cappolicy.rs — `delete match arm "decryptor" in
+#    parse_capability`. The arm returns None and the catch-all `_`
+#    arm also returns None; the arm exists as documentation of the
+#    rejected input. Deleting it is behavior-preserving.
+exclude_re = [
+    'delete match arm "decryptor" in parse_capability',
+]

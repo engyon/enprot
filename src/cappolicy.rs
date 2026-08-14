@@ -706,6 +706,54 @@ action = { kind = "deny", reason = "catch-all" }
     }
 
     #[test]
+    fn load_file_reads_and_compiles_from_disk() {
+        // Mutation gap found by cargo-mutants: load_file was never
+        // exercised through a real file, so stubbing it to return an
+        // empty policy passed every test.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("policy.toml");
+        std::fs::write(
+            &path,
+            r#"
+[[word]]
+name = "Agent_007"
+required_capability = "viewer"
+"#,
+        )
+        .unwrap();
+        let p = CapPolicy::load_file(&path).unwrap();
+        assert_eq!(p.words.len(), 1, "file contents must reach the model");
+        // And the compiled rule decides with them.
+        assert!(
+            p.check_word_capability("Agent_007", &CapabilitySet::viewing())
+                .is_ok()
+        );
+        assert!(
+            p.check_word_capability("Agent_007", &CapabilitySet::empty())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn every_accepted_capability_name_loads() {
+        // Mutation gap found by cargo-mutants: deleting the
+        // "verifier" match arm made verifier-policies a load error,
+        // and no test noticed. Load one policy per accepted name.
+        for name in ["viewer", "reader", "signer", "verifier"] {
+            let toml = format!("[[word]]\nname = \"W\"\nrequired_capability = \"{name}\"\n");
+            let p = CapPolicy::from_toml_str(&toml)
+                .unwrap_or_else(|e| panic!("{name} must be accepted at load: {e}"));
+            // The compiled rule exists for this word (a decision, not
+            // just parse success).
+            assert!(
+                p.check_word_capability("W", &CapabilitySet::empty())
+                    .is_err(),
+                "{name} rule should deny an empty capability set"
+            );
+        }
+    }
+
+    #[test]
     fn signer_and_verifier_requirements_use_sentinel_fingerprints() {
         // Compiling 'signer'/'verifier' produces the zero-fingerprint
         // sentinel, which a real holder never matches — preserved
