@@ -55,7 +55,7 @@ jobs:
       #   no matching manifest for linux/amd64 in the manifest list entries
       # because docker tries to pull the amd64 manifest which doesn't exist.
       - name: Set up QEMU (for dockerharmony aarch64 emulation)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
 
