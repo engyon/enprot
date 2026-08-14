@@ -312,3 +312,88 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+#[cfg(test)]
+mod bridge_tests {
+    use super::*;
+
+    /// Deterministic async signer for exercising the AnySigner bridge.
+    #[derive(Debug)]
+    struct TestAsyncSigner {
+        fp: KeyFp,
+        pending_polls: usize,
+    }
+
+    impl AsyncSignerProvider for TestAsyncSigner {
+        fn sign_async(&self, msg: &[u8]) -> SignFuture<'_> {
+            let fp = self.fp;
+            let msg = msg.to_vec();
+            let pending_polls = self.pending_polls;
+            Box::pin(async move {
+                // Return Pending a fixed number of times so the
+                // block_on yield loop is actually exercised, then
+                // Ready. poll_fn's closure is FnMut and runs on every
+                // poll, so the countdown must live inside it.
+                let mut left = pending_polls;
+                let pending = std::future::poll_fn(move |cx| {
+                    if left > 0 {
+                        left -= 1;
+                        cx.waker().wake_by_ref();
+                        std::task::Poll::<()>::Pending
+                    } else {
+                        std::task::Poll::<()>::Ready(())
+                    }
+                });
+                let _: () = pending.await;
+                let sig = msg.iter().map(|b| !b).collect();
+                Ok((SigAlgKind::Ed25519, sig, fp))
+            })
+        }
+
+        fn fingerprint(&self) -> Result<KeyFp> {
+            Ok(self.fp)
+        }
+    }
+
+    fn test_fp(byte: u8) -> KeyFp {
+        KeyFp::from_bytes([byte; 32])
+    }
+
+    #[test]
+    fn sync_variant_delegates_directly() {
+        let signer = PemSigner::from_pem(&ed_pem(), SigAlgKind::Ed25519).unwrap();
+        let expected_fp = signer.fingerprint().unwrap();
+        let any = AnySigner::Sync(Box::new(signer));
+        let (_, _, fp) = any.sign_blocking(b"msg").unwrap();
+        assert_eq!(fp, expected_fp);
+        assert_eq!(any.fingerprint().unwrap(), expected_fp);
+    }
+
+    #[test]
+    fn async_variant_blocks_until_ready() {
+        // Two pending polls first: forces the yield_now loop.
+        let fp = test_fp(7);
+        let s = TestAsyncSigner {
+            fp,
+            pending_polls: 2,
+        };
+        let any = AnySigner::Async(Box::new(s));
+        let (alg, sig, got) = any.sign_blocking(&[0x00, 0xFF]).unwrap();
+        assert_eq!(alg, SigAlgKind::Ed25519);
+        assert_eq!(sig, vec![0xFF, 0x00], "test signer inverts bytes");
+        assert_eq!(got, fp);
+        assert_eq!(any.fingerprint().unwrap(), fp);
+    }
+
+    #[test]
+    fn block_on_returns_immediately_for_ready_futures() {
+        let out = futures_block_on::block_on(async { 42 });
+        assert_eq!(out, 42);
+    }
+
+    fn ed_pem() -> String {
+        let mut rng = botan::RandomNumberGenerator::new_system().unwrap();
+        let (priv_pem, _) = pki::keygen(SigAlgKind::Ed25519, &mut rng).unwrap();
+        priv_pem
+    }
+}
