@@ -1179,8 +1179,18 @@ fn capability_to_dto(c: &capability::Capability) -> output::CapabilityDto {
     }
 }
 
-/// Resolve the crypto policy from CommonArgs (shared by `run` and `verify_files`).
-fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> {
+/// Resolve the policy NAME from CommonArgs, applying the FIPS
+/// override (FIPS forces NIST). Shared by `resolve_policy` (which
+/// wraps it to produce a `Box<dyn CryptoPolicy>`) and by
+/// `pipeline::run`'s parallel path (which needs the name to feed
+/// `RunConfig::build_paops(&str)` per worker thread).
+///
+/// Single source of truth for the FIPS+policy conflict check (DRY):
+/// the upfront `validate_common` gate catches the user-set `--fips`
+/// case for CLI callers; this function remains the defense-in-depth
+/// for the `/proc/sys/crypto/fips_enabled` runtime auto-engage path
+/// and for library callers that bypass `validate_common`.
+fn resolve_policy_name(common: &CommonArgs) -> Result<String> {
     let explicit_policy = common.policy.clone();
     let mut policy_name = explicit_policy
         .clone()
@@ -1197,12 +1207,17 @@ fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> 
         {
             return Err(Error::InvalidArg {
                 arg: "--policy",
-                reason: format!("Policy setting of '{p}' conflicts with --fips"),
+                reason: format!("--fips forces --policy=nist but --policy={p} was set"),
             });
         }
         policy_name = "nist".to_string();
     }
-    Ok(make_policy(&policy_name))
+    Ok(policy_name)
+}
+
+/// Resolve the crypto policy from CommonArgs (shared by `run` and `verify_files`).
+fn resolve_policy(common: &CommonArgs) -> Result<Box<dyn crypto::CryptoPolicy>> {
+    Ok(make_policy(&resolve_policy_name(common)?))
 }
 
 /// Resolve the final left/right separator strings from CLI args.
