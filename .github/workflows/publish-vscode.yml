@@ -67,7 +67,7 @@ jobs:
         run: npx vsce publish --no-git-tag-version --package-path enprot-${{ steps.ver.outputs.version }}.vsix
 
       - name: Upload VSIX as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: enprot-vsix-${{ steps.ver.outputs.version }}
           path: editors/vscode/enprot-${{ steps.ver.outputs.version }}.vsix
