@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.46](https://github.com/engyon/enprot/compare/enprot-v0.5.45...enprot-v0.5.46) - 2026-08-16
+
+### Added
+
+- *(sbom)* 'enprot sbom' — SPDX 2.3 + CycloneDX 1.5 (TODO #62)
+
+### Fixed
+
+- *(sbom)* hand-parse Cargo.lock in build.rs — no build-dependency
+
+### Other
+
+- bisect experiment — disable lockfile embed directives
+- *(reproducibility)* build-twice-compare workflow for musl (TODO #45)
+
 ## [0.5.45](https://github.com/engyon/enprot/compare/enprot-v0.5.44...enprot-v0.5.45) - 2026-08-15
 
 ### Added
