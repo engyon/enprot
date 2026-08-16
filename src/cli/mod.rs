@@ -51,6 +51,7 @@ mod merge_cmd;
 mod pipeline;
 mod pki_cmd;
 mod provenance_cmd;
+mod sbom_cmd;
 mod smudge;
 mod validate;
 mod verify;
@@ -118,6 +119,10 @@ pub enum Command {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
+    /// Emit a Software Bill of Materials for this binary (Rust
+    /// crates from the build-time Cargo.lock + the linked C
+    /// libraries' runtime versions). SPDX 2.3 or CycloneDX 1.5 JSON.
+    Sbom(sbom_cmd::SbomSubcmd),
     /// Generate a keypair (e.g. Ed25519) and write the PEM-encoded
     /// halves to `--out-priv` / `--out-pub`.
     Keygen(KeygenSubcmd),
@@ -984,6 +989,7 @@ where
             clap_complete::generate(shell, &mut Cli::command(), "enprot", &mut std::io::stdout());
             Ok(())
         }
+        Command::Sbom(a) => sbom_cmd::run(a),
         Command::Keygen(a) => with_config(cli.common, |common| pki_cmd::keygen(common, a)),
         Command::Sign(a) => with_config(cli.common, |common| pki_cmd::sign(common, a)),
         Command::VerifySig(a) => with_config(cli.common, |common| pki_cmd::verify_sig(common, a)),

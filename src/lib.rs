@@ -57,6 +57,7 @@ pub mod prot;
 pub mod provenance;
 pub mod provider;
 pub mod resolve;
+pub mod sbom;
 pub mod scm;
 pub mod sigstore;
 pub mod utils;

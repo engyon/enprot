@@ -89,6 +89,18 @@ jobs:
           target/release/enprot completions bash > completions/enprot.bash
           target/release/enprot completions fish > completions/enprot.fish
           target/release/enprot completions zsh  > completions/_enprot
+      - name: Generate SBOMs
+        # TODO.complete/62: the binary itself emits its SBOM — Rust
+        # crates are baked in from Cargo.lock at build time; the C
+        # library versions come from the linked libraries at runtime.
+        # SOURCE_DATE_EPOCH (commit timestamp) keeps the documents
+        # byte-identical for identical releases (TODO.complete/45).
+        run: |
+          set -euxo pipefail
+          epoch=$(git log -1 --format=%ct)
+          ver=$(echo "$DEPLOY_TAG" | sed 's/^[^0-9]*//')
+          SOURCE_DATE_EPOCH=$epoch target/release/enprot sbom --output "enprot-${ver}.spdx.json"
+          SOURCE_DATE_EPOCH=$epoch target/release/enprot sbom --sbom-format cyclonedx-json --output "enprot-${ver}.cdx.json"
       - name: Upload extras
         uses: actions/upload-artifact@v7
         with:
@@ -96,6 +108,8 @@ jobs:
           path: |
             enprot.1
             completions/
+            enprot-*.spdx.json
+            enprot-*.cdx.json
 
   release-archive:
     needs: [checks, generate-extras]

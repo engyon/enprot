@@ -109,6 +109,13 @@ botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
 [target.'cfg(windows)'.dependencies]
 botan          = { version = "0.11", default-features = false, features = ["botan3", "static"] }
 
+[build-dependencies]
+# Canonical Cargo.lock parser (TODO.complete/62): the SBOM embeds the
+# exact dependency list of the build, so the lockfile is parsed at
+# build time and baked in via cargo:rustc-env. Same lockfile => same
+# embedded string => reproducible across rebuilds (#45).
+cargo-lock    = "10"
+
 [dev-dependencies]
 tempfile    = "3"
 assert_cmd  = "2"
