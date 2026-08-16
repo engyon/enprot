@@ -215,3 +215,51 @@ fn signer_without_anchor_is_warning_only() {
         .success()
         .stderr(predicates::str::contains("warning:"));
 }
+
+/// `enprot sbom` (TODO.complete/62): valid SPDX JSON on stdout with
+/// the full embedded dependency tree; `--output` writes the file.
+#[test]
+fn sbom_spdx_json_shape() {
+    use std::process::Command;
+    let out = Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["sbom"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["spdxVersion"], "SPDX-2.3");
+    assert_eq!(v["SPDXID"], "SPDXRef-DOCUMENT");
+    let pkgs = v["packages"].as_array().unwrap();
+    assert!(
+        pkgs.len() > 100,
+        "full lockfile tree expected, got {pkgs_len}",
+        pkgs_len = pkgs.len()
+    );
+    let names: Vec<&str> = pkgs.iter().filter_map(|p| p["name"].as_str()).collect();
+    assert!(names.contains(&"enprot"));
+    assert!(names.contains(&"botan"));
+    assert!(names.contains(&"librnp"));
+    // Every non-self package is the target of exactly one DEPENDS_ON.
+    let rels = v["relationships"].as_array().unwrap();
+    assert!(rels.iter().any(|r| r["relationshipType"] == "DESCRIBES"));
+}
+
+#[test]
+fn sbom_cyclonedx_and_output_file() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sbom.json");
+    let out = Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["sbom", "--sbom-format", "cyclonedx-json", "--output"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(v["bomFormat"], "CycloneDX");
+    assert_eq!(v["specVersion"], "1.5");
+    assert_eq!(v["metadata"]["component"]["name"], "enprot");
+}

@@ -1,16 +1,24 @@
 // Link directives for C deps that rnp-rs's build.rs doesn't emit.
 //
 // When vendored-rnp is enabled, rnp-src handles all C dep linking
-// (librnp, json-c, sexpp, bzip2, zlib, Botan). enprot's build.rs
-// does nothing.
+// (librnp, json-c, sexpp, bzip2, zlib, Botan).
 //
 // When vendored-rnp is NOT enabled (default, system-librnp builds):
 //   - Windows MSVC: emit link directives for pre-built static libs.
 //   - Linux/macOS cross-compile (Docker): emit when ENPRO_STATIC_LINK
 //     is set (Docker pre-build scripts).
 //   - Linux/macOS native: don't emit — pkg-config handles linking.
+//
+// Independently of the link mode, this script also embeds the exact
+// Cargo.lock dependency list into the binary (TODO.complete/62) so
+// `enprot sbom` can produce an SBOM for the running binary itself,
+// without needing the source tree at SBOM-generation time.
+
+use std::path::PathBuf;
 
 fn main() {
+    embed_lockfile_deps();
+
     // vendored-rnp feature → rnp-src handles all linking. Skip.
     if cfg!(feature = "vendored-rnp") {
         return;
@@ -31,4 +39,54 @@ fn main() {
             println!("cargo:rustc-link-lib=static=stdc++");
         }
     }
+}
+
+/// Find the workspace Cargo.lock: the manifest dir when enprot IS
+/// the workspace root, its parent when it's a member.
+fn find_workspace_lock() -> Option<PathBuf> {
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").ok()?);
+    for dir in [manifest.clone(), manifest.parent()?.to_path_buf()] {
+        let candidate = dir.join("Cargo.lock");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Bake the resolved dependency list into the binary as a
+/// newline-separated `name@version` string. Deterministic: the same
+/// lockfile always yields the same embedded string (dependencies are
+/// sorted), so rebuilds of the same commit embed identical data
+/// (TODO.complete/45).
+fn embed_lockfile_deps() {
+    let Some(lock_path) = find_workspace_lock() else {
+        // No lockfile (e.g. published-crate builds without one). The
+        // sbom command reports the situation rather than failing the
+        // build — a binary without an SBOM beats no binary.
+        println!("cargo:rustc-env=ENPROT_DEP_LIST=");
+        return;
+    };
+    println!("cargo:rerun-if-changed={}", lock_path.display());
+
+    let lock = match std::fs::read_to_string(&lock_path)
+        .map_err(|e| e.to_string())
+        .and_then(|s| s.parse::<cargo_lock::Lockfile>().map_err(|e| e.to_string()))
+    {
+        Ok(l) => l,
+        Err(e) => panic!("failed to parse {}: {e}", lock_path.display()),
+    };
+
+    let mut deps: Vec<String> = lock
+        .packages
+        .iter()
+        .map(|p| format!("{}@{}", p.name, p.version))
+        .collect();
+    deps.sort();
+    deps.dedup();
+
+    // rustc-env directive values are line-based — embedded newlines
+    // truncate the value at the first record. Space-separate instead;
+    // crate names and semver strings never contain whitespace.
+    println!("cargo:rustc-env=ENPROT_DEP_LIST={}", deps.join(" "));
 }
