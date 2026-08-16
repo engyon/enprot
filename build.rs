@@ -8,6 +8,10 @@
 //   - Linux/macOS cross-compile (Docker): emit when ENPRO_STATIC_LINK
 //     is set (Docker pre-build scripts).
 //   - Linux/macOS native: don't emit — pkg-config handles linking.
+//   - OHOS cross-compile: emit librnp's transitive C libs (issue #351)
+//     — rnp-rs's explicit-link mode emits only `-lrnp`, and whether
+//     the rnp cmake build bundles json-c/zlib/bzip2 into librnp.a
+//     varies, leaving their symbols unresolved.
 //
 // Independently of the link mode, this script also embeds the exact
 // Cargo.lock dependency list into the binary (TODO.complete/62) so
@@ -21,6 +25,28 @@ fn main() {
 
     // vendored-rnp feature → rnp-src handles all linking. Skip.
     if cfg!(feature = "vendored-rnp") {
+        return;
+    }
+
+    // OHOS cross-compile (issue #351): TARGET is set for build
+    // scripts when cross-compiling. The archives live in the OHOS
+    // install dir surfaced via RNP_LIB_DIR (the same dir rnp-rs's
+    // explicit-link mode uses). `cfg!(target_os)` cannot be used
+    // here — build scripts compile for the HOST, so it reports the
+    // runner's OS, not the cross target. stdc++ is deliberately NOT
+    // linked here: Botan on OHOS uses libc++, and the workflow
+    // already passes -lc++/-lc++abi via RUSTFLAGS.
+    if std::env::var("TARGET").is_ok_and(|t| t.contains("ohos"))
+        && let Ok(libdir) = std::env::var("RNP_LIB_DIR")
+    {
+        println!(
+            "cargo:rustc-link-search=native={}",
+            libdir.replace('\\', "/")
+        );
+        println!("cargo:rustc-link-lib=static=json-c");
+        println!("cargo:rustc-link-lib=static=sexpp");
+        println!("cargo:rustc-link-lib=static=bz2");
+        println!("cargo:rustc-link-lib=static=z");
         return;
     }
 
