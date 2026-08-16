@@ -32,13 +32,17 @@ fn run(args: &[&str]) -> String {
 
 /// Like `run`, but with a fixture copied into a tempdir; the
 /// tempdir path is normalized out of the output so the snapshot is
-/// machine-independent.
+/// machine-independent. Both the raw path and its JSON-escaped form
+/// (backslashes doubled) are replaced — JSON output on Windows embeds
+/// the escaped variant, which a plain replace would miss.
 fn run_with_fixture(args: &[&str], fixture: &str) -> String {
     let f = Fixture::copy(fixture);
     let path = f.path.display().to_string();
     let owned: Vec<String> = args.iter().map(|a| a.replace("{FILE}", &path)).collect();
     let argv: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
-    run(&argv).replace(&path, "<FIXTURE>")
+    run(&argv)
+        .replace(&path, "<FIXTURE>")
+        .replace(&path.replace('\\', "\\\\"), "<FIXTURE>")
 }
 
 #[test]
