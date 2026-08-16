@@ -60,33 +60,9 @@ fn find_workspace_lock() -> Option<PathBuf> {
 /// sorted), so rebuilds of the same commit embed identical data
 /// (TODO.complete/45).
 fn embed_lockfile_deps() {
-    let Some(lock_path) = find_workspace_lock() else {
-        // No lockfile (e.g. published-crate builds without one). The
-        // sbom command reports the situation rather than failing the
-        // build — a binary without an SBOM beats no binary.
-        println!("cargo:rustc-env=ENPROT_DEP_LIST=");
-        return;
-    };
-    println!("cargo:rerun-if-changed={}", lock_path.display());
-
-    let lock = match std::fs::read_to_string(&lock_path)
-        .map_err(|e| e.to_string())
-        .and_then(|s| s.parse::<cargo_lock::Lockfile>().map_err(|e| e.to_string()))
-    {
-        Ok(l) => l,
-        Err(e) => panic!("failed to parse {}: {e}", lock_path.display()),
-    };
-
-    let mut deps: Vec<String> = lock
-        .packages
-        .iter()
-        .map(|p| format!("{}@{}", p.name, p.version))
-        .collect();
-    deps.sort();
-    deps.dedup();
-
-    // rustc-env directive values are line-based — embedded newlines
-    // truncate the value at the first record. Space-separate instead;
-    // crate names and semver strings never contain whitespace.
-    println!("cargo:rustc-env=ENPROT_DEP_LIST={}", deps.join(" "));
+    // BISECT-EXPERIMENT: link directives disabled to isolate the OHOS
+    // link failure; only the env var is still set. Everything else
+    // (dep, parsing) unchanged.
+    let _ = find_workspace_lock();
+    println!("cargo:rustc-env=ENPROT_DEP_LIST=");
 }
