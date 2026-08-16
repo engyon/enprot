@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.47](https://github.com/engyon/enprot/compare/enprot-v0.5.46...enprot-v0.5.47) - 2026-08-16
+
+### Fixed
+
+- *(snapshots)* normalize JSON-escaped tempdir paths (Windows)
+- *(build)* link librnp transitive C libs on OHOS (closes #351)
+
+### Other
+
+- *(snapshots)* insta harness + 5 stable-output CLI snapshots (TODO #44)
+
 ## [0.5.46](https://github.com/engyon/enprot/compare/enprot-v0.5.45...enprot-v0.5.46) - 2026-08-16
 
 ### Added
