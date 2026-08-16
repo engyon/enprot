@@ -1,0 +1,6 @@
+---
+source: tests/cli/snapshots.rs
+expression: out
+---
+reader
+viewer

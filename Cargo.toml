@@ -113,6 +113,10 @@ botan          = { version = "0.11", default-features = false, features = ["bota
 tempfile    = "3"
 assert_cmd  = "2"
 predicates  = "3"
+# Snapshot testing (TODO.complete/44): stable-output tests assert
+# against committed snapshots; output changes become reviewable
+# diffs instead of scattered hand-maintained strings.
+insta       = "1"
 cpu-time    = "1.0"
 proptest    = "1"
 serde_json  = "1"

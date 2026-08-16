@@ -33,5 +33,6 @@ mod resolve;
 mod scm;
 mod smudge_clean;
 mod snapshot_pin;
+mod snapshots;
 mod store_fetch;
 mod verify_chain;
