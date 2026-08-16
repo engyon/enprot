@@ -112,11 +112,18 @@ list is reviewed on every release.
 
 ## Verification CI
 
-A `reproducibility` workflow (planned, see
-[TODO.complete/45](../TODO.complete/45-reproducibility-verification.md))
-will rebuild each release target twice with different environment
-variables and `diff` the output. Until that lands, third-party
-verification per the steps above is the canonical check.
+The [`reproducibility`](../.github/workflows/reproducibility.yml)
+workflow rebuilds the `x86_64-unknown-linux-musl` target twice from
+the same commit — same `SOURCE_DATE_EPOCH`, same container image,
+but with all source-file mtimes shuffled between builds — and
+requires the binaries to be byte-identical. It runs weekly
+(Tuesdays 04:00 UTC) and on demand (`workflow_dispatch`); both
+builds and their hashes are uploaded as artifacts so a mismatch can
+be triaged offline. Until the build has a verified-green streak the
+job is non-blocking (`continue-on-error`); after that it gates.
+
+Until the job gates, third-party verification per the steps above
+remains the canonical check.
 
 ## See also
 

@@ -1,0 +1,103 @@
+name: reproducibility
+
+# Reproducibility check (TODO.complete/45): rebuild the same commit
+# twice and require byte-identical binaries. Supply-chain trust
+# depends on third parties being able to verify a released binary
+# against its source — see docs/reproducible-builds.md.
+#
+# Method (x86_64-unknown-linux-musl, matching the deploy artifact):
+#   build 1 -> copy binary away -> clean -> shuffle source mtimes ->
+#   build 2 (same SOURCE_DATE_EPOCH, same container image) -> cmp.
+#
+# The mtime shuffle makes time-embedding visible: rustc honors
+# SOURCE_DATE_EPOCH, but a C build step (vendored Botan/librnp via
+# cmake/make) that embeds wall-clock or file mtimes will differ and
+# fail the comparison. Cross mounts the workspace at a fixed path
+# inside the container, so checkout-path leakage is not a factor.
+#
+# continue-on-error until a verified-green streak exists — the
+# established pattern (OHOS, arm64 leg); drop the flag once the
+# build is proven reproducible, and triage every mismatch against
+# the known-issues list in docs/reproducible-builds.md.
+
+on:
+  schedule:
+    - cron: '0 4 * * 2' # Tuesdays 04:00 UTC
+  workflow_dispatch:
+
+env:
+  CROSS_VERSION: 0.2.5
+  PROJECT_NAME: enprot
+  EXE_NAME: enprot
+  TARGET: x86_64-unknown-linux-musl
+  PREFIX: /usr/local/x86_64-linux-musl
+  TARGET_CC: x86_64-linux-musl-gcc
+  TARGET_CXX: x86_64-linux-musl-g++
+  TARGET_AR: x86_64-linux-musl-gcc-ar
+
+jobs:
+  build-twice-compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      # Pin the embedded timestamps to the commit's own time: the
+      # same input every run of this workflow on the same commit.
+      - name: Pin SOURCE_DATE_EPOCH to the commit timestamp
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
+      # The post-build check greps the version out of --version.
+      - name: Resolve version
+        run: |
+          set -euxo pipefail
+          echo "RELEASE_TAG=$(grep '^version' Cargo.toml | head -1 | cut -d '"' -f2)" >> "$GITHUB_ENV"
+          echo "EXE_PATH=target/$TARGET/release/$EXE_NAME" >> "$GITHUB_ENV"
+
+      - name: Build 1
+        run: |
+          set -euxo pipefail
+          . ci/build-static.sh
+          mkdir -p /tmp/repro
+          cp "$EXE_PATH" /tmp/repro/enprot-build1
+          sha256sum /tmp/repro/enprot-build1 | tee /tmp/repro/build1.sha256
+
+      - name: Clean and shuffle mtimes
+        run: |
+          set -euxo pipefail
+          rm -rf target
+          # Give every input a deliberately different mtime so any
+          # mtime leakage into the artifacts surfaces in build 2.
+          find src ci .cargo -type f -exec touch -d '2001-02-03T04:05:06Z' {} +
+          find "$HOME/.cargo/registry/src" -type f -exec touch -d '2002-03-04T05:06:07Z' {} + 2>/dev/null || true
+
+      - name: Build 2
+        run: |
+          set -euxo pipefail
+          . ci/build-static.sh
+          cp "$EXE_PATH" /tmp/repro/enprot-build2
+          sha256sum /tmp/repro/enprot-build2 | tee /tmp/repro/build2.sha256
+
+      - name: Compare
+        run: |
+          set -euxo pipefail
+          cat /tmp/repro/build1.sha256 /tmp/repro/build2.sha256
+          if ! cmp /tmp/repro/enprot-build1 /tmp/repro/enprot-build2; then
+            echo "::error::builds of the same commit differ — see docs/reproducible-builds.md#known-non-reproducible-elements"
+            exit 1
+          fi
+          echo "byte-identical: reproducible"
+
+      - name: Upload both builds for triage
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reproducibility-builds
+          path: /tmp/repro/
+          if-no-files-found: warn
