@@ -1,0 +1,31 @@
+---
+source: tests/cli/snapshots.rs
+expression: out
+---
+{
+  "$schema": "enprot/v1",
+  "file": "<FIXTURE>",
+  "blocks": [
+    {
+      "kind": "plain"
+    },
+    {
+      "kind": "begin",
+      "word": "GEHEIM"
+    },
+    {
+      "kind": "begin",
+      "word": "Agent_007"
+    }
+  ],
+  "chain_anchors": [],
+  "conflict_count": 0,
+  "capabilities": [
+    {
+      "tier": "reader"
+    },
+    {
+      "tier": "viewer"
+    }
+  ]
+}

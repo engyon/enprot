@@ -25,3 +25,7 @@
 
 # cargo-mutants scratch output (TODO.complete/43).
 mutants.out*
+
+# insta pending-snapshot files (TODO.complete/44) — transient; a
+# mismatching test writes these and fails until reviewed/accepted.
+*.snap.new

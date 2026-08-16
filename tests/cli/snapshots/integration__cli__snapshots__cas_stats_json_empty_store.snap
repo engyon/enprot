@@ -1,0 +1,12 @@
+---
+source: tests/cli/snapshots.rs
+expression: out
+---
+{
+  "$schema": "enprot/v1",
+  "blobs": 0,
+  "total_bytes": 0,
+  "min_bytes": 0,
+  "max_bytes": 0,
+  "avg_bytes": 0
+}

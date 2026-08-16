@@ -1,0 +1,18 @@
+---
+source: tests/cli/snapshots.rs
+expression: out
+---
+== structure ==
+BEGIN/END  GEHEIM
+  BEGIN/END  Agent_007
+BEGIN/END  Agent_007
+
+== chain anchors ==
+  (none)
+
+== conflicts ==
+  (none)
+
+== capabilities ==
+  reader
+  viewer

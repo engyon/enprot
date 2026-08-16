@@ -1,0 +1,31 @@
+---
+source: tests/cli/snapshots.rs
+expression: out
+---
+{
+  "$schema": "enprot/v1",
+  "files": [
+    {
+      "path": "<FIXTURE>",
+      "nodes": [
+        {
+          "type": "begin-end",
+          "word": "GEHEIM",
+          "depth": 0,
+          "children": [
+            {
+              "type": "begin-end",
+              "word": "Agent_007",
+              "depth": 1
+            }
+          ]
+        },
+        {
+          "type": "begin-end",
+          "word": "Agent_007",
+          "depth": 0
+        }
+      ]
+    }
+  ]
+}
