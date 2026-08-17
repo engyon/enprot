@@ -57,6 +57,7 @@ mod blob;
 
 pub use blob::{blob_to_tree, tree_to_blob};
 pub use parse::parse;
+pub use streaming::transform_stream;
 pub use transform::transform;
 pub use write::tree_write;
 
@@ -207,6 +208,15 @@ pub struct IoConfig {
     /// Dry-run mode (TODO.complete/69): parse + transform without
     /// writing output files or CAS blobs.
     pub dry_run: bool,
+    /// Streaming transform+write (TODO.complete/35): plain text is
+    /// written as it is read; each top-level block is buffered,
+    /// transformed, and written individually. Memory is bounded by
+    /// the largest single block, not the file size. Output is
+    /// byte-identical to the in-memory path on success; on a
+    /// mid-file failure the output may be partially written (the
+    /// in-memory path leaves it empty). Ignored when anchoring is
+    /// enabled (the anchor's payload hash needs the full tree).
+    pub streaming: bool,
 }
 
 impl IoConfig {
@@ -296,6 +306,7 @@ impl ParseOps {
                 verbose: false,
                 inline_data: false,
                 dry_run: false,
+                streaming: false,
             },
             anchor: AnchorConfig::disabled(),
         })

@@ -68,6 +68,7 @@ impl RunConfig {
 
         paops.io.verbose = self.common.verbose && !self.common.quiet;
         paops.io.inline_data = self.common.inline || self.common.casdir.is_none();
+        paops.io.streaming = self.common.streaming;
         paops.max_depth = self.common.max_depth;
         let (left, right) = resolve_separators(&self.common);
         paops.separators.left = left;
@@ -428,6 +429,30 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
     } else {
         path_in.to_string()
     };
+
+    // Streaming fast path (TODO.complete/35): bounded memory, output
+    // written incrementally. Anchoring and dry-run need the full
+    // tree (payload hash / node stats), so they keep the in-memory
+    // pipeline regardless of the flag.
+    if paops.io.streaming && !paops.anchor.enabled && !paops.io.dry_run {
+        if paops.io.verbose {
+            eprintln!("Streaming {}", path_in);
+        }
+        let mut writer_out: Box<dyn Write> = if path_out == "-" {
+            Box::new(BufWriter::new(std::io::stdout()))
+        } else {
+            match std::fs::File::create(path_out) {
+                Ok(f) => Box::new(BufWriter::new(f)),
+                Err(e) => {
+                    return Err(Error::Io(std::io::Error::other(format!(
+                        "Failed to open {path_out} for writing: {e}"
+                    ))));
+                }
+            }
+        };
+        return etree::transform_stream(reader_in, &mut writer_out, paops)
+            .map_err(|e| Error::Io(std::io::Error::other(format!("{e} in {path_in}, aborting"))));
+    }
 
     let tree_in = etree::parse(reader_in, paops)
         .map_err(|e| Error::Io(std::io::Error::other(format!("{e} in {path_in}, aborting"))))?;

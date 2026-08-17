@@ -371,3 +371,67 @@ fn audit_sign_and_verify_tamper_evidence() {
         .unwrap();
     assert!(!bad.status.success(), "tampered log must not verify");
 }
+
+/// `--streaming` output must be byte-identical to the default
+/// in-memory path for passthrough and for an encrypt/decrypt round
+/// trip (TODO.complete/35).
+#[test]
+fn streaming_matches_default_path() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let ept = Fixture::copy("sample/test.ept");
+
+    let run = |streaming: bool, args: &[&str], out: &std::path::Path| {
+        let mut cmd = Command::cargo_bin("enprot").unwrap();
+        if streaming {
+            cmd.arg("--streaming");
+        }
+        assert!(
+            cmd.args(args)
+                .arg(&ept.path)
+                .arg("-o")
+                .arg(out)
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+    };
+
+    // Passthrough.
+    run(false, &["passthrough"], &dir.path().join("p1"));
+    run(true, &["passthrough"], &dir.path().join("p2"));
+    assert_eq!(
+        std::fs::read(dir.path().join("p1")).unwrap(),
+        std::fs::read(dir.path().join("p2")).unwrap()
+    );
+
+    // Encrypt + decrypt round trip entirely through the streaming path.
+    run(
+        true,
+        &["encrypt", "-w", "Agent_007", "-k", "Agent_007=pw"],
+        &dir.path().join("enc"),
+    );
+    let enc = std::fs::read_to_string(dir.path().join("enc")).unwrap();
+    assert!(enc.contains("ENCRYPTED Agent_007"), "got: {enc}");
+    let enc_path = dir.path().join("enc");
+    let out = dir.path().join("dec");
+    let ok = Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("--streaming")
+        .args(["decrypt", "-w", "Agent_007", "-k", "Agent_007=pw"])
+        .arg(&enc_path)
+        .arg("-o")
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        std::fs::read_to_string(&ept.source).unwrap()
+    );
+}

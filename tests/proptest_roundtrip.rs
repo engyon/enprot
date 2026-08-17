@@ -153,3 +153,119 @@ proptest! {
         prop_assert_eq!(ct_a, ct_b, "deterministic mode must produce identical ciphertexts");
     }
 }
+
+// Property (TODO.complete/35): the streaming transform+write path
+// produces byte-identical output to the in-memory
+// parse→transform→tree_write pipeline for any well-formed document
+// built from the generator's vocabulary, with no transforms set.
+// Byte-identity is by construction (each block reuses the in-memory
+// path on its own lines); this property pins it end to end.
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(128))]
+
+    #[test]
+    fn streaming_write_is_byte_identical_to_in_memory(
+        doc in doc_strategy(),
+    ) {
+        use std::io::Cursor;
+
+        let mk = || {
+            let mut p = enprot::etree::ParseOps::new(Box::new(
+                enprot::crypto::CryptoPolicyDefault {},
+            ))
+            .unwrap();
+            p.runtime.fname = "<prop>".into();
+            p
+        };
+
+        let mut p1 = mk();
+        let tree = enprot::etree::parse(Cursor::new(doc.as_bytes()), &mut p1).unwrap();
+        let tree = enprot::etree::transform(&tree, &mut p1).unwrap();
+        let mut want = Vec::new();
+        enprot::etree::tree_write(&mut want, &tree, &mut p1).unwrap();
+
+        let mut p2 = mk();
+        let mut got = Vec::new();
+        enprot::etree::streaming::transform_stream(
+            Cursor::new(doc.as_bytes()),
+            &mut got,
+            &mut p2,
+        )
+        .unwrap();
+
+        prop_assert_eq!(want, got);
+    }
+}
+
+/// A well-formed document generator over the directive vocabulary:
+/// plain runs, BEGIN/END (nested up to depth 2), single-line
+/// directives (CHAIN/STORED/INCLUDE/MUTED/KEY/UNKEY/CERT/UNCERT),
+/// IMMUTABLE/MUTABLE, and multi-line ENCRYPTED (DATA lines from
+/// valid base64 of arbitrary bytes, so parsing succeeds).
+fn doc_strategy() -> impl Strategy<Value = String> {
+    use proptest::collection::vec;
+    use proptest::string::string_regex;
+
+    let single = (
+        string_regex("[A-Za-z0-9_]{1,10}").unwrap(),
+        string_regex("[0-9a-f]{8,32}").unwrap(),
+    )
+        .prop_map(|(w, h)| format!("// <( STORED {w} {h} )>"));
+
+    let inner = vec(string_regex("[A-Za-z0-9 ,.;:/()=-]{1,40}").unwrap(), 0..3);
+    let begin = (string_regex("[A-Za-z0-9_]{1,10}").unwrap(), inner).prop_map(|(w, lines)| {
+        let mut s = format!("// <( BEGIN {w} )>\n");
+        for l in &lines {
+            s.push_str(l);
+            s.push('\n');
+        }
+        s.push_str(&format!("// <( END {w} )>"));
+        s
+    });
+
+    let data = any::<Vec<u8>>().prop_map(|bytes| {
+        // base64 of arbitrary bytes; chunked into DATA lines.
+        let b64 = enprot::utils::base64_encode(&bytes).unwrap_or_default();
+        if b64.is_empty() {
+            "// <( DATA QUJD )>".to_string() // "ABC"
+        } else {
+            format!("// <( DATA {b64} )>")
+        }
+    });
+
+    let encrypted =
+        (string_regex("[A-Za-z0-9_]{1,10}").unwrap(), data).prop_map(|(w, data_line)| {
+            format!("// <( ENCRYPTED {w} cipher:aes-256-siv )>\n{data_line}\n// <( END {w} )>")
+        });
+
+    let immutable = (
+        string_regex("[A-Za-z0-9_]{1,10}").unwrap(),
+        vec(string_regex("[A-Za-z0-9 ,.;:/()=-]{1,40}").unwrap(), 0..2),
+    )
+        .prop_map(|(w, lines)| {
+            let mut s = format!("// <( IMMUTABLE {w} sha384=ABCDEF )>\n");
+            for l in &lines {
+                s.push_str(l);
+                s.push('\n');
+            }
+            s.push_str(&format!("// <( MUTABLE {w} )>"));
+            s
+        });
+
+    let element = prop_oneof![
+        4 => string_regex("[A-Za-z0-9 ,.;:/()=-]{1,40}").unwrap().prop_map(|p| p),
+        3 => begin,
+        2 => single,
+        1 => encrypted,
+        1 => immutable,
+    ];
+
+    vec(element, 0..8).prop_map(|parts| {
+        let mut s = String::new();
+        for p in &parts {
+            s.push_str(p);
+            s.push('\n');
+        }
+        s
+    })
+}

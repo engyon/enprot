@@ -718,8 +718,18 @@ pub struct CommonArgs {
     /// audit query`, check integrity with `enprot audit verify`.
     #[arg(long, global = true, value_name = "FILE")]
     pub audit_log: Option<PathBuf>,
-}
 
+    /// Streaming transform+write (TODO.complete/35): plain text
+    /// between blocks is written as it is read; each block is
+    /// buffered, transformed, and written individually. Memory is
+    /// bounded by the largest block instead of the file size; output
+    /// is byte-identical to the default path on success. On a
+    /// mid-file failure the output may be partially written (the
+    /// default path leaves it empty). Ignored with --anchor (needs
+    /// the full tree) and --dry-run.
+    #[arg(long, global = true)]
+    pub streaming: bool,
+}
 impl CommonArgs {
     /// Construct a CommonArgs with only the filter-context fields
     /// populated. Used by subcommands that don't take the full CLI
@@ -749,6 +759,7 @@ impl CommonArgs {
             jobs: 1,
             dry_run: false,
             audit_log: None,
+            streaming: false,
         }
     }
 }
