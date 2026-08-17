@@ -18,10 +18,21 @@ on:
     - cron: '0 3 * * 1' # Mondays 03:00 UTC
   workflow_dispatch:
 
+# ci/install.sh (set -u) requires these: without them the job died at
+# "BOTAN_VERSION: unbound variable" on its first scheduled run.
+env:
+  BOTAN_VERSION: 3.7.0
+  PREFIX: /usr
+
 jobs:
   mutants:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # Informational: surviving mutants are triaged (catching test or
+    # documented equivalent in .cargo/mutants.toml), not gating. The
+    # job-level failure stays visible in the Actions UI; the workflow
+    # conclusion stays green. Same pattern as `reproducibility`.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - name: Install rust toolchain
