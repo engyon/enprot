@@ -144,8 +144,23 @@ Cross-reference against [docs/threat-model.md](docs/threat-model.md):
 - Does it fall under an **out-of-scope non-guarantee** (N1–N8)? If yes,
   document why the change is safe despite the non-guarantee.
 - Does it introduce a new timing-sensitive comparison? If yes, use
-  `subtle::ConstantTimeEq` (see
-  [TODO.complete/52](TODO.complete/52-constant-time-comparisons.md)).
+  `subtle::ConstantTimeEq`. The principle: **secret-derived data needs
+  constant-time comparison; everything else can use `==`** — don't
+  blanket-apply `ct_eq`, it obscures which comparisons actually
+  guard secrets. The audited classification:
+
+  | Comparison | Timing-sensitive? | Why |
+  |---|---|---|
+  | CAS hash (`load` verify) | no | content-derived, not secret |
+  | Botan AEAD/MAC tag checks | no | Botan verifies internally in constant time |
+  | `pki::verify` signature result | no | Botan primitive |
+  | WORD names, filenames, cipher names, anchors' indices/timestamps | no | public data |
+  | Password vs stored reference (none today) | **yes, when added** | byte-wise recovery via timing |
+  | Re-derived key vs stored PHC (none today) | **yes, when added** | as above |
+  | Future HMAC/HKDF tag checks | **yes, when added** | as above |
+
+  Raw `==` on `Vec<u8>`/`&str` short-circuits at the first mismatch —
+  that leak is what `ct_eq` exists to close.
 
 **Reporting security issues**: see [SECURITY.md](SECURITY.md). Do NOT
 open a public issue for suspected vulnerabilities.
