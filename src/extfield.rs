@@ -393,4 +393,103 @@ mod tests {
         assert_eq!(wire.get("sig").map(|s| s.as_str()), Some("deadbeef"));
         assert_eq!(wire.get("payload").map(|s| s.as_str()), Some("a3f5"));
     }
+
+    // --- Value-exact accessor specs (TODO.complete/43 triage) ---
+    //
+    // Mutation testing found that the earlier is_some()/is_none()
+    // assertions let stubbed accessors (Some("") / Some("xyzzy") /
+    // None) survive: presence checks verify the key plumbing but not
+    // the value plumbing. These specs assert exact values for every
+    // accessor, present and absent, plus the raw() identity.
+
+    #[test]
+    fn anchor_accessors_return_exact_values() {
+        let m = map(&[
+            ("signer", "ed25519:aa"),
+            ("signers", "ed25519:aa,ed25519:bb"),
+            ("payload", "P1"),
+            ("sig", "S1"),
+            ("sigs", "S1,S2"),
+            ("parents", "PA1,PA2"),
+            ("ts", "20260728T143000Z"),
+            ("mut", "encrypted+signed"),
+        ]);
+        let ef = AnchorExtFields::from_map(&m);
+        assert_eq!(ef.signer(), Some("ed25519:aa"));
+        assert_eq!(ef.signers(), Some("ed25519:aa,ed25519:bb"));
+        assert_eq!(ef.payload(), Some("P1"));
+        assert_eq!(ef.sig(), Some("S1"));
+        assert_eq!(ef.sigs(), Some("S1,S2"));
+        assert_eq!(ef.parents(), Some("PA1,PA2"));
+        assert_eq!(ef.timestamp(), Some("20260728T143000Z"));
+        assert_eq!(ef.mutations(), Some("encrypted+signed"));
+        // raw() is the identity view over the same map.
+        assert_eq!(ef.raw().len(), 8);
+        assert_eq!(ef.raw().get("payload").map(|s| s.as_str()), Some("P1"));
+    }
+
+    #[test]
+    fn anchor_accessors_return_none_when_absent() {
+        let m = map(&[("unrelated", "x")]);
+        let ef = AnchorExtFields::from_map(&m);
+        assert_eq!(ef.signer(), None);
+        assert_eq!(ef.signers(), None);
+        assert_eq!(ef.payload(), None);
+        assert_eq!(ef.sig(), None);
+        assert_eq!(ef.sigs(), None);
+        assert_eq!(ef.parents(), None);
+        assert_eq!(ef.timestamp(), None);
+        assert_eq!(ef.mutations(), None);
+        // raw() still exposes unknown fields for forward compat.
+        assert_eq!(ef.raw().get("unrelated").map(|s| s.as_str()), Some("x"));
+    }
+
+    #[test]
+    fn encrypted_accessors_return_exact_values() {
+        let m = map(&[
+            ("pbkdf", "$argon2id$v=19"),
+            ("cipher", "aes-256-gcm$iv=MDEy"),
+            ("compress", "zlib"),
+            ("recipients", "mlkem:aa,mlkem:bb"),
+            ("recipient-mlkem-aa", "Q1Q="),
+        ]);
+        let ef = EncryptedExtFields::from_map(&m);
+        assert_eq!(ef.pbkdf(), Some("$argon2id$v=19"));
+        assert_eq!(ef.cipher(), Some("aes-256-gcm$iv=MDEy"));
+        assert_eq!(ef.compress(), Some("zlib"));
+        assert_eq!(ef.recipients(), Some("mlkem:aa,mlkem:bb"));
+        assert_eq!(ef.recipient_ct("aa"), Some("Q1Q="));
+        assert_eq!(ef.recipient_ct("bb"), None);
+        assert_eq!(ef.raw().len(), 5);
+        assert_eq!(ef.raw().get("compress").map(|s| s.as_str()), Some("zlib"));
+    }
+
+    #[test]
+    fn encrypted_accessors_return_none_when_absent() {
+        let m = map(&[]);
+        let ef = EncryptedExtFields::from_map(&m);
+        assert_eq!(ef.pbkdf(), None);
+        assert_eq!(ef.cipher(), None);
+        assert_eq!(ef.compress(), None);
+        assert_eq!(ef.recipients(), None);
+        assert!(!ef.is_kem_mode());
+        assert!(ef.raw().is_empty());
+    }
+
+    #[test]
+    fn insert_into_writes_exact_pairs() {
+        let mut m = BTreeMap::new();
+        EncryptedExtField::Pbkdf("$p".into()).insert_into(&mut m);
+        EncryptedExtField::RecipientMlKemCt {
+            fp_hex: "ab".into(),
+            ct_base64: "Q1Q=".into(),
+        }
+        .insert_into(&mut m);
+        assert_eq!(m.get("pbkdf").map(|s| s.as_str()), Some("$p"));
+        assert_eq!(
+            m.get("recipient-mlkem-ab").map(|s| s.as_str()),
+            Some("Q1Q=")
+        );
+        assert_eq!(m.len(), 2, "exactly the two inserted pairs: {m:?}");
+    }
 }
