@@ -114,7 +114,9 @@ jobs:
   release-archive:
     needs: [checks, generate-extras]
     name: archive
-    timeout-minutes: 20
+    # Docker cross builds compile the full C dep stack from source;
+    # 20 min was killing them mid-build (they surfaced as "cancelled").
+    timeout-minutes: 45
     strategy:
       # Don't cancel native builds (macOS, Windows MSVC) when Docker
       # cross-compile targets fail (blocked on upstream librnp).
@@ -282,24 +284,27 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: archives
-      - name: Create release
+      - name: Upload release assets
+        # release-plz already created the release object (the tag is
+        # its); this step only attaches artifacts. The previous
+        # Ruby-based create-github-release helper broke on current
+        # runners (bundler/rubygems mismatch) — gh does the same job
+        # with one dependency the workflow already trusts.
         env:
-          GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euxo pipefail
-          # Strip any non-digit prefix (handles 'v', 'enprot-v', bare).
-          RELEASE_TAG="$(echo "$DEPLOY_TAG" | sed 's/^[^0-9]*//')"
-          git clone https://github.com/riboseinc/create-github-release
-          cd create-github-release
-          sudo apt-get -y install ruby
-          export GEM_HOME="$(ruby -e 'print Gem.user_dir')"
-          export PATH="$PATH:$GEM_HOME/bin"
-          gem install --no-document bundler -v "$(grep -A 1 "BUNDLED WITH" Gemfile.lock | tail -n 1)"
-          bundle install
-          bundle exec ./create-github-release.rb \
-            ${{ github.repository }} \
-            "$RELEASE_TAG" \
-            ../archives/*
+          # Create-if-missing (manual dispatch for a pre-release-plz
+          # tag); idempotent otherwise. --clobber makes re-dispatching
+          # a tag safe.
+          gh release view "$DEPLOY_TAG" -R "$GITHUB_REPOSITORY" ||
+            gh release create "$DEPLOY_TAG" -R "$GITHUB_REPOSITORY" \
+              --title "$DEPLOY_TAG" --generate-notes
+          if compgen -G "*" > /dev/null; then
+            gh release upload "$DEPLOY_TAG" -R "$GITHUB_REPOSITORY" --clobber *
+          else
+            echo "no archive artifacts to upload"
+          fi
 
   publish-snap:
     name: snap
