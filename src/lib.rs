@@ -32,6 +32,7 @@
 //! Most callers want [`app_main`], which is the CLI entry point. The
 //! `crypto` and `utils` modules are re-exported for integration tests.
 
+pub mod audit;
 pub mod capability;
 mod cappolicy;
 pub mod cas;

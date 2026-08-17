@@ -263,3 +263,111 @@ fn sbom_cyclonedx_and_output_file() {
     assert_eq!(v["specVersion"], "1.5");
     assert_eq!(v["metadata"]["component"]["name"], "enprot");
 }
+
+/// --audit-log records one JSONL line per invocation, and `enprot
+/// audit query` filters them (TODO.complete/63).
+#[test]
+fn audit_log_records_and_queries() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("audit.jsonl");
+    let ept = Fixture::copy("sample/test.ept");
+
+    for (word, file) in [("W1", "a.ept"), ("W2", "b.ept")] {
+        let _ = Command::cargo_bin("enprot")
+            .unwrap()
+            .args(["--audit-log"])
+            .arg(&log)
+            .args(["passthrough", "-w", word])
+            .arg(&ept.path)
+            .arg("-o")
+            .arg(dir.path().join(file))
+            .output()
+            .unwrap();
+    }
+
+    let text = std::fs::read_to_string(&log).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 2, "{text}");
+    for l in &lines {
+        assert!(l.contains(r#""type":"record""#), "{l}");
+        assert!(l.contains(r#""op":"passthrough""#), "{l}");
+    }
+    assert!(lines[0].contains(r#""words":["W1"]"#), "got: {}", lines[0]);
+
+    // Query by word returns exactly the matching line.
+    let out = Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["audit", "query", "--log"])
+        .arg(&log)
+        .args(["--word", "W2"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(s.lines().count(), 1);
+    assert!(s.contains(r#""words":["W2"]"#));
+}
+
+/// Signed audit records verify; tampering with a record is detected
+/// and `audit verify` exits non-zero.
+#[test]
+fn audit_sign_and_verify_tamper_evidence() {
+    use std::process::Command;
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("audit.jsonl");
+    let priv_pem = dir.path().join("priv.pem");
+    let pub_pem = dir.path().join("pub.pem");
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["keygen", "ed25519", "--out-priv"])
+        .arg(&priv_pem)
+        .args(["--out-pub"])
+        .arg(&pub_pem)
+        .assert()
+        .success();
+
+    let ept = Fixture::copy("sample/simple.ept");
+    let _ = Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["--audit-log"])
+        .arg(&log)
+        .args(["--signer"])
+        .arg(&priv_pem)
+        .args(["passthrough"])
+        .arg(&ept.path)
+        .arg("-o")
+        .arg(dir.path().join("out.ept"))
+        .output()
+        .unwrap();
+
+    // Record + signature lines present; verify passes.
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(text.contains(r#""type":"signature""#));
+    let ok = Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["audit", "verify", "--log"])
+        .arg(&log)
+        .args(["--trust-root"])
+        .arg(&pub_pem)
+        .output()
+        .unwrap();
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    // Tamper: flip the recorded op. Verify must fail.
+    let tampered = text.replace("passthrough", "passthru");
+    std::fs::write(&log, tampered).unwrap();
+    let bad = Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["audit", "verify", "--log"])
+        .arg(&log)
+        .args(["--trust-root"])
+        .arg(&pub_pem)
+        .output()
+        .unwrap();
+    assert!(!bad.status.success(), "tampered log must not verify");
+}

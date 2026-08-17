@@ -38,6 +38,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use crate::etree::ParseOps;
 use crate::{Error, Result, capability, config, consts, crypto, etree, output, pki};
 
+mod audit_cmd;
 mod cap;
 mod cas_cmd;
 /// Per-subcommand modules. Each one exposes a `pub fn run(args)` entry
@@ -161,6 +162,9 @@ pub enum Command {
     /// Useful for verifying "what would I be able to do?" before running
     /// a real command. Output is one capability per line.
     Capabilities,
+    /// Query and verify the operational audit trail written via the
+    /// global `--audit-log FILE` flag.
+    Audit(audit_cmd::AuditArgs),
     /// Write a commented TOML template to `.enprot.toml` (or, with
     /// `--global`, to `~/.config/enprot/config.toml`). Refuses to
     /// overwrite an existing file. See TODO.roadmap/40.
@@ -706,6 +710,14 @@ pub struct CommonArgs {
     /// previewing the effect of an operation before committing.
     #[arg(long, global = true)]
     pub dry_run: bool,
+
+    /// Append one operational audit record per invocation to this
+    /// JSON Lines file (TODO.complete/63). The log is append-only;
+    /// with `--signer` also set, each record is followed by an
+    /// Ed25519 signature over its exact bytes. Query with `enprot
+    /// audit query`, check integrity with `enprot audit verify`.
+    #[arg(long, global = true, value_name = "FILE")]
+    pub audit_log: Option<PathBuf>,
 }
 
 impl CommonArgs {
@@ -736,6 +748,7 @@ impl CommonArgs {
             policy_file: None,
             jobs: 1,
             dry_run: false,
+            audit_log: None,
         }
     }
 }
@@ -913,7 +926,12 @@ where
     // layered TOML config and merges it into `common` before invoking
     // the closure. Adding a new variant is a single new match arm —
     // the compiler enforces exhaustiveness, no `unreachable!` arms.
-    match cli.command {
+    let (audit_op, audit_words, audit_files) = audit_cmd::invocation_context(&cli.command);
+    let audit_started = std::time::Instant::now();
+    // The dispatch below consumes `cli.command` and moves `cli.common`
+    // into some arms — snapshot the audit-relevant fields first.
+    let audit_cfg = (cli.common.audit_log.clone(), cli.common.signer.clone());
+    let result = match cli.command {
         // Bypass config layering.
         Command::Init(a) => init::run(a),
         Command::MergeDriver(a) => merge_cmd::run_merge_driver(a),
@@ -1000,6 +1018,7 @@ where
         }),
         Command::Snapshot(a) => chain_head_cmd::snapshot(a),
         Command::Pin(a) => chain_head_cmd::pin(a),
+        Command::Audit(a) => audit_cmd::run(a),
         Command::Capabilities => with_config(cli.common, |common| {
             let policy = resolve_policy(&common)?;
             let mut paops = ParseOps::new(policy)?;
@@ -1025,7 +1044,17 @@ where
             }
             Ok(())
         }),
-    }
+    };
+    audit_cmd::maybe_record(
+        audit_cfg.0.as_deref(),
+        audit_cfg.1.as_deref(),
+        &audit_op,
+        &audit_words,
+        &audit_files,
+        audit_started,
+        &result,
+    );
+    result
 }
 
 /// Load layered TOML config and fill in `Option<T>` fields on `common`

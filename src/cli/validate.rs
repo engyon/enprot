@@ -54,9 +54,11 @@ pub enum ConfigIssue {
     /// non-NIST policy. FIPS implies NIST; the two flags contradict.
     FipsPolicyConflict { explicit: String },
 
-    /// `--signer` was provided but `--anchor` was not. The signer
-    /// key would be loaded and then discarded. Warning only — some
-    /// workflows pre-set `--signer` for later use.
+    /// `--signer` was provided but neither `--anchor` nor
+    /// `--audit-log` is set. The signer key would be loaded and then
+    /// discarded. Warning only — some workflows pre-set `--signer`
+    /// for later use; `--audit-log` legitimately consumes the signer
+    /// for audit-record signatures.
     SignerWithoutAnchor,
 
     /// `--jobs` was set to zero. There is no useful interpretation.
@@ -84,7 +86,7 @@ impl ConfigIssue {
                 format!("error: --fips forces --policy=nist but --policy={explicit} was set")
             }
             ConfigIssue::SignerWithoutAnchor => {
-                "warning: --signer is set but --anchor is not; the signer key will not be used"
+                "warning: --signer is set but neither --anchor nor --audit-log is; the signer key will not be used"
                     .to_string()
             }
             ConfigIssue::JobsZero => "error: --jobs must be at least 1".to_string(),
@@ -124,7 +126,7 @@ pub fn collect(common: &CommonArgs) -> Vec<ConfigIssue> {
         });
     }
 
-    if common.signer.is_some() && !common.anchor {
+    if common.signer.is_some() && !common.anchor && common.audit_log.is_none() {
         issues.push(ConfigIssue::SignerWithoutAnchor);
     }
 
