@@ -41,8 +41,14 @@ done
 EOF
 chmod +x linker
 
+# Guarded append: build-static.sh may already have added this
+# target's block (TOML forbids duplicate tables — an unconditional
+# second append makes every later cargo invocation fail to parse
+# the config, killing the cross build).
 mkdir -p .cargo
+if ! grep -qF "[target.$TARGET]" .cargo/config.toml 2>/dev/null; then
 cat <<EOF >> .cargo/config.toml
 [target.$TARGET]
 rustflags = ["-C", "link-args=-s"]
 EOF
+fi
