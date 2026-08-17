@@ -50,3 +50,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      # release-plz creates its tags with GITHUB_TOKEN, and tag pushes
+      # made with that token do NOT trigger workflows (GitHub's
+      # recursion guard) — so deploy.yml's `on: push: tags` never
+      # fired and releases shipped with zero assets. The documented
+      # exception is workflow_dispatch invoked via the API, which
+      # works even with GITHUB_TOKEN. Dispatch deploy for every tag
+      # this run created; deploy is idempotent per tag (concurrency
+      # group keyed on the tag).
+      - name: Dispatch deploy for released tags
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          # Tags created since the run started = new releases.
+          for tag in $(git tag --points-at HEAD); do
+            case "$tag" in
+              enprot-v*|v[0-9]*.[0-9]*.[0-9]*|[0-9]*.[0-9]*.[0-9]*)
+                echo "dispatching deploy for $tag"
+                gh workflow run deploy.yml -f "tag=$tag"
+                ;;
+              enprot-ffi-v*)
+                # FFI cdylib has no standalone release artifacts.
+                echo "skipping $tag (enprot-ffi has no binary to deploy)"
+                ;;
+            esac
+          done
