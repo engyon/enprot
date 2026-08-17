@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.49](https://github.com/engyon/enprot/compare/enprot-v0.5.48...enprot-v0.5.49) - 2026-08-17
+
+### Other
+
+- *(security)* audited timing-sensitivity classification (TODO #52)
+- *(extfield)* value-exact accessor specs — close mutation gap
+
 ## [0.5.48](https://github.com/engyon/enprot/compare/enprot-v0.5.47...enprot-v0.5.48) - 2026-08-17
 
 ### Added
