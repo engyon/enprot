@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.48](https://github.com/engyon/enprot/compare/enprot-v0.5.47...enprot-v0.5.48) - 2026-08-17
+
+### Added
+
+- *(audit)* operational audit trail (TODO #63)
+
+### Other
+
+- *(mutants)* set install.sh env vars; make survivors non-gating
+
 ## [0.5.47](https://github.com/engyon/enprot/compare/enprot-v0.5.46...enprot-v0.5.47) - 2026-08-16
 
 ### Fixed
