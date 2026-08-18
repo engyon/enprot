@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.53](https://github.com/engyon/enprot/compare/enprot-v0.5.52...enprot-v0.5.53) - 2026-08-18
+
+### Other
+
+- *(deploy)* windows-gnu needs cross-rs :main — the 0.2.5 tag predates the 24.04 rebase
+
 ## [0.5.52](https://github.com/engyon/enprot/compare/enprot-v0.5.51...enprot-v0.5.52) - 2026-08-18
 
 ### Fixed
