@@ -266,9 +266,13 @@ jobs:
           . .\ci\archive.ps1
 
       - name: Upload artifacts
+        # One artifact per matrix leg: parallel uploads to a single
+        # name collide (only the first leg's files survive), which
+        # shipped releases with one asset instead of six. The
+        # download step merges the per-leg artifacts back together.
         uses: actions/upload-artifact@v7
         with:
-          name: archives
+          name: archives-${{ matrix.target }}
           path: archives
 
   github-release:
@@ -283,6 +287,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
+<<<<<<< HEAD
           name: archives
       - name: Upload release assets
         # release-plz already created the release object (the tag is
@@ -290,6 +295,11 @@ jobs:
         # Ruby-based create-github-release helper broke on current
         # runners (bundler/rubygems mismatch) — gh does the same job
         # with one dependency the workflow already trusts.
+=======
+          pattern: archives-*
+          merge-multiple: true
+      - name: Create release
+>>>>>>> b80d359f (fix(deploy): per-target artifacts — parallel uploads to one name collided)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
