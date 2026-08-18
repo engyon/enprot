@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.50](https://github.com/engyon/enprot/compare/enprot-v0.5.49...enprot-v0.5.50) - 2026-08-18
+
+### Added
+
+- *(streaming)* --streaming transform+write, O(largest-block) memory (TODO #35)
+
+### Fixed
+
+- *(deploy)* resolve rebase markers — keep gh upload step + pattern download
+- *(deploy)* per-target artifacts — parallel uploads to one name collided
+- *(deploy)* cross-build TOML duplicates, runner-broken release step, timeout
+
+### Other
+
+- *(release)* dispatch deploy for released tags — releases were empty
+
 ## [0.5.49](https://github.com/engyon/enprot/compare/enprot-v0.5.48...enprot-v0.5.49) - 2026-08-17
 
 ### Other
