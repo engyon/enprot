@@ -287,19 +287,14 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
-<<<<<<< HEAD
-          name: archives
+          pattern: archives-*
+          merge-multiple: true
       - name: Upload release assets
         # release-plz already created the release object (the tag is
         # its); this step only attaches artifacts. The previous
         # Ruby-based create-github-release helper broke on current
         # runners (bundler/rubygems mismatch) — gh does the same job
         # with one dependency the workflow already trusts.
-=======
-          pattern: archives-*
-          merge-multiple: true
-      - name: Create release
->>>>>>> b80d359f (fix(deploy): per-target artifacts — parallel uploads to one name collided)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
