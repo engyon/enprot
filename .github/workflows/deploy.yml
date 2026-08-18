@@ -164,6 +164,12 @@ jobs:
               TARGET_CC: x86_64-w64-mingw32-gcc-posix
               TARGET_CXX: x86_64-w64-mingw32-g++-posix
               TARGET_AR: x86_64-w64-mingw32-gcc-ar-posix
+              # The modern cross-rs images no longer export CC/CXX to
+              # build scripts, so botan-src's configure.py autodetected
+              # the Linux host and defaulted to msvc ("could not find
+              # 'cl'", issue #368). Point it at mingw explicitly.
+              CC: x86_64-w64-mingw32-gcc-posix
+              CXX: x86_64-w64-mingw32-g++-posix
               EXE_NAME: enprot.exe
           - os: windows-latest
             target: x86_64-pc-windows-msvc
