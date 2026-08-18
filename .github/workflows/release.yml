@@ -3,6 +3,10 @@ name: Release
 permissions:
   pull-requests: write
   contents: write
+  # workflow_dispatch for deploy.yml after a release (the tag-age
+  # dispatch step): without this the GITHUB_TOKEN gets HTTP 403
+  # "Resource not accessible by integration".
+  actions: write
 
 on:
   push:
