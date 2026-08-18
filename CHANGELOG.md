@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.52](https://github.com/engyon/enprot/compare/enprot-v0.5.51...enprot-v0.5.52) - 2026-08-18
+
+### Fixed
+
+- *(release)* grant actions:write — deploy dispatch got HTTP 403
+
 ## [0.5.51](https://github.com/engyon/enprot/compare/enprot-v0.5.50...enprot-v0.5.51) - 2026-08-18
 
 ### Fixed
