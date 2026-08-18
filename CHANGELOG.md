@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.51](https://github.com/engyon/enprot/compare/enprot-v0.5.50...enprot-v0.5.51) - 2026-08-18
+
+### Fixed
+
+- *(release)* dispatch deploy by tag age, not points-at-HEAD
+
 ## [0.5.50](https://github.com/engyon/enprot/compare/enprot-v0.5.49...enprot-v0.5.50) - 2026-08-18
 
 ### Added
