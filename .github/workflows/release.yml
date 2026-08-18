@@ -65,8 +65,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euxo pipefail
-          # Tags created since the run started = new releases.
-          for tag in $(git tag --points-at HEAD); do
+          # Tags created in the last 30 minutes = this run's releases.
+          # (points-at-HEAD does not work here: release PRs are
+          # rebase-merged, which rewrites SHAs, so the tags release-plz
+          # pushed no longer point at main's HEAD.)
+          git fetch --tags
+          now=$(date +%s)
+          for tag in $(git for-each-ref --sort=-creatordate \
+            --format='%(refname:short) %(creatordate:unix)' refs/tags \
+            | awk -v cutoff=$((now - 1800)) '$2 >= cutoff {print $1}'); do
             case "$tag" in
               enprot-v*|v[0-9]*.[0-9]*.[0-9]*|[0-9]*.[0-9]*.[0-9]*)
                 echo "dispatching deploy for $tag"
