@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.56](https://github.com/engyon/enprot/compare/enprot-v0.5.55...enprot-v0.5.56) - 2026-08-19
+
+### Other
+
+- *(deploy)* dump container env + mingw toolchain paths on failure
+- *(deploy)* explicit CC/CXX passthrough in Cross.toml + container dump
+
 ## [0.5.55](https://github.com/engyon/enprot/compare/enprot-v0.5.54...enprot-v0.5.55) - 2026-08-19
 
 ### Other
