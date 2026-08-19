@@ -29,3 +29,7 @@ mutants.out*
 # insta pending-snapshot files (TODO.complete/44) — transient; a
 # mismatching test writes these and fails until reviewed/accepted.
 *.snap.new
+
+# patched Botan tarball + crate download (windows-gnu deploy leg)
+botan-src.crate
+botan-windows-posix-install-root.tar.xz
