@@ -35,6 +35,12 @@ done
 # Install build deps if missing (Linux only; macOS relies on brew).
 if [ "$(uname)" = "Linux" ]; then
   # Same stall guard as ci/install.sh (azure mirror hangs, 2026-08-19).
+  # The runners' primary mirror (azure.archive.ubuntu.com) stalls
+  # silently below apt's HTTP timeout (2026-08-19: three separate
+  # 30-minute job timeouts); archive.ubuntu.com — already in the
+  # same sources list — responds fine. Point the list at it.
+  sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|' \
+    /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
   APT_NET="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
   sudo apt-get $APT_NET update
   sudo apt-get $APT_NET install -y --no-install-recommends \
