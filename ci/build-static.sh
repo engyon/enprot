@@ -18,6 +18,13 @@ fi
 # install cross
 cargo install --version "$CROSS_VERSION" cross
 
+# Hermetic build: no artifacts may survive from any earlier
+# invocation (issue #368). The windows-gnu leg linked ring rlib
+# members containing Linux ELF objects into a PE binary — stale
+# host-arch artifacts in the shared /target volume. A clean target
+# also makes each release build reproducible from zero.
+rm -rf target
+
 # Build with vendored librnp. rnp-src 0.1.2+ builds librnp + Botan
 # + json-c + zlib + bzip2 from source inside the container.
 #
