@@ -165,6 +165,10 @@ jobs:
               # separate 'evex512' target feature; Botan's makefiles
               # only pass -mavx512*, so simd_avx512.h fails to build.
               BOTAN_CONFIGURE_CC_ABI_FLAGS: -mevex512
+              # One amalgamated TU: zig's per-file process overhead
+              # across ~400 Botan sources costs ~40 min per leg on
+              # 2-core runners (the 45- and 90-min timeouts both hit).
+              BOTAN_CONFIGURE_AMALGAMATION: "1"
               # Plain CC drives rnp-src's CMake deps (cmake reads env
               # CC, not TARGET_CC); the tool-* wrappers keep the host
               # librnp copy on native gcc. HOST_* outranks plain CC in
@@ -195,6 +199,7 @@ jobs:
               # ("Cannot select" backend error in sha2_64_armv8.cpp);
               # use Botan's portable SHA-2 instead.
               BOTAN_CONFIGURE_DISABLE_MODULES: sha2_64_armv8
+              BOTAN_CONFIGURE_AMALGAMATION: "1"
           # macos-15-intel is the x86_64 runner (macos-13 is deprecated).
           - os: macos-15-intel
             target: x86_64-apple-darwin
