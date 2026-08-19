@@ -147,7 +147,13 @@ Pop-Location
     -DDIRENT_INCLUDE_DIR="$Env:PREFIX/include" `
     -DGETOPT_INCLUDE_DIR="$Env:PREFIX/include" `
     -DGETOPT_LIBRARY="$Env:PREFIX/lib/getopt.lib" `
-    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
+    # Botan headers default BOTAN_DLL to __declspec(dllimport) on
+    # MSVC; consuming the STATIC botan-3.lib that way imports
+    # __imp_botan_* thunks that don't exist (LNK2019). Empty the
+    # macro, as every static Botan consumer must.
+    -DCMAKE_C_FLAGS="/DBOTAN_DLL=" `
+    -DCMAKE_CXX_FLAGS="/DBOTAN_DLL="
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake configure failed" }
 
 # Build ONLY the librnp target, not the CLI tools (rnp/rnpkeys).
