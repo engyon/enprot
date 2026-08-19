@@ -32,6 +32,16 @@ rm -rf "$ctx"
 cat <<EOF > Cross.toml
 [target.$TARGET]
 image = "$img"
+
+# Explicit env passthrough: cross only forwards a known set of
+# variables to the container by default, and the observed behavior
+# differs between verbose and plain invocations (issue #368: with
+# -vv the CC/CXX from the matrix env reached botan-src's configure
+# and the whole C stack built; the plain retry ran configure with
+# NO CC and defaulted to msvc). Declaring it here makes forwarding
+# unconditional.
+[build.env]
+passthrough = ["CC", "CXX"]
 EOF
 
 # Guarded append: build-static.sh may already have added this
