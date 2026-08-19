@@ -11,3 +11,12 @@ Enter-VsDevShell -VsInstallPath "$vspath" -DevCmdArguments '-arch=x64 -no_logo' 
 
 # Delegate to the unified install script (same as test CI).
 & ./ci/install.ps1
+
+# install.ps1 exports RUSTFLAGS, and the env var overrides
+# .cargo/config.toml target rustflags entirely (cargo precedence),
+# so the config's PDB suppression never reaches this build. Fold
+# it in here: the vendored C stack makes the release PDB big
+# enough that link.exe dies with LNK1201 ('error writing to
+# program database'). Release binaries ship stripped anyway.
+$Env:RUSTFLAGS = "$Env:RUSTFLAGS -C debuginfo=0 -C link-arg=/DEBUG:NONE"
+echo "RUSTFLAGS=$Env:RUSTFLAGS" | Out-File -Append -Encoding ascii $Env:GITHUB_ENV
