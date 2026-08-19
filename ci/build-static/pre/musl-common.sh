@@ -42,9 +42,17 @@ cat <<EOF > Cross.toml
 [target.$TARGET]
 image = "$img"
 
-# Forward the zig wrappers to build scripts (botan-src, rnp-src):
-# without passthrough the modern cross images don't export CC/CXX
-# into the container and configure.py misdetects the host (issue #368).
+# Forward the scoped compiler vars into the container (the modern
+# cross images don't export host env by default). Deliberately NOT
+# plain CC/CXX: rnp-src's ureq build-dep builds rustls->ring for the
+# HOST, and a cross CC inside that host build corrupts it (issue #368).
 [build.env]
-passthrough = ["CC", "CXX"]
+passthrough = [
+  "TARGET_CC",
+  "TARGET_CXX",
+  "TARGET_AR",
+  "BOTAN_CONFIGURE_CC",
+  "BOTAN_CONFIGURE_CC_BIN",
+  "BOTAN_CONFIGURE_AR_COMMAND",
+]
 EOF

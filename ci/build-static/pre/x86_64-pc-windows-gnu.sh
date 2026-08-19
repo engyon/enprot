@@ -35,13 +35,22 @@ image = "$img"
 
 # Explicit env passthrough: cross only forwards a known set of
 # variables to the container by default, and the observed behavior
-# differs between verbose and plain invocations (issue #368: with
-# -vv the CC/CXX from the matrix env reached botan-src's configure
-# and the whole C stack built; the plain retry ran configure with
-# NO CC and defaulted to msvc). Declaring it here makes forwarding
-# unconditional.
+# differs between verbose and plain invocations (issue #368).
+# Scoped compiler names only — NEVER plain CC/CXX: rnp-src's ureq
+# build-dep builds rustls->ring for the HOST, and a cross CC inside
+# that host build produced PE objects inside a host rlib, failing
+# the host link with undefined ring_core symbols. botan-src takes
+# BOTAN_CONFIGURE_* (mapped to configure.py --cc-bin etc.), so the
+# blanket CC was never needed for Botan either.
 [build.env]
-passthrough = ["CC", "CXX"]
+passthrough = [
+  "TARGET_CC",
+  "TARGET_CXX",
+  "TARGET_AR",
+  "BOTAN_CONFIGURE_CC",
+  "BOTAN_CONFIGURE_CC_BIN",
+  "BOTAN_CONFIGURE_AR_COMMAND",
+]
 EOF
 
 # Guarded append: build-static.sh may already have added this

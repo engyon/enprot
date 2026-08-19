@@ -152,16 +152,27 @@ jobs:
               PREFIX: /usr/local/x86_64-linux-musl
               # zig wrappers (image-local): the images' musl gcc 9.2
               # cannot build Botan 3.12 (issue #368). See
-              # ci/build-static/pre/musl-common.sh.
-              CC: musl-cc
-              CXX: musl-c++
+              # ci/build-static/pre/musl-common.sh. TARGET_* scope them
+              # to target builds; BOTAN_CONFIGURE_* feeds configure.py;
+              # plain CC would poison host-side build scripts (ureq ->
+              # rustls -> ring, issue #368).
+              TARGET_CC: musl-cc
+              TARGET_CXX: musl-c++
+              TARGET_AR: x86_64-linux-musl-ar
+              BOTAN_CONFIGURE_CC: clang
+              BOTAN_CONFIGURE_CC_BIN: musl-c++
+              BOTAN_CONFIGURE_AR_COMMAND: ar
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             env:
               TARGET: aarch64-unknown-linux-musl
               PREFIX: /usr/local/aarch64-linux-musl
-              CC: musl-cc
-              CXX: musl-c++
+              TARGET_CC: musl-cc
+              TARGET_CXX: musl-c++
+              TARGET_AR: aarch64-linux-musl-ar
+              BOTAN_CONFIGURE_CC: clang
+              BOTAN_CONFIGURE_CC_BIN: musl-c++
+              BOTAN_CONFIGURE_AR_COMMAND: ar
           # macos-15-intel is the x86_64 runner (macos-13 is deprecated).
           - os: macos-15-intel
             target: x86_64-apple-darwin
@@ -180,12 +191,15 @@ jobs:
               TARGET_CC: x86_64-w64-mingw32-gcc-posix
               TARGET_CXX: x86_64-w64-mingw32-g++-posix
               TARGET_AR: x86_64-w64-mingw32-gcc-ar-posix
-              # The modern cross-rs images no longer export CC/CXX to
-              # build scripts, so botan-src's configure.py autodetected
-              # the Linux host and defaulted to msvc ("could not find
-              # 'cl'", issue #368). Point it at mingw explicitly.
-              CC: x86_64-w64-mingw32-gcc-posix
-              CXX: x86_64-w64-mingw32-g++-posix
+              # botan-src selects its compiler via BOTAN_CONFIGURE_CC_BIN
+              # (mapped to configure.py --cc-bin), NOT plain CC. A plain
+              # CC export poisons HOST-side build scripts: rnp-src's
+              # ureq build-dep pulls rustls->ring for the host, and a
+              # mingw CC inside that host build produced PE objects in a
+              # host rlib (issue #368). Scoped names only.
+              BOTAN_CONFIGURE_CC: gcc
+              BOTAN_CONFIGURE_CC_BIN: x86_64-w64-mingw32-g++-posix
+              BOTAN_CONFIGURE_AR_COMMAND: x86_64-w64-mingw32-gcc-ar-posix
               EXE_NAME: enprot.exe
           - os: windows-latest
             target: x86_64-pc-windows-msvc
