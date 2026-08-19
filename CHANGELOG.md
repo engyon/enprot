@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.55](https://github.com/engyon/enprot/compare/enprot-v0.5.54...enprot-v0.5.55) - 2026-08-19
+
+### Other
+
+- *(deploy)* surface the real error when cross -vv swallows it
+
 ## [0.5.54](https://github.com/engyon/enprot/compare/enprot-v0.5.53...enprot-v0.5.54) - 2026-08-18
 
 ### Other
