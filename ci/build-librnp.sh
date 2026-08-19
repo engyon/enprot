@@ -34,8 +34,10 @@ done
 
 # Install build deps if missing (Linux only; macOS relies on brew).
 if [ "$(uname)" = "Linux" ]; then
-  sudo apt-get update
-  sudo apt-get install -y --no-install-recommends \
+  # Same stall guard as ci/install.sh (azure mirror hangs, 2026-08-19).
+  APT_NET="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
+  sudo apt-get $APT_NET update
+  sudo apt-get $APT_NET install -y --no-install-recommends \
     cmake libjson-c-dev zlib1g-dev libbz2-dev
 fi
 

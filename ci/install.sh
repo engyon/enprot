@@ -4,7 +4,11 @@
 
 # Build Botan FIRST — librnp depends on it.
 if [ $(get_os) == "linux" ]; then
-  sudo apt update && sudo apt -y install git make g++
+  # Fail fast + retry: the runners' azure apt mirrors occasionally
+  # stall silently (2026-08-19: a 30-minute hang ate every ubuntu
+  # job's timeout). Default apt has no network timeout at all.
+  APT_NET="-o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=5"
+  sudo apt $APT_NET update && sudo apt $APT_NET -y install git make g++
   git clone --depth 1 --branch "$BOTAN_VERSION" https://github.com/randombit/botan
   cd botan
   ./configure.py --prefix="$PREFIX" --without-documentation --build-targets=shared \
