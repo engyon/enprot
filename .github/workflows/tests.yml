@@ -203,7 +203,9 @@ jobs:
     name: Benchmarks vs main
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
-    timeout-minutes: 30
+    # The full 7-bench suite compiles twice (PR head + merge-base);
+    # at 30 min the job died mid-comparison (timeout), not in a bench.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
