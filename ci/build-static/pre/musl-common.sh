@@ -44,7 +44,8 @@ COPY wrappers/ /usr/local/bin/
 
 EOF
 
-. "$(dirname "$0")/wrappers.sh"
+# Repo-relative: on Actions $0 is the runner temp wrapper.
+. ci/build-static/pre/wrappers.sh
 make_wrappers "$ctx" "$TARGET" musl-cc musl-c++ "$MUSL_AR" musl-c++
 
 docker build -t "$img" "$ctx"

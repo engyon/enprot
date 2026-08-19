@@ -28,7 +28,8 @@ RUN apt-get -y update && \\
 COPY wrappers/ /usr/local/bin/
 EOF
 
-. "$(dirname "$0")/wrappers.sh"
+# Repo-relative: on Actions $0 is the runner temp wrapper.
+. ci/build-static/pre/wrappers.sh
 # OUT_DIR-branching dispatch: target build => mingw, host build =>
 # native gcc. rnp-rs's vendored feature builds librnp BOTH ways
 # (regular dep for the binary, build dep for bindgen) and both
