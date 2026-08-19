@@ -51,7 +51,10 @@ rm -rf "$ctx"
 # install root and hand that over instead. Version comes from
 # Cargo.lock so it cannot drift from the resolved botan-src.
 botan_src_ver=$(sed -n '/^name = "botan-src"$/{n;p;}' Cargo.lock | cut -d'"' -f2)
-curl -fsSL "https://crates.io/api/v1/crates/botan-src/$botan_src_ver/download" \
+# static.crates.io is the canonical CDN; the api/v1 download
+# endpoint 403s intermittently (rate limiting).
+curl -fsSL --retry 5 --retry-delay 3 \
+  "https://static.crates.io/crates/botan-src/botan-src-$botan_src_ver.crate" \
   -o botan-src.crate
 pt=$(mktemp -d)
 tar -xzf botan-src.crate -C "$pt"
