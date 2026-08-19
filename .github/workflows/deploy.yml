@@ -173,6 +173,10 @@ jobs:
               BOTAN_CONFIGURE_CC: clang
               BOTAN_CONFIGURE_CC_BIN: musl-c++
               BOTAN_CONFIGURE_AR_COMMAND: ar
+              # zig 0.13's LLVM cannot lower llvm.aarch64.crypto.sha512h2
+              # ("Cannot select" backend error in sha2_64_armv8.cpp);
+              # use Botan's portable SHA-2 instead.
+              BOTAN_CONFIGURE_DISABLE_MODULES: sha2_64_armv8
           # macos-15-intel is the x86_64 runner (macos-13 is deprecated).
           - os: macos-15-intel
             target: x86_64-apple-darwin
