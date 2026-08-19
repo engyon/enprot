@@ -58,7 +58,9 @@ curl -fsSL --retry 5 --retry-delay 3 \
   -o botan-src.crate
 pt=$(mktemp -d)
 tar -xzf botan-src.crate -C "$pt"
-inner=$(ls "$pt"/package/vendor/Botan-*.tar.xz)
+# Published crates extract to <name>-<version>/ (cargo package's
+# local layout uses package/ instead).
+inner=$(ls "$pt"/botan-src-*/vendor/Botan-*.tar.xz)
 tar -xJf "$inner" -C "$pt"
 botan_dir=$(basename "$inner" .tar.xz)
 sed -i "s|^install_root .*|install_root /c/Botan|" \
