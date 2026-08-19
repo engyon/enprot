@@ -19,11 +19,23 @@ on:
       - 'enprot-v[0-9]*.[0-9]*.[0-9]*'
   # Allow manual trigger to rebuild binaries for existing tags
   # (e.g., v0.5.0 was tagged before the deploy pattern was fixed).
+  # Test builds: omit `tag` and set `ref` to a branch to exercise
+  # the archive matrix without publishing anything (used to iterate
+  # on cross-compile fixes without cutting releases — issue #368),
+  # optionally narrowed to one matrix leg with `target`.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to deploy (e.g., v0.5.0, enprot-v0.5.13)'
-        required: true
+        description: 'Tag to deploy (e.g., v0.5.0, enprot-v0.5.13). Empty = test build (no publish).'
+        required: false
+        type: string
+      ref:
+        description: 'Checkout ref override (defaults to the tag; a branch for test builds)'
+        required: false
+        type: string
+      target:
+        description: 'Build only this matrix target (e.g., x86_64-unknown-linux-musl)'
+        required: false
         type: string
 
 env:
@@ -41,7 +53,12 @@ env:
   #   workflow_dispatch → inputs.tag = "enprot-v0.5.13"
   # Jobs strip any non-digit prefix (both `v` and `enprot-v`) to get
   # the bare version (0.5.13) via `sed 's/^[^0-9]*//'`.
-  DEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  # Tag pushes always carry a tag; dispatch carries one only when
+  # `tag` is set (empty otherwise — a test build).
+  DEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event_name != 'workflow_dispatch' && github.ref_name || '' }}
+  # What every job checks out: an explicit ref override (test
+  # builds), else the tag, else the pushed ref.
+  DEPLOY_REF: ${{ inputs.ref || (github.event_name == 'workflow_dispatch' && inputs.tag) || github.ref_name }}
 
 jobs:
   checks:
@@ -51,8 +68,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_TAG }}
+          ref: ${{ env.DEPLOY_REF }}
       - name: Check version
+        if: env.DEPLOY_TAG != ''
         run: |
           set -euxo pipefail
           # Strip any non-digit prefix (handles 'v', 'enprot-v', bare).
@@ -69,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_TAG }}
+          ref: ${{ env.DEPLOY_REF }}
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
@@ -122,30 +140,28 @@ jobs:
       # cross-compile targets fail (blocked on upstream librnp).
       fail-fast: false
       matrix:
-        target:
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-          - x86_64-pc-windows-gnu
-          - x86_64-pc-windows-msvc
+        # workflow_dispatch `target` narrows the matrix to one leg
+        # (test builds / surgical per-tag rebuilds). Push events and
+        # dispatch without `target` build the full matrix.
+        target: ${{ github.event_name == 'workflow_dispatch' && inputs.target != '' && fromJSON(format('["{0}"]', inputs.target)) || fromJSON('["x86_64-unknown-linux-musl","aarch64-unknown-linux-musl","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-pc-windows-gnu","x86_64-pc-windows-msvc"]') }}
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             env:
               TARGET: x86_64-unknown-linux-musl
               PREFIX: /usr/local/x86_64-linux-musl
-              TARGET_CC: x86_64-linux-musl-gcc
-              TARGET_CXX: x86_64-linux-musl-g++
-              TARGET_AR: x86_64-linux-musl-gcc-ar
+              # zig wrappers (image-local): the images' musl gcc 9.2
+              # cannot build Botan 3.12 (issue #368). See
+              # ci/build-static/pre/musl-common.sh.
+              CC: musl-cc
+              CXX: musl-c++
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             env:
               TARGET: aarch64-unknown-linux-musl
               PREFIX: /usr/local/aarch64-linux-musl
-              TARGET_CC: aarch64-linux-musl-gcc
-              TARGET_CXX: aarch64-linux-musl-g++
-              TARGET_AR: aarch64-linux-musl-gcc-ar
+              CC: musl-cc
+              CXX: musl-c++
           # macos-15-intel is the x86_64 runner (macos-13 is deprecated).
           - os: macos-15-intel
             target: x86_64-apple-darwin
@@ -182,7 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_TAG }}
+          ref: ${{ env.DEPLOY_REF }}
 
       - name: Set environment (unix)
         if: "!startsWith(matrix.os, 'windows')"
@@ -287,7 +303,8 @@ jobs:
     # Run even if some archive targets failed (e.g., Docker cross-compile
     # targets blocked on upstream librnp). Publish whatever archives
     # succeeded so users get macOS + Windows MSVC binaries.
-    if: always() && !cancelled()
+    # Test builds (dispatch without `tag`) must not publish.
+    if: always() && !cancelled() && env.DEPLOY_TAG != ''
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -324,7 +341,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_TAG }}
+          ref: ${{ env.DEPLOY_REF }}
       # snapcore/action-build@v1 invokes snapcraft as part of its
       # action — it needs the version replaced BEFORE this step.
       # Step is named "build" so ${{ steps.build.outputs.snap }} works.
