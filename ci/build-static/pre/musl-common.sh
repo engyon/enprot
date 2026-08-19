@@ -9,7 +9,13 @@
 # CC/CXX pair that botan-src's configure.py and CMake both
 # autodetect as a conventional cross toolchain.
 #
-# Caller sets ZIG_TARGET (e.g. x86_64-linux-musl).
+# Caller sets ZIG_TARGET (e.g. x86_64-linux-musl) and MUSL_AR
+# (the image's musl-cross-make archiver, e.g. x86_64-linux-musl-ar).
+#
+# rnp-rs's vendored feature ALSO builds a HOST librnp for bindgen
+# (see wrappers.sh) — so the compiler env points at OUT_DIR-
+# branching tool-* wrappers, not the zig binaries directly, and
+# the host side runs the image's native gcc/g++.
 
 set -euxo pipefail
 
@@ -23,7 +29,7 @@ FROM ghcr.io/cross-rs/$TARGET:main
 
 RUN apt-get -y update && \\
     apt-get -y install --no-install-recommends \\
-      python3 cmake git ca-certificates make curl xz-utils && \\
+      python3 cmake git ca-certificates make curl xz-utils gcc g++ && \\
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \\
@@ -33,7 +39,13 @@ RUN set -eux; \\
     printf '#!/bin/sh\nZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache\nexport ZIG_GLOBAL_CACHE_DIR\nexec zig cc -target $ZIG_TARGET "\$@"\n' > /usr/local/bin/musl-cc; \\
     printf '#!/bin/sh\nZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache\nexport ZIG_GLOBAL_CACHE_DIR\nexec zig c++ -target $ZIG_TARGET "\$@"\n' > /usr/local/bin/musl-c++; \\
     chmod +x /usr/local/bin/musl-cc /usr/local/bin/musl-c++
+
+COPY wrappers/ /usr/local/bin/
+
 EOF
+
+. "$(dirname "$0")/wrappers.sh"
+make_wrappers "$ctx" "$TARGET" musl-cc musl-c++ "$MUSL_AR" musl-c++
 
 docker build -t "$img" "$ctx"
 rm -rf "$ctx"
@@ -44,14 +56,15 @@ image = "$img"
 
 # Forward the scoped compiler vars into the container (the modern
 # cross images don't export host env by default). Deliberately NOT
-# plain CC/CXX: rnp-src's ureq build-dep builds rustls->ring for the
-# HOST, and a cross CC inside that host build corrupts it (issue #368).
+# plain CC/CXX — host build poisoning (issue #368). The tool-*
+# wrappers branch on OUT_DIR, so the TARGET and HOST rnp-src builds
+# each get the right compiler; configure.py autodetects the family
+# (zig identifies as clang) from the dispatched cc-bin.
 [build.env]
 passthrough = [
   "TARGET_CC",
   "TARGET_CXX",
   "TARGET_AR",
-  "BOTAN_CONFIGURE_CC",
   "BOTAN_CONFIGURE_CC_BIN",
   "BOTAN_CONFIGURE_AR_COMMAND",
   "BOTAN_CONFIGURE_DISABLE_MODULES",

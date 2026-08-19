@@ -22,9 +22,21 @@ FROM ghcr.io/cross-rs/$TARGET:main
 
 RUN apt-get -y update && \\
     apt-get -y install --no-install-recommends \\
-      python3 cmake git ca-certificates make && \\
+      python3 cmake git ca-certificates make gcc g++ && \\
     rm -rf /var/lib/apt/lists/*
+
+COPY wrappers/ /usr/local/bin/
 EOF
+
+. "$(dirname "$0")/wrappers.sh"
+# OUT_DIR-branching dispatch: target build => mingw, host build =>
+# native gcc. rnp-rs's vendored feature builds librnp BOTH ways
+# (regular dep for the binary, build dep for bindgen) and both
+# inherit the same env — a static mingw assignment poisons the
+# host copy (issue #368).
+make_wrappers "$ctx" "$TARGET" \
+  x86_64-w64-mingw32-gcc-posix x86_64-w64-mingw32-g++-posix \
+  x86_64-w64-mingw32-gcc-ar-posix x86_64-w64-mingw32-g++-posix
 
 docker build -t "$img" "$ctx"
 rm -rf "$ctx"
@@ -47,7 +59,6 @@ passthrough = [
   "TARGET_CC",
   "TARGET_CXX",
   "TARGET_AR",
-  "BOTAN_CONFIGURE_CC",
   "BOTAN_CONFIGURE_CC_BIN",
   "BOTAN_CONFIGURE_AR_COMMAND",
   "BOTAN_CONFIGURE_DISABLE_MODULES",
