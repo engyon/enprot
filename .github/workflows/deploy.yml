@@ -304,7 +304,7 @@ jobs:
     # targets blocked on upstream librnp). Publish whatever archives
     # succeeded so users get macOS + Windows MSVC binaries.
     # Test builds (dispatch without `tag`) must not publish.
-    if: always() && !cancelled() && env.DEPLOY_TAG != ''
+    if: always() && !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.tag != '')
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
