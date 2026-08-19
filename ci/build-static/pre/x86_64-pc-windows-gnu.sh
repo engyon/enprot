@@ -42,6 +42,29 @@ make_wrappers "$ctx" "$TARGET" \
 docker build -t "$img" "$ctx"
 rm -rf "$ctx"
 
+# botan-src's configure.py aborts for --os=windows when the host
+# python is posix: the windows os-info file's install_root
+# 'c:\\Botan' fails os.path.isabs ("The installation root must be
+# an absolute path"), so the TARGET configure can never succeed
+# inside a Linux cross container. botan-src honors BOTAN_SRC_TARBALL
+# (checksum-free); repack the vendored tarball with a posix-absolute
+# install root and hand that over instead. Version comes from
+# Cargo.lock so it cannot drift from the resolved botan-src.
+botan_src_ver=$(sed -n '/^name = "botan-src"$/{n;p;}' Cargo.lock | cut -d'"' -f2)
+curl -fsSL "https://crates.io/api/v1/crates/botan-src/$botan_src_ver/download" \
+  -o botan-src.crate
+pt=$(mktemp -d)
+tar -xzf botan-src.crate -C "$pt"
+inner=$(ls "$pt"/package/vendor/Botan-*.tar.xz)
+tar -xJf "$inner" -C "$pt"
+botan_dir=$(basename "$inner" .tar.xz)
+sed -i "s|^install_root .*|install_root /c/Botan|" \
+  "$pt/$botan_dir/src/build-data/os/windows.txt"
+tar -cJf botan-windows-posix-install-root.tar.xz -C "$pt" "$botan_dir"
+
+# cross mounts the project root at /project in the container.
+export BOTAN_SRC_TARBALL=/project/botan-windows-posix-install-root.tar.xz
+
 cat <<EOF > Cross.toml
 [target.$TARGET]
 image = "$img"
@@ -63,6 +86,7 @@ passthrough = [
   "BOTAN_CONFIGURE_CC_BIN",
   "BOTAN_CONFIGURE_AR_COMMAND",
   "BOTAN_CONFIGURE_DISABLE_MODULES",
+  "BOTAN_SRC_TARBALL",
 ]
 EOF
 
