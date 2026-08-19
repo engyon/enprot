@@ -84,6 +84,11 @@ Pop-Location
 & git clone --depth 1 --branch json-c-0.17-20230812 https://github.com/json-c/json-c.git "$WORKDIR\json-c-src"
 New-Item -ItemType Directory -Force -Path "$WORKDIR\json-c-src\build" | Out-Null
 Push-Location -LiteralPath "$WORKDIR\json-c-src\build"
+# Botan headers default BOTAN_DLL to __declspec(dllimport) on MSVC;
+# consuming the STATIC botan-3.lib that way imports __imp_botan_*
+# thunks that don't exist (LNK2019). Empty the macro, as every
+# static Botan consumer must. (Comments cannot sit inside a
+# backtick-continued expression — PowerShell breaks the continuation.)
 & cmake .. `
     -DCMAKE_BUILD_TYPE=Release `
     -DBUILD_SHARED_LIBS=OFF `
@@ -148,10 +153,6 @@ Pop-Location
     -DGETOPT_INCLUDE_DIR="$Env:PREFIX/include" `
     -DGETOPT_LIBRARY="$Env:PREFIX/lib/getopt.lib" `
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
-    # Botan headers default BOTAN_DLL to __declspec(dllimport) on
-    # MSVC; consuming the STATIC botan-3.lib that way imports
-    # __imp_botan_* thunks that don't exist (LNK2019). Empty the
-    # macro, as every static Botan consumer must.
     -DCMAKE_C_FLAGS="/DBOTAN_DLL=" `
     -DCMAKE_CXX_FLAGS="/DBOTAN_DLL="
 if ($LASTEXITCODE -ne 0) { throw "librnp cmake configure failed" }
