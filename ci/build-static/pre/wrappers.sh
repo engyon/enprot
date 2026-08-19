@@ -44,4 +44,16 @@ WRAP
   _emit cxx "$cxx" g++
   _emit ar "$ar" ar
   _emit ccbin "$ccbin" g++
+
+  # Shadow the generic compiler names too: rnp-src HARDCODES
+  # "gcc"/"g++" for the librnp CMake (-DCMAKE_C(XX)_COMPILER) and
+  # bzip2's make — env vars cannot reach those. /usr/local/bin
+  # precedes /usr/bin in PATH, so these dispatchers intercept;
+  # with OUT_DIR unset (no build-script context) they fall
+  # through to the real host compiler, so ad-hoc container use
+  # of gcc is unaffected.
+  _emit gcc "$cc" /usr/bin/gcc
+  _emit g++ "$cxx" /usr/bin/g++
+  _emit cc "$cc" /usr/bin/cc
+  _emit c++ "$cxx" /usr/bin/c++
 }
