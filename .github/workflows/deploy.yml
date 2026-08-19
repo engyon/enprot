@@ -200,6 +200,10 @@ jobs:
               BOTAN_CONFIGURE_CC: gcc
               BOTAN_CONFIGURE_CC_BIN: x86_64-w64-mingw32-g++-posix
               BOTAN_CONFIGURE_AR_COMMAND: x86_64-w64-mingw32-gcc-ar-posix
+              # Botan's getentropy entropy source does not exist on
+              # mingw ('::getentropy' has not been declared); Windows
+              # uses the system_rng/bcrypt path instead.
+              BOTAN_CONFIGURE_DISABLE_MODULES: getentropy
               EXE_NAME: enprot.exe
           - os: windows-latest
             target: x86_64-pc-windows-msvc
