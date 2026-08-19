@@ -162,6 +162,16 @@ jobs:
               # separate 'evex512' target feature; Botan's makefiles
               # only pass -mavx512*, so simd_avx512.h fails to build.
               BOTAN_CONFIGURE_CC_ABI_FLAGS: -mevex512
+              # Plain CC drives rnp-src's CMake deps (cmake reads env
+              # CC, not TARGET_CC); the tool-* wrappers keep the host
+              # librnp copy on native gcc. HOST_* outranks plain CC in
+              # the cc crate, shielding host-side ring builds.
+              CC: tool-cc
+              CXX: tool-cxx
+              AR: tool-ar
+              HOST_CC: gcc
+              HOST_CXX: g++
+              HOST_AR: ar
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             env:
@@ -172,6 +182,12 @@ jobs:
               TARGET_AR: tool-ar
               BOTAN_CONFIGURE_CC_BIN: tool-ccbin
               BOTAN_CONFIGURE_AR_COMMAND: tool-ar
+              CC: tool-cc
+              CXX: tool-cxx
+              AR: tool-ar
+              HOST_CC: gcc
+              HOST_CXX: g++
+              HOST_AR: ar
               # zig 0.13's LLVM cannot lower llvm.aarch64.crypto.sha512h2
               # ("Cannot select" backend error in sha2_64_armv8.cpp);
               # use Botan's portable SHA-2 instead.
@@ -205,6 +221,12 @@ jobs:
               # mingw ('::getentropy' has not been declared); Windows
               # uses the system_rng/bcrypt path instead.
               BOTAN_CONFIGURE_DISABLE_MODULES: getentropy
+              CC: tool-cc
+              CXX: tool-cxx
+              AR: tool-ar
+              HOST_CC: gcc
+              HOST_CXX: g++
+              HOST_AR: ar
               EXE_NAME: enprot.exe
           - os: windows-latest
             target: x86_64-pc-windows-msvc

@@ -73,19 +73,22 @@ cat <<EOF > Cross.toml
 image = "$img"
 
 # Explicit env passthrough: cross only forwards a known set of
-# variables to the container by default, and the observed behavior
-# differs between verbose and plain invocations (issue #368).
-# Scoped compiler names only — NEVER plain CC/CXX: rnp-src's ureq
-# build-dep builds rustls->ring for the HOST, and a cross CC inside
-# that host build produced PE objects inside a host rlib, failing
-# the host link with undefined ring_core symbols. botan-src takes
-# BOTAN_CONFIGURE_* (mapped to configure.py --cc-bin etc.), so the
-# blanket CC was never needed for Botan either.
+# variables to the container by default (issue #368). Plain
+# CC/CXX/AR is needed for rnp-src's CMake deps; HOST_CC/HOST_CXX
+# shield the cc-crate host builds (rustls->ring via rnp-src's ureq
+# build-dep), and the tool-* wrappers branch on OUT_DIR for the
+# host librnp copy.
 [build.env]
 passthrough = [
   "TARGET_CC",
   "TARGET_CXX",
   "TARGET_AR",
+  "CC",
+  "CXX",
+  "AR",
+  "HOST_CC",
+  "HOST_CXX",
+  "HOST_AR",
   "BOTAN_CONFIGURE_CC_BIN",
   "BOTAN_CONFIGURE_AR_COMMAND",
   "BOTAN_CONFIGURE_DISABLE_MODULES",
