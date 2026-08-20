@@ -32,6 +32,11 @@ jobs:
       # release job has matching versions regardless of distro lag.
       - name: Install system build deps
         run: |
+          # azure.archive.ubuntu.com stalls below apt's HTTP timeout on
+          # these runners (2026-08-19: a 2-hour hang here); use the
+          # plain mirror that shares the sources list.
+          sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|' \
+            /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             cmake libjson-c-dev zlib1g-dev libbz2-dev \
