@@ -226,7 +226,10 @@ jobs:
           cargo bench --bench parallel_scaling -- --save-baseline pr --warm-up-time 1 --measurement-time 3
           cargo bench --bench sigstore         -- --save-baseline pr --warm-up-time 1 --measurement-time 3
       - name: Switch to merge-base (origin/main)
-        run: git checkout origin/main
+        # -f: building benches on the PR head can touch Cargo.lock
+        # (lock regeneration for optional deps); the comparison
+        # doesn't need those local changes.
+        run: git checkout -f origin/main
       - name: Build benchmarks on main
         run: cargo bench --no-run
       - name: Compare PR vs main (criterion auto-prints regression %)
