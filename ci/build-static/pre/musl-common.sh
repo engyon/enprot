@@ -29,7 +29,7 @@ FROM ghcr.io/cross-rs/$TARGET:main
 
 RUN apt-get -y update && \\
     apt-get -y install --no-install-recommends \\
-      python3 cmake git ca-certificates make curl xz-utils gcc g++ && \\
+      python3 cmake git ca-certificates make curl xz-utils gcc g++ clang && \\
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \\
@@ -46,7 +46,7 @@ EOF
 
 # Repo-relative: on Actions $0 is the runner temp wrapper.
 . ci/build-static/pre/wrappers.sh
-make_wrappers "$ctx" "$TARGET" musl-cc musl-c++ "$MUSL_AR" musl-c++
+make_wrappers "$ctx" "$TARGET" musl-cc musl-c++ "$MUSL_AR" musl-c++ clang clang++
 
 docker build -t "$img" "$ctx"
 rm -rf "$ctx"

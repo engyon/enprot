@@ -17,12 +17,18 @@
 # (tool-cc/tool-cxx/tool-ar/tool-ccbin) and each side transparently
 # gets its own toolchain.
 #
-# Usage: make_wrappers <ctx-dir> <triple> <cc> <cxx> <ar> <ccbin>
+# Usage: make_wrappers <ctx-dir> <triple> <cc> <cxx> <ar> <ccbin> [host-cc] [host-cxx]
+#
+# host-cc/host-cxx default to gcc/g++. The zig legs pass
+# clang/clang++: their BOTAN_CONFIGURE_CC_ABI_FLAGS (-mevex512)
+# and configure.py's clang-only -W flags must parse on the host
+# librnp copy too, so the host side needs a clang-compatible
+# driver.
 
 set -eu
 
 make_wrappers() {
-  ctx=$1 triple=$2 cc=$3 cxx=$4 ar=$5 ccbin=$6
+  ctx=$1 triple=$2 cc=$3 cxx=$4 ar=$5 ccbin=$6 host_cc=${7:-gcc} host_cxx=${8:-g++}
   mkdir -p "$ctx/wrappers"
 
   # name is the file to create; the tool-* names are the stable env
@@ -44,10 +50,10 @@ WRAP
   }
 
   # Stable env handles (deploy.yml exports TARGET_CC=tool-cc etc).
-  _emit tool-cc "$cc" gcc
-  _emit tool-cxx "$cxx" g++
+  _emit tool-cc "$cc" "$host_cc"
+  _emit tool-cxx "$cxx" "$host_cxx"
   _emit tool-ar "$ar" ar
-  _emit tool-ccbin "$ccbin" g++
+  _emit tool-ccbin "$ccbin" "$host_cxx"
 
   # Shadow the generic compiler names too: rnp-src HARDCODES
   # "gcc"/"g++" for the librnp CMake (-DCMAKE_C(XX)_COMPILER) and
@@ -56,8 +62,8 @@ WRAP
   # with OUT_DIR unset (no build-script context) they fall
   # through to the real host compiler, so ad-hoc container use
   # of gcc is unaffected.
-  _emit cc "$cc" /usr/bin/cc
-  _emit c++ "$cxx" /usr/bin/c++
-  _emit gcc "$cc" /usr/bin/gcc
-  _emit g++ "$cxx" /usr/bin/g++
+  _emit cc "$cc" "$host_cc"
+  _emit c++ "$cxx" "$host_cxx"
+  _emit gcc "$cc" "$host_cc"
+  _emit g++ "$cxx" "$host_cxx"
 }
