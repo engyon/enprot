@@ -153,6 +153,7 @@ jobs:
             env:
               TARGET: x86_64-unknown-linux-musl
               PREFIX: /usr/local/x86_64-linux-musl
+              BOTAN_CONFIGURE_CC: clang
               # zig toolchain via the image-baked OUT_DIR-branching
               # tool-* wrappers (musl-common.sh + wrappers.sh): target
               # build gets zig, host build (bindgen) gets native gcc.
@@ -187,6 +188,7 @@ jobs:
               TARGET_CC: tool-cc
               TARGET_CXX: tool-cxx
               TARGET_AR: tool-ar
+              BOTAN_CONFIGURE_CC: clang
               BOTAN_CONFIGURE_CC_BIN: tool-ccbin
               BOTAN_CONFIGURE_AR_COMMAND: tool-ar
               CC: tool-cc
@@ -223,6 +225,7 @@ jobs:
               TARGET_CC: tool-cc
               TARGET_CXX: tool-cxx
               TARGET_AR: tool-ar
+              BOTAN_CONFIGURE_CC: gcc
               BOTAN_CONFIGURE_CC_BIN: tool-ccbin
               BOTAN_CONFIGURE_AR_COMMAND: tool-ar
               # Botan's getentropy entropy source does not exist on
