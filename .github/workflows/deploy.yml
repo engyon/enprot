@@ -132,12 +132,13 @@ jobs:
   release-archive:
     needs: [checks, generate-extras]
     name: archive
-    # Docker cross builds compile the full C dep stack from source
-    # TWICE (target + the host librnp for bindgen), and the zig
-    # musl toolchain is slower than gcc: legs need ~60 min. 20 min
-    # and then 45 min both killed them mid-build (surfacing as
-    # "cancelled" at exactly the limit).
-    timeout-minutes: 90
+    # Docker cross builds compile Botan up to THREE times per leg
+    # (botan-sys's own vendored copy, rnp-src's copy for librnp,
+    # and the host librnp for bindgen); amalgamation cut the file
+    # count but the legs still need ~2h on 2-core runners. Every
+    # shorter limit (20/45/90) killed them mid-build, surfacing as
+    # "cancelled" at exactly the limit.
+    timeout-minutes: 180
     strategy:
       # Don't cancel native builds (macOS, Windows MSVC) when Docker
       # cross-compile targets fail (blocked on upstream librnp).
