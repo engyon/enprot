@@ -156,7 +156,11 @@ jobs:
               BOTAN_CONFIGURE_CC: clang
               # zig toolchain via the image-baked OUT_DIR-branching
               # tool-* wrappers (musl-common.sh + wrappers.sh): target
-              # build gets zig, host build (bindgen) gets native gcc.
+              # build gets zig, host build (bindgen) gets native cc.
+              # The cargo linker must be zig too: the C objects are
+              # libc++ (std::__1), which cross's default musl gcc 9.2
+              # linker does not link against.
+              CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: tool-cxx
               TARGET_CC: tool-cc
               TARGET_CXX: tool-cxx
               TARGET_AR: tool-ar
@@ -185,6 +189,7 @@ jobs:
             env:
               TARGET: aarch64-unknown-linux-musl
               PREFIX: /usr/local/aarch64-linux-musl
+              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: tool-cxx
               TARGET_CC: tool-cc
               TARGET_CXX: tool-cxx
               TARGET_AR: tool-ar

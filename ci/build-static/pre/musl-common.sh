@@ -63,6 +63,8 @@ image = "$img"
 # (zig identifies as clang) from the dispatched cc-bin.
 [build.env]
 passthrough = [
+  "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER",
+  "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER",
   "TARGET_CC",
   "TARGET_CXX",
   "TARGET_AR",
