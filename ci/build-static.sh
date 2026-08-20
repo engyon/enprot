@@ -1,10 +1,12 @@
 . ci/common.inc.sh
 
-# strip — append a per-target block so we don't clobber the existing
-# [build] remap-prefix in .cargo/config.toml (TODO.completion/12
-# reproducible builds). Skip if a pre script already added the block
-# for this target (e.g., aarch64-unknown-linux-musl, x86_64-unknown-
-# linux-musl, x86_64-pc-windows-gnu) — TOML forbids duplicate keys.
+# Source the pre script FIRST: musl-common.sh writes its own richer
+# [target.$TARGET] rustflags block (link-self-contained=no for the
+# zig linker) and relies on this append's guard to stay away. The
+# generic strip-only block below is the fallback for legs whose
+# pre script writes nothing.
+. "ci/build-static/pre/$TARGET.sh"
+
 mkdir -p .cargo
 if ! grep -qF "[target.$TARGET]" .cargo/config.toml 2>/dev/null; then
   cat <<EOF >> .cargo/config.toml
@@ -12,8 +14,6 @@ if ! grep -qF "[target.$TARGET]" .cargo/config.toml 2>/dev/null; then
 rustflags = ["-C", "link-args=-s"]
 EOF
 fi
-
-. "ci/build-static/pre/$TARGET.sh"
 
 # install cross
 cargo install --version "$CROSS_VERSION" cross
