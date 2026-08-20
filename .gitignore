@@ -33,3 +33,4 @@ mutants.out*
 # patched Botan tarball + crate download (windows-gnu deploy leg)
 botan-src.crate
 botan-windows-posix-install-root.tar.xz
+dhat-heap.json

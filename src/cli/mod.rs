@@ -49,7 +49,7 @@ mod init;
 mod inspect;
 mod list;
 mod merge_cmd;
-mod pipeline;
+pub mod pipeline;
 mod pki_cmd;
 mod provenance_cmd;
 mod sbom_cmd;

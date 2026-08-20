@@ -131,6 +131,8 @@ proptest    = "1"
 serde_json  = "1"
 criterion   = { version = "0.8", features = ["html_reports"] }
 clap_mangen = "0.3"
+# Peak-heap profiling for benches/memory.rs (TODO.complete/41).
+dhat        = "0.3"
 
 [[bench]]
 name = "crypto"
@@ -150,6 +152,19 @@ harness = false
 
 [[bench]]
 name = "cas"
+harness = false
+
+[[bench]]
+name = "parallel_scaling"
+harness = false
+
+[[bench]]
+name = "sigstore"
+harness = false
+
+# Not criterion: plain binary measuring one dhat peak per invocation.
+[[bench]]
+name = "memory"
 harness = false
 
 [[test]]

@@ -189,9 +189,15 @@ jobs:
         run: cargo bench --no-run
       - name: Smoke-run benchmarks (quick)
         run: |
-          cargo bench --bench merkle -- --quick --warm-up-time 1 --measurement-time 2
-          cargo bench --bench crypto  -- --quick --warm-up-time 1 --measurement-time 2
-          cargo bench --bench parser  -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench merkle           -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench crypto           -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench parser           -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench comparison       -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench cas              -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench parallel_scaling -- --quick --warm-up-time 1 --measurement-time 2
+          cargo bench --bench sigstore         -- --quick --warm-up-time 1 --measurement-time 2
+          # Peak-heap: one 10 MB run per invocation (dhat cannot reset).
+          cargo bench --bench memory -- 10
 
   bench-compare:
     name: Benchmarks vs main
@@ -212,15 +218,25 @@ jobs:
         run: cargo bench --no-run
       - name: Save PR baseline
         run: |
-          cargo bench --bench merkle -- --save-baseline pr --warm-up-time 1 --measurement-time 3
-          cargo bench --bench crypto  -- --save-baseline pr --warm-up-time 1 --measurement-time 3
-          cargo bench --bench parser  -- --save-baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench merkle           -- --save-baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench crypto           -- --save-baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench parser           -- --save-baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench comparison       -- --save-baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench cas              -- --save-baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench parallel_scaling -- --save-baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench sigstore         -- --save-baseline pr --warm-up-time 1 --measurement-time 3
       - name: Switch to merge-base (origin/main)
         run: git checkout origin/main
       - name: Build benchmarks on main
         run: cargo bench --no-run
       - name: Compare PR vs main (criterion auto-prints regression %)
+        # Only the benches that exist on BOTH sides can be compared —
+        # this step runs on main's checkout, where new-in-PR bench
+        # targets don't exist ("no bench target named ..."). They get
+        # their first baseline from the PR-head run above.
         run: |
-          cargo bench --bench merkle -- --baseline pr --warm-up-time 1 --measurement-time 3
-          cargo bench --bench crypto  -- --baseline pr --warm-up-time 1 --measurement-time 3
-          cargo bench --bench parser  -- --baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench merkle     -- --baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench crypto     -- --baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench parser     -- --baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench comparison -- --baseline pr --warm-up-time 1 --measurement-time 3
+          cargo bench --bench cas        -- --baseline pr --warm-up-time 1 --measurement-time 3
