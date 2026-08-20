@@ -74,7 +74,9 @@ rm -rf "$ctx"
 # (checksum-free); repack the vendored tarball with a posix-absolute
 # install root and hand that over instead. Version comes from
 # Cargo.lock so it cannot drift from the resolved botan-src.
-botan_src_ver=$(sed -n '/^name = "botan-src"$/{n;p;}' Cargo.lock | cut -d'"' -f2)
+# rnp-src pins =0.31200; the lock also carries botan-sys's older
+# optional botan-src — take the LAST entry (rnp-src's pin).
+botan_src_ver=$(sed -n '/^name = "botan-src"$/{n;p;}' Cargo.lock | tail -n1 | cut -d'"' -f2)
 # static.crates.io is the canonical CDN; the api/v1 download
 # endpoint 403s intermittently (rate limiting).
 curl -fsSL --retry 5 --retry-delay 3 \
