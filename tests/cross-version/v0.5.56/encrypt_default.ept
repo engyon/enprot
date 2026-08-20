@@ -1,0 +1,3 @@
+The quick brown fox jumps over the lazy dog.
+Cross-version fixture plaintext — enprot must decrypt this
+regardless of the version that produced the ciphertext.
