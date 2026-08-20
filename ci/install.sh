@@ -38,3 +38,13 @@ if [ ! -e "$PREFIX/lib/librnp-0.so" ] && [ ! -e "$PREFIX/lib/librnp.so" ]; then
   ci/build-librnp.sh --prefix "$PREFIX"
 fi
 
+# Tell rnp-rs where the stack lives (its build.rs defaults to
+# /usr/include, which only matched the old PREFIX=/usr). Mirrors
+# ci/install.ps1's epilogue.
+export RNP_INCLUDE_DIR="$PREFIX/include"
+export RNP_LIB_DIR="$PREFIX/lib"
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "RNP_INCLUDE_DIR=$RNP_INCLUDE_DIR" >> "$GITHUB_ENV"
+  echo "RNP_LIB_DIR=$RNP_LIB_DIR" >> "$GITHUB_ENV"
+fi
+
