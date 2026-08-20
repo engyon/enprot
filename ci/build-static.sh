@@ -36,11 +36,11 @@ cargo install --version "$CROSS_VERSION" cross
 # rustup diagnostic). On failure, re-run WITHOUT -vv — the plain
 # invocation surfaces the real cargo error — and dump the assembled
 # config for the log.
-if ! # botan/vendored is passed HERE (not folded into the vendored-rnp
+# botan/vendored is passed HERE (not folded into the vendored-rnp
 # feature): the containers have no system Botan, and on unix the
 # botan crate otherwise defaults to pkg-config and its build script
 # dies. Tests use system Botan and must not get the vendored copy.
-cross -vv build --target "$TARGET" --release --features vendored-rnp,botan/vendored; then
+if ! cross -vv build --target "$TARGET" --release --features vendored-rnp,botan/vendored; then
   echo "=== build failed; dumping assembled config and retrying without -vv ==="
   echo "--- .cargo/config.toml ---"; cat .cargo/config.toml || true
   echo "--- Cross.toml ---"; cat Cross.toml || true
