@@ -40,14 +40,22 @@ cargo install --version "$CROSS_VERSION" cross
 # feature): the containers have no system Botan, and on unix the
 # botan crate otherwise defaults to pkg-config and its build script
 # dies. Tests use system Botan and must not get the vendored copy.
-if ! cross -vv build --target "$TARGET" --release --features vendored-rnp,botan/vendored; then
+# windows-gnu EXCLUDED: its botan dep uses the 'static' feature
+# (link-only), so rnp-src's own Botan satisfies it — skipping a
+# third full Botan build that pushed the cold leg past the job
+# timeout (it needs to succeed once to populate the cache).
+case "$TARGET" in
+  *-linux-musl) features="vendored-rnp,botan/vendored" ;;
+  *)            features="vendored-rnp" ;;
+esac
+if ! cross -vv build --target "$TARGET" --release --features "$features"; then
   echo "=== build failed; dumping assembled config and retrying without -vv ==="
   echo "--- .cargo/config.toml ---"; cat .cargo/config.toml || true
   echo "--- Cross.toml ---"; cat Cross.toml || true
   echo "--- container env/toolchain ---"
   docker run --rm "$PROJECT_NAME/cross-build:$TARGET" \
     sh -c 'echo CC=$CC CXX=$CXX; command -v x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc-posix x86_64-w64-mingw32-g++-posix || true' || true
-  cross build --target "$TARGET" --release --features vendored-rnp,botan/vendored 2>&1 | tail -n 120
+  cross build --target "$TARGET" --release --features "$features" 2>&1 | tail -n 120
   exit 1
 fi
 

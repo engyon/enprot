@@ -148,7 +148,7 @@ jobs:
     # count but the legs still need ~2h on 2-core runners. Every
     # shorter limit (20/45/90) killed them mid-build, surfacing as
     # "cancelled" at exactly the limit.
-    timeout-minutes: 180
+    timeout-minutes: 240
     strategy:
       # Don't cancel native builds (macOS, Windows MSVC) when Docker
       # cross-compile targets fail (blocked on upstream librnp).
