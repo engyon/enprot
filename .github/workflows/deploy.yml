@@ -229,6 +229,9 @@ jobs:
               # mingw ('::getentropy' has not been declared); Windows
               # uses the system_rng/bcrypt path instead.
               BOTAN_CONFIGURE_DISABLE_MODULES: getentropy
+              # Single-TU Botan: the mingw build was also hitting the
+              # archive job timeout.
+              BOTAN_CONFIGURE_AMALGAMATION: "1"
               CC: tool-cc
               CXX: tool-cxx
               AR: tool-ar
