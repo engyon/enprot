@@ -43,10 +43,11 @@ WRAP
     chmod +x "$w"
   }
 
-  _emit cc "$cc" gcc
-  _emit cxx "$cxx" g++
-  _emit ar "$ar" ar
-  _emit ccbin "$ccbin" g++
+  # Stable env handles (deploy.yml exports TARGET_CC=tool-cc etc).
+  _emit tool-cc "$cc" gcc
+  _emit tool-cxx "$cxx" g++
+  _emit tool-ar "$ar" ar
+  _emit tool-ccbin "$ccbin" g++
 
   # Shadow the generic compiler names too: rnp-src HARDCODES
   # "gcc"/"g++" for the librnp CMake (-DCMAKE_C(XX)_COMPILER) and
@@ -55,7 +56,8 @@ WRAP
   # with OUT_DIR unset (no build-script context) they fall
   # through to the real host compiler, so ad-hoc container use
   # of gcc is unaffected.
+  _emit cc "$cc" /usr/bin/cc
+  _emit c++ "$cxx" /usr/bin/c++
   _emit gcc "$cc" /usr/bin/gcc
   _emit g++ "$cxx" /usr/bin/g++
-  _emit c++ "$cxx" /usr/bin/c++
 }
