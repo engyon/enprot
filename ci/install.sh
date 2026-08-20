@@ -2,8 +2,12 @@
 . ci/common.inc.sh
 . ci/utils.inc.sh
 
-# Build Botan FIRST — librnp depends on it.
+# Build Botan FIRST — librnp depends on it. Skipped wholesale when
+# a restored PREFIX cache (actions/cache, keyed on this script) is
+# already in place — the deploy extras job pays ~20 min for this
+# otherwise.
 if [ $(get_os) == "linux" ]; then
+if [ ! -e "$PREFIX/lib/libbotan-3.so" ]; then
   # Fail fast + retry: the runners' azure apt mirrors occasionally
   # stall silently (2026-08-19: a 30-minute hang ate every ubuntu
   # job's timeout). Default apt has no network timeout at all.
@@ -22,12 +26,15 @@ if [ $(get_os) == "linux" ]; then
   make -j2
   sudo make install
   cd ..
+fi
 else
   brew install botan
 fi
 
 # librnp is required by rnp-rs (OpenPGP signature support). rnp-rs 0.1.6
 # expects the latest librnp FFI which lags in distro packages, so build
-# from source on every platform.
-ci/build-librnp.sh --prefix "$PREFIX"
+# from source on every platform. Guarded the same way as Botan above.
+if [ ! -e "$PREFIX/lib/librnp-0.so" ] && [ ! -e "$PREFIX/lib/librnp.so" ]; then
+  ci/build-librnp.sh --prefix "$PREFIX"
+fi
 

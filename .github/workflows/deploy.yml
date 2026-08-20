@@ -90,14 +90,24 @@ jobs:
           ref: ${{ env.DEPLOY_REF }}
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Restore /usr/local C-stack cache
+        # install.sh builds Botan + librnp (~20 min); the guards we
+        # added there skip both wholesale when the cache is warm.
+        # /usr/local on a bare ubuntu runner is tiny, so caching it
+        # wholesale is cheap and cannot shadow runner tooling that
+        # would matter (that lives in /usr, which we leave alone).
+        uses: actions/cache@v4
+        with:
+          path: /usr/local
+          key: extras-stack-${{ env.BOTAN_VERSION }}-${{ hashFiles('ci/install.sh', 'ci/build-librnp.sh') }}
       - name: Install dependencies
         env:
           BOTAN_VERSION: ${{ env.BOTAN_VERSION }}
-          PREFIX: /usr
+          PREFIX: /usr/local
         run: ./ci/install.sh
       - name: Build enprot
         env:
-          PKG_CONFIG_PATH: /usr/lib/pkgconfig
+          PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
         run: cargo build --features cli --release
       - name: Generate man page
         run: cargo run --features cli --example gen-manpage > enprot.1
@@ -297,12 +307,54 @@ jobs:
         with:
           target: ${{ matrix.env.TARGET }}
 
+      - name: Rust toolchain fingerprint
+        # Fingerprints are only stable for a given rustc; key the
+        # cache on it so toolchain rotation means a cold rebuild.
+        shell: bash
+        run: echo "v=$(rustc -vV | shasum -a 256 | cut -c1-12)" >> "$GITHUB_OUTPUT"
+        id: rc
+
+      - name: Restore cross C-stack cache
+        # The vendored C stack (Botan x3, librnp, json-c, sexpp,
+        # zlib, bzip2) lives inside cargo build-script OUT_DIRs
+        # under target/. Cache exactly those trees plus their
+        # fingerprints: cargo then skips the build scripts outright
+        # (~90 min per leg on 2-core runners) and only recompiles
+        # the Rust side. Rust rlibs are deliberately NOT cached —
+        # they dominate the cache size for far less wall time.
+        # Strictly keyed per (target, Cargo.lock, rustc, ci files,
+        # this workflow) so a change in any input — including the
+        # BOTAN_CONFIGURE_* matrix values — is a cold rebuild, and
+        # legs never see another leg's artifacts.
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/release/build/botan-sys-*/out
+            target/release/build/rnp-src-*/out
+            target/release/.fingerprint/botan-sys-*
+            target/release/.fingerprint/rnp-src-*
+            target/*/release/build/botan-sys-*/out
+            target/*/release/build/rnp-src-*/out
+            target/*/release/build/ring-*/out
+            target/*/.fingerprint/botan-sys-*
+            target/*/.fingerprint/rnp-src-*
+          key: cross-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}-${{ steps.rc.outputs.v }}-${{ hashFiles('ci/**', '.cargo/**', '.github/workflows/deploy.yml') }}
+
       - name: Install python (windows)
         if: startsWith(matrix.os, 'windows')
         uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
+      - name: Restore MSVC C-stack cache
+        # install.ps1 builds the full C stack into ./installs
+        # (~30 min); its $stackCacheHit guard skips it all when
+        # warm. Keyed on the script + Botan version only.
+        if: startsWith(matrix.os, 'windows')
+        uses: actions/cache@v4
+        with:
+          path: installs
+          key: msvc-stack-${{ matrix.env.BOTAN_VERSION || env.BOTAN_VERSION }}-${{ hashFiles('ci/install.ps1') }}
       - name: Install dependencies (windows)
         if: startsWith(matrix.os, 'windows')
         env:

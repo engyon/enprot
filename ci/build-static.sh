@@ -18,12 +18,13 @@ fi
 # install cross
 cargo install --version "$CROSS_VERSION" cross
 
-# Hermetic build: no artifacts may survive from any earlier
-# invocation (issue #368). The windows-gnu leg linked ring rlib
-# members containing Linux ELF objects into a PE binary — stale
-# host-arch artifacts in the shared /target volume. A clean target
-# also makes each release build reproducible from zero.
-rm -rf target
+# NOTE: no `rm -rf target` here. It was added for hermeticity
+# (issue #368: cross-arch artifacts poisoning the shared /target
+# volume), but the build-script outputs under target/ are now the
+# deploy cache — wiping them rebuilds ~90 min of C stack per leg.
+# Hermeticity comes from the cache KEY instead: it is strictly
+# per-(target, Cargo.lock, rustc, ci files), so a leg can never
+# restore another leg's or a stale configuration's artifacts.
 
 # Build with vendored librnp. rnp-src 0.1.2+ builds librnp + Botan
 # + json-c + zlib + bzip2 from source inside the container.
