@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.57](https://github.com/engyon/enprot/compare/enprot-v0.5.56...enprot-v0.5.57) - 2026-08-20
+
+### Added
+
+- *(tests)* cross-version compatibility harness (TODO.complete/60)
+- *(build)* vendor Botan on unix cross builds too — vendored-rnp enables botan/vendored
+
+### Fixed
+
+- *(build)* botan/vendored belongs to the cross builds, not the feature
+
+### Other
+
+- canonical Cargo.lock (drop pruned optional botan-src) + bench-compare checks out -f
+- *(deploy)* last botan-src lock entry for the tarball repack; verify aarch64 by ELF arch
+- *(deploy)* one less Botan on windows-gnu + 240-min bootstrap window
+- *(build)* comment above 'if !' — the inline comment broke the shell line
+- *(xver)* forward-compat skips loudly when the latest release has no linux asset
+- drop the azure apt mirror in release/ohos workflows — same stall as tests
+- merge main: bench-suite + CI hardening
+- *(build)* source the pre-script before the generic rustflags append
+- LD_LIBRARY_PATH for the /usr/local prefix — librnp.so.0 unfindable at runtime
+- export RNP_INCLUDE_DIR/RNP_LIB_DIR from install.sh
+- *(deploy)* cache the C stacks — 2h legs to ~30 min on warm runs
+- *(deploy)* link-self-contained=no for the zig-linked musl targets
+- *(deploy)* 180 min for archive legs — three Botan builds per leg exceed 90
+- *(deploy)* link the musl binaries with zig — the C objects are libc++
+- *(deploy)* tool-ar also emits libbotan-3.a for the mingw Botan archive
+- *(build)* clang on the musl host side — clang-only flags must parse there too
+- *(build)* emit BOTH the tool-* env handles and the bare-name shadows
+- *(deploy)* explicit BOTAN_CONFIGURE_CC — old botan-src cannot classify the wrappers
+- *(deploy)* amalgamate Botan on windows-gnu too — it also outlived the job timeout
+- *(deploy)* amalgamate the zig-built Botan — one TU instead of ~400
+- *(deploy)* msvc EXE_PATH missed the target subdir
+- *(deploy)* 90 min for archive legs — 45 killed the zig builds mid-flight
+- *(msvc)* comment above the backtick-continued cmake invocation
+- *(msvc)* define BOTAN_DLL empty when compiling librnp against static Botan
+- *(build)* the shadow compilers must be named gcc/g++/cc/c++, not tool-gcc
+- *(deploy)* build Botan 3.12 on the msvc leg — match the vendored botan-src
+- *(deploy)* fold the msvc PDB suppression into RUSTFLAGS env
+- *(build)* shadow gcc/g++/cc/c++ with OUT_DIR dispatchers in the images
+- *(deploy)* published crate layout is botan-src-<ver>/, not package/
+- *(deploy)* plain CC for CMake deps, HOST_CC shields cc-crate host builds
+- *(deploy)* -mevex512 for the zig-built Botan (x86_64-musl)
+- *(deploy)* fetch the botan-src crate from static.crates.io
+- drop the azure apt mirror — it stalls below apt's HTTP timeout
+- gitignore the windows-gnu patched-Botan tarball artifacts
+- *(deploy)* posix-absolute Botan install root for the windows-gnu configure
+- *(build)* wrappers.sh repo-relative too — same $0 trap as musl-common
+- *(deploy)* OUT_DIR-branching toolchain wrappers for every cross leg
+- *(deploy)* portable SHA-2 for aarch64-musl — zig can't lower sha512h2
+- *(deploy)* no PDB at all for the msvc release build — LNK1201
+- *(deploy)* disable Botan's getentropy module on windows-gnu
+- *(build)* pin zig's global cache to /tmp — 'AccessDenied' inside cross containers
+- apt network timeouts + retries — the azure mirror stalls silently on runners
+- *(deploy)* scoped compiler env — never blanket CC/CXX in cross builds
+- *(build)* source musl-common.sh repo-relative — $0 is the runner's temp wrapper on Actions
+- *(bench)* 60 min for Benchmarks vs main — the full suite compiles twice
+- *(deploy)* job-level if cannot use env context — express the publish gate in raw contexts
+- *(deploy)* zig toolchain for the musl legs + branch test-build dispatch
+- *(deploy)* clean target before the cross build (hermetic releases)
+
 ## [0.5.56](https://github.com/engyon/enprot/compare/enprot-v0.5.55...enprot-v0.5.56) - 2026-08-19
 
 ### Other
