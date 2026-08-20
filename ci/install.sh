@@ -43,8 +43,11 @@ fi
 # ci/install.ps1's epilogue.
 export RNP_INCLUDE_DIR="$PREFIX/include"
 export RNP_LIB_DIR="$PREFIX/lib"
+# /usr/local/lib is not on ubuntu's default loader path.
+export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 if [ -n "${GITHUB_ENV:-}" ]; then
   echo "RNP_INCLUDE_DIR=$RNP_INCLUDE_DIR" >> "$GITHUB_ENV"
   echo "RNP_LIB_DIR=$RNP_LIB_DIR" >> "$GITHUB_ENV"
+  echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
 fi
 
