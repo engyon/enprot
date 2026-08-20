@@ -43,7 +43,13 @@ sigstore = []
 # CI and deploy for self-contained builds that don't need
 # system-installed librnp. For local dev, the default (system
 # librnp) is faster.
-vendored-rnp = ["rnp-rs/vendored"]
+# botan/vendored: the Docker cross containers have no system Botan,
+# and on unix targets the botan crate defaults to pkg-config (its
+# build script dies with "pkg-config exited with status code 1").
+# Windows already gets the static/vendored path via the per-target
+# dependency split below; this makes unix cross builds self-contained
+# the same way.
+vendored-rnp = ["rnp-rs/vendored", "botan/vendored"]
 # WASM build (TODO.complete/14). When enabled, Botan is replaced
 # with RustCrypto-only crypto (aes-siv, aes-gcm, sha3). Currently
 # a no-op stub — the Botan → RustCrypto migration is tracked in
