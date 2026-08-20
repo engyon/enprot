@@ -51,6 +51,19 @@ make_wrappers "$ctx" "$TARGET" musl-cc musl-c++ "$MUSL_AR" musl-c++ clang clang+
 docker build -t "$img" "$ctx"
 rm -rf "$ctx"
 
+# Zig is the cargo linker (see deploy.yml), and rust must then NOT
+# inject its own bundled musl CRT/libc — zig provides musl itself,
+# and both together produce duplicate _start/_init/_fini symbols.
+# Appending the [target] block here also makes build-static.sh's
+# guarded append skip (TOML forbids duplicate tables).
+mkdir -p .cargo
+if ! grep -qF "[target.$TARGET]" .cargo/config.toml 2>/dev/null; then
+cat <<EOF >> .cargo/config.toml
+[target.$TARGET]
+rustflags = ["-C", "link-self-contained=no", "-C", "link-args=-s"]
+EOF
+fi
+
 cat <<EOF > Cross.toml
 [target.$TARGET]
 image = "$img"
