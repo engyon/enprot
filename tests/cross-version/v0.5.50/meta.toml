@@ -1,0 +1,4 @@
+version = "0.5.50"
+word = "TEST"
+password = "cross-version-fixture"
+plaintext_sha3_256 = "5d34c0c477708feef00dc61881ccff9e1aaac4403ad88e5b9ebd9f6861d70284"

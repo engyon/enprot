@@ -1,0 +1,98 @@
+name: cross-version
+
+# Cross-version compatibility (TODO.complete/60):
+#   backwards-compat — every committed fixture, produced by a
+#     RELEASED enprot, decrypts with the current build.
+#   forward-compat   — the current build's output decrypts with
+#     the previous released binary.
+# Scheduled weekly (not per-PR: it needs a release binary and
+# adds ~20 min) plus workflow_dispatch for release verification.
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'   # Mondays 05:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: cross-version
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backwards-compat:
+    name: backwards (old fixtures → current build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        env:
+          BOTAN_VERSION: "3.7.0"
+          PREFIX: /usr/local
+        run: ./ci/install.sh
+      - name: Build current enprot
+        env:
+          PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
+        run: cargo build --release
+      - name: Verify all historical fixtures
+        run: tests/cross-version/run.sh target/release/enprot
+
+  forward-compat:
+    name: forward (current build → previous release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        env:
+          BOTAN_VERSION: "3.7.0"
+          PREFIX: /usr/local
+        run: ./ci/install.sh
+      - name: Build current enprot
+        env:
+          PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
+        run: cargo build --release
+      - name: Fetch the previous release binary
+        # exit 3 = deliberate skip (no linux asset); see step body.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          tag=$(gh release list -R "$GITHUB_REPOSITORY" \
+                  --json tagName,isLatest --jq '.[] | select(.isLatest).tagName')
+          # Prefer the linux-musl asset; fall back to any linux
+          # x86_64 one. Until the musl deploy legs went green
+          # (issue #368) releases shipped darwin-only — in that
+          # case there is nothing to test against on linux: skip
+          # loudly rather than fail or silently pass.
+          gh release download "$tag" -R "$GITHUB_REPOSITORY" \
+            -p '*x86_64-unknown-linux-musl*' -O prev.tar.gz \
+          || gh release download "$tag" -R "$GITHUB_REPOSITORY" \
+            -p '*x86_64*linux*' -O prev.tar.gz \
+          || { echo "::warning::no linux release asset on $tag — forward-compat skipped (darwin-only release?)"; exit 3; }
+          mkdir -p prev && tar -xzf prev.tar.gz -C prev
+          bin=$(find prev -name enprot -type f | head -1)
+          "$bin" --version
+          echo "PREV_BIN=$bin" >> "$GITHUB_ENV"
+      - name: Current encrypts, previous release decrypts
+        if: env.PREV_BIN != ''
+        run: |
+          set -euxo pipefail
+          echo 'forward compatibility probe payload' > payload.txt
+          want=$(python3 -c 'import hashlib;print(hashlib.sha3_256(open("payload.txt","rb").read()).hexdigest())')
+          for cipher in aes-256-siv aes-256-gcm aes-256-gcm-siv-det; do
+            cp payload.txt probe.ept
+            target/release/enprot encrypt --inline --cipher "$cipher" \
+              -w TEST -k TEST=forward-compat-pw probe.ept
+            "$PREV_BIN" decrypt -w TEST -k TEST=forward-compat-pw probe.ept
+            got=$(python3 -c 'import hashlib;print(hashlib.sha3_256(open("probe.ept","rb").read()).hexdigest())')
+            [ "$got" = "$want" ] || { echo "FAIL: $cipher did not survive $PREV_BIN"; exit 1; }
+            echo "OK: $cipher"
+          done

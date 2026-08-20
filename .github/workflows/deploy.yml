@@ -19,11 +19,23 @@ on:
       - 'enprot-v[0-9]*.[0-9]*.[0-9]*'
   # Allow manual trigger to rebuild binaries for existing tags
   # (e.g., v0.5.0 was tagged before the deploy pattern was fixed).
+  # Test builds: omit `tag` and set `ref` to a branch to exercise
+  # the archive matrix without publishing anything (used to iterate
+  # on cross-compile fixes without cutting releases — issue #368),
+  # optionally narrowed to one matrix leg with `target`.
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to deploy (e.g., v0.5.0, enprot-v0.5.13)'
-        required: true
+        description: 'Tag to deploy (e.g., v0.5.0, enprot-v0.5.13). Empty = test build (no publish).'
+        required: false
+        type: string
+      ref:
+        description: 'Checkout ref override (defaults to the tag; a branch for test builds)'
+        required: false
+        type: string
+      target:
+        description: 'Build only this matrix target (e.g., x86_64-unknown-linux-musl)'
+        required: false
         type: string
 
 env:
@@ -41,7 +53,12 @@ env:
   #   workflow_dispatch → inputs.tag = "enprot-v0.5.13"
   # Jobs strip any non-digit prefix (both `v` and `enprot-v`) to get
   # the bare version (0.5.13) via `sed 's/^[^0-9]*//'`.
-  DEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  # Tag pushes always carry a tag; dispatch carries one only when
+  # `tag` is set (empty otherwise — a test build).
+  DEPLOY_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event_name != 'workflow_dispatch' && github.ref_name || '' }}
+  # What every job checks out: an explicit ref override (test
+  # builds), else the tag, else the pushed ref.
+  DEPLOY_REF: ${{ inputs.ref || (github.event_name == 'workflow_dispatch' && inputs.tag) || github.ref_name }}
 
 jobs:
   checks:
@@ -51,8 +68,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_TAG }}
+          ref: ${{ env.DEPLOY_REF }}
       - name: Check version
+        if: env.DEPLOY_TAG != ''
         run: |
           set -euxo pipefail
           # Strip any non-digit prefix (handles 'v', 'enprot-v', bare).
@@ -69,17 +87,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_TAG }}
+          ref: ${{ env.DEPLOY_REF }}
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Restore /usr/local C-stack cache
+        # install.sh builds Botan + librnp (~20 min); the guards we
+        # added there skip both wholesale when the cache is warm.
+        # /usr/local on a bare ubuntu runner is tiny, so caching it
+        # wholesale is cheap and cannot shadow runner tooling that
+        # would matter (that lives in /usr, which we leave alone).
+        uses: actions/cache@v4
+        with:
+          path: /usr/local
+          key: extras-stack-${{ env.BOTAN_VERSION }}-${{ hashFiles('ci/install.sh', 'ci/build-librnp.sh') }}
       - name: Install dependencies
         env:
           BOTAN_VERSION: ${{ env.BOTAN_VERSION }}
-          PREFIX: /usr
+          PREFIX: /usr/local
         run: ./ci/install.sh
       - name: Build enprot
         env:
-          PKG_CONFIG_PATH: /usr/lib/pkgconfig
+          PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
         run: cargo build --features cli --release
       - name: Generate man page
         run: cargo run --features cli --example gen-manpage > enprot.1
@@ -114,38 +142,82 @@ jobs:
   release-archive:
     needs: [checks, generate-extras]
     name: archive
-    # Docker cross builds compile the full C dep stack from source;
-    # 20 min was killing them mid-build (they surfaced as "cancelled").
-    timeout-minutes: 45
+    # Docker cross builds compile Botan up to THREE times per leg
+    # (botan-sys's own vendored copy, rnp-src's copy for librnp,
+    # and the host librnp for bindgen); amalgamation cut the file
+    # count but the legs still need ~2h on 2-core runners. Every
+    # shorter limit (20/45/90) killed them mid-build, surfacing as
+    # "cancelled" at exactly the limit.
+    timeout-minutes: 240
     strategy:
       # Don't cancel native builds (macOS, Windows MSVC) when Docker
       # cross-compile targets fail (blocked on upstream librnp).
       fail-fast: false
       matrix:
-        target:
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-          - x86_64-pc-windows-gnu
-          - x86_64-pc-windows-msvc
+        # workflow_dispatch `target` narrows the matrix to one leg
+        # (test builds / surgical per-tag rebuilds). Push events and
+        # dispatch without `target` build the full matrix.
+        target: ${{ github.event_name == 'workflow_dispatch' && inputs.target != '' && fromJSON(format('["{0}"]', inputs.target)) || fromJSON('["x86_64-unknown-linux-musl","aarch64-unknown-linux-musl","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-pc-windows-gnu","x86_64-pc-windows-msvc"]') }}
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             env:
               TARGET: x86_64-unknown-linux-musl
               PREFIX: /usr/local/x86_64-linux-musl
-              TARGET_CC: x86_64-linux-musl-gcc
-              TARGET_CXX: x86_64-linux-musl-g++
-              TARGET_AR: x86_64-linux-musl-gcc-ar
+              BOTAN_CONFIGURE_CC: clang
+              # zig toolchain via the image-baked OUT_DIR-branching
+              # tool-* wrappers (musl-common.sh + wrappers.sh): target
+              # build gets zig, host build (bindgen) gets native cc.
+              # The cargo linker must be zig too: the C objects are
+              # libc++ (std::__1), which cross's default musl gcc 9.2
+              # linker does not link against.
+              CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: tool-cxx
+              TARGET_CC: tool-cc
+              TARGET_CXX: tool-cxx
+              TARGET_AR: tool-ar
+              BOTAN_CONFIGURE_CC_BIN: tool-ccbin
+              BOTAN_CONFIGURE_AR_COMMAND: tool-ar
+              # zig 0.13 (LLVM 18) gates AVX-512 intrinsics behind the
+              # separate 'evex512' target feature; Botan's makefiles
+              # only pass -mavx512*, so simd_avx512.h fails to build.
+              BOTAN_CONFIGURE_CC_ABI_FLAGS: -mevex512
+              # One amalgamated TU: zig's per-file process overhead
+              # across ~400 Botan sources costs ~40 min per leg on
+              # 2-core runners (the 45- and 90-min timeouts both hit).
+              BOTAN_CONFIGURE_AMALGAMATION: "1"
+              # Plain CC drives rnp-src's CMake deps (cmake reads env
+              # CC, not TARGET_CC); the tool-* wrappers keep the host
+              # librnp copy on native gcc. HOST_* outranks plain CC in
+              # the cc crate, shielding host-side ring builds.
+              CC: tool-cc
+              CXX: tool-cxx
+              AR: tool-ar
+              HOST_CC: gcc
+              HOST_CXX: g++
+              HOST_AR: ar
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             env:
               TARGET: aarch64-unknown-linux-musl
               PREFIX: /usr/local/aarch64-linux-musl
-              TARGET_CC: aarch64-linux-musl-gcc
-              TARGET_CXX: aarch64-linux-musl-g++
-              TARGET_AR: aarch64-linux-musl-gcc-ar
+              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: tool-cxx
+              TARGET_CC: tool-cc
+              TARGET_CXX: tool-cxx
+              TARGET_AR: tool-ar
+              BOTAN_CONFIGURE_CC: clang
+              BOTAN_CONFIGURE_CC_BIN: tool-ccbin
+              BOTAN_CONFIGURE_AR_COMMAND: tool-ar
+              CC: tool-cc
+              CXX: tool-cxx
+              AR: tool-ar
+              HOST_CC: gcc
+              HOST_CXX: g++
+              HOST_AR: ar
+              # zig 0.13's LLVM cannot lower llvm.aarch64.crypto.sha512h2
+              # ("Cannot select" backend error in sha2_64_armv8.cpp);
+              # use Botan's portable SHA-2 instead.
+              BOTAN_CONFIGURE_DISABLE_MODULES: sha2_64_armv8
+              BOTAN_CONFIGURE_AMALGAMATION: "1"
           # macos-15-intel is the x86_64 runner (macos-13 is deprecated).
           - os: macos-15-intel
             target: x86_64-apple-darwin
@@ -161,15 +233,30 @@ jobs:
             target: x86_64-pc-windows-gnu
             env:
               TARGET: x86_64-pc-windows-gnu
-              TARGET_CC: x86_64-w64-mingw32-gcc-posix
-              TARGET_CXX: x86_64-w64-mingw32-g++-posix
-              TARGET_AR: x86_64-w64-mingw32-gcc-ar-posix
-              # The modern cross-rs images no longer export CC/CXX to
-              # build scripts, so botan-src's configure.py autodetected
-              # the Linux host and defaulted to msvc ("could not find
-              # 'cl'", issue #368). Point it at mingw explicitly.
-              CC: x86_64-w64-mingw32-gcc-posix
-              CXX: x86_64-w64-mingw32-g++-posix
+              # tool-* are the image-baked OUT_DIR-branching wrappers
+              # (ci/build-static/pre/wrappers.sh): the target librnp
+              # build gets mingw, the host librnp build (rnp-rs bindgen)
+              # gets native gcc. Plain CC/CXX would poison the host side
+              # (issue #368).
+              TARGET_CC: tool-cc
+              TARGET_CXX: tool-cxx
+              TARGET_AR: tool-ar
+              BOTAN_CONFIGURE_CC: gcc
+              BOTAN_CONFIGURE_CC_BIN: tool-ccbin
+              BOTAN_CONFIGURE_AR_COMMAND: tool-ar
+              # Botan's getentropy entropy source does not exist on
+              # mingw ('::getentropy' has not been declared); Windows
+              # uses the system_rng/bcrypt path instead.
+              BOTAN_CONFIGURE_DISABLE_MODULES: getentropy
+              # Single-TU Botan: the mingw build was also hitting the
+              # archive job timeout.
+              BOTAN_CONFIGURE_AMALGAMATION: "1"
+              CC: tool-cc
+              CXX: tool-cxx
+              AR: tool-ar
+              HOST_CC: gcc
+              HOST_CXX: g++
+              HOST_AR: ar
               EXE_NAME: enprot.exe
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -177,12 +264,17 @@ jobs:
               TARGET: x86_64-pc-windows-msvc
               EXE_NAME: enprot.exe
               GIT_REDIRECT_STDERR: '2>&1'
+              # install.ps1 builds Botan from this tag; the Rust side
+              # links botan-src 0.31200 (Botan 3.12) via the vendored
+              # feature, so the C side must match or newer FFI symbols
+              # (botan_nist_kw_enc, ...) are missing at link (LNK2019).
+              BOTAN_VERSION: 3.12.0
 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_TAG }}
+          ref: ${{ env.DEPLOY_REF }}
 
       - name: Set environment (unix)
         if: "!startsWith(matrix.os, 'windows')"
@@ -205,7 +297,7 @@ jobs:
           "RELEASE_TAG=$Tag" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
           $Prefix = (Join-Path $PWD 'installs').Replace('\', '/')
           "PREFIX=$Prefix" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
-          "EXE_PATH=target/release/$Env:EXE_NAME" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
+          "EXE_PATH=target/$Env:TARGET/release/$Env:EXE_NAME" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
           # Reproducible-build timestamp: pin to the tag's commit time.
           $CommitEpoch = git log -1 --format=%ct
           "SOURCE_DATE_EPOCH=$CommitEpoch" | Out-File -Append -Encoding UTF8 -LiteralPath $Env:GITHUB_ENV
@@ -215,12 +307,54 @@ jobs:
         with:
           target: ${{ matrix.env.TARGET }}
 
+      - name: Rust toolchain fingerprint
+        # Fingerprints are only stable for a given rustc; key the
+        # cache on it so toolchain rotation means a cold rebuild.
+        shell: bash
+        run: echo "v=$(rustc -vV | shasum -a 256 | cut -c1-12)" >> "$GITHUB_OUTPUT"
+        id: rc
+
+      - name: Restore cross C-stack cache
+        # The vendored C stack (Botan x3, librnp, json-c, sexpp,
+        # zlib, bzip2) lives inside cargo build-script OUT_DIRs
+        # under target/. Cache exactly those trees plus their
+        # fingerprints: cargo then skips the build scripts outright
+        # (~90 min per leg on 2-core runners) and only recompiles
+        # the Rust side. Rust rlibs are deliberately NOT cached —
+        # they dominate the cache size for far less wall time.
+        # Strictly keyed per (target, Cargo.lock, rustc, ci files,
+        # this workflow) so a change in any input — including the
+        # BOTAN_CONFIGURE_* matrix values — is a cold rebuild, and
+        # legs never see another leg's artifacts.
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/release/build/botan-sys-*/out
+            target/release/build/rnp-src-*/out
+            target/release/.fingerprint/botan-sys-*
+            target/release/.fingerprint/rnp-src-*
+            target/*/release/build/botan-sys-*/out
+            target/*/release/build/rnp-src-*/out
+            target/*/release/build/ring-*/out
+            target/*/.fingerprint/botan-sys-*
+            target/*/.fingerprint/rnp-src-*
+          key: cross-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}-${{ steps.rc.outputs.v }}-${{ hashFiles('ci/**', '.cargo/**', '.github/workflows/deploy.yml') }}
+
       - name: Install python (windows)
         if: startsWith(matrix.os, 'windows')
         uses: actions/setup-python@v7
         with:
           python-version: '3.x'
 
+      - name: Restore MSVC C-stack cache
+        # install.ps1 builds the full C stack into ./installs
+        # (~30 min); its $stackCacheHit guard skips it all when
+        # warm. Keyed on the script + Botan version only.
+        if: startsWith(matrix.os, 'windows')
+        uses: actions/cache@v4
+        with:
+          path: installs
+          key: msvc-stack-${{ matrix.env.BOTAN_VERSION || env.BOTAN_VERSION }}-${{ hashFiles('ci/install.ps1') }}
       - name: Install dependencies (windows)
         if: startsWith(matrix.os, 'windows')
         env:
@@ -287,7 +421,8 @@ jobs:
     # Run even if some archive targets failed (e.g., Docker cross-compile
     # targets blocked on upstream librnp). Publish whatever archives
     # succeeded so users get macOS + Windows MSVC binaries.
-    if: always() && !cancelled()
+    # Test builds (dispatch without `tag`) must not publish.
+    if: always() && !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.tag != '')
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -324,7 +459,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.DEPLOY_TAG }}
+          ref: ${{ env.DEPLOY_REF }}
       # snapcore/action-build@v1 invokes snapcraft as part of its
       # action — it needs the version replaced BEFORE this step.
       # Step is named "build" so ${{ steps.build.outputs.snap }} works.

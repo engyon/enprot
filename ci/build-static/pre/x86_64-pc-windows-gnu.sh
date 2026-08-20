@@ -22,26 +22,108 @@ FROM ghcr.io/cross-rs/$TARGET:main
 
 RUN apt-get -y update && \\
     apt-get -y install --no-install-recommends \\
-      python3 cmake git ca-certificates make && \\
+      python3 cmake git ca-certificates make gcc g++ && \\
     rm -rf /var/lib/apt/lists/*
+
+COPY wrappers/ /usr/local/bin/
 EOF
+
+# Repo-relative: on Actions $0 is the runner temp wrapper.
+. ci/build-static/pre/wrappers.sh
+# OUT_DIR-branching dispatch: target build => mingw, host build =>
+# native gcc. rnp-rs's vendored feature builds librnp BOTH ways
+# (regular dep for the binary, build dep for bindgen) and both
+# inherit the same env — a static mingw assignment poisons the
+# host copy (issue #368).
+make_wrappers "$ctx" "$TARGET" \
+  x86_64-w64-mingw32-gcc-posix x86_64-w64-mingw32-g++-posix \
+  x86_64-w64-mingw32-gcc-ar-posix x86_64-w64-mingw32-g++-posix
+
+# Botan's --os=windows build archives as botan-3.lib, but both
+# consumers want libbotan-3.a: rustc's -l static=botan-3 on
+# pc-windows-gnu, and rnp-src (whose lib-name check is host-
+# conditional — the script runs on Linux, so it looks for the
+# unix name). Replace tool-ar with a version that also emits the
+# unix name whenever it archives botan-3.lib.
+cat > "$ctx/wrappers/tool-ar" <<WAR
+#!/bin/sh
+case "\$OUT_DIR" in
+  */x86_64-pc-windows-gnu/*)
+    x86_64-w64-mingw32-gcc-ar-posix "\$@"
+    st=\$?
+    last=
+    for a in "\$@"; do last=\$a; done
+    case \$last in
+      */botan-3.lib) cp -f "\$last" "\${last%botan-3.lib}libbotan-3.a" 2>/dev/null || true ;;
+    esac
+    exit \$st
+    ;;
+  *) exec /usr/bin/ar "\$@" ;;
+esac
+WAR
+chmod +x "$ctx/wrappers/tool-ar"
 
 docker build -t "$img" "$ctx"
 rm -rf "$ctx"
+
+# botan-src's configure.py aborts for --os=windows when the host
+# python is posix: the windows os-info file's install_root
+# 'c:\\Botan' fails os.path.isabs ("The installation root must be
+# an absolute path"), so the TARGET configure can never succeed
+# inside a Linux cross container. botan-src honors BOTAN_SRC_TARBALL
+# (checksum-free); repack the vendored tarball with a posix-absolute
+# install root and hand that over instead. Version comes from
+# Cargo.lock so it cannot drift from the resolved botan-src.
+# rnp-src pins =0.31200; the lock also carries botan-sys's older
+# optional botan-src — take the LAST entry (rnp-src's pin).
+botan_src_ver=$(sed -n '/^name = "botan-src"$/{n;p;}' Cargo.lock | tail -n1 | cut -d'"' -f2)
+# static.crates.io is the canonical CDN; the api/v1 download
+# endpoint 403s intermittently (rate limiting).
+curl -fsSL --retry 5 --retry-delay 3 \
+  "https://static.crates.io/crates/botan-src/botan-src-$botan_src_ver.crate" \
+  -o botan-src.crate
+pt=$(mktemp -d)
+tar -xzf botan-src.crate -C "$pt"
+# Published crates extract to <name>-<version>/ (cargo package's
+# local layout uses package/ instead).
+inner=$(ls "$pt"/botan-src-*/vendor/Botan-*.tar.xz)
+tar -xJf "$inner" -C "$pt"
+botan_dir=$(basename "$inner" .tar.xz)
+sed -i "s|^install_root .*|install_root /c/Botan|" \
+  "$pt/$botan_dir/src/build-data/os/windows.txt"
+tar -cJf botan-windows-posix-install-root.tar.xz -C "$pt" "$botan_dir"
+
+# cross mounts the project root at /project in the container.
+export BOTAN_SRC_TARBALL=/project/botan-windows-posix-install-root.tar.xz
 
 cat <<EOF > Cross.toml
 [target.$TARGET]
 image = "$img"
 
 # Explicit env passthrough: cross only forwards a known set of
-# variables to the container by default, and the observed behavior
-# differs between verbose and plain invocations (issue #368: with
-# -vv the CC/CXX from the matrix env reached botan-src's configure
-# and the whole C stack built; the plain retry ran configure with
-# NO CC and defaulted to msvc). Declaring it here makes forwarding
-# unconditional.
+# variables to the container by default (issue #368). Plain
+# CC/CXX/AR is needed for rnp-src's CMake deps; HOST_CC/HOST_CXX
+# shield the cc-crate host builds (rustls->ring via rnp-src's ureq
+# build-dep), and the tool-* wrappers branch on OUT_DIR for the
+# host librnp copy.
 [build.env]
-passthrough = ["CC", "CXX"]
+passthrough = [
+  "TARGET_CC",
+  "TARGET_CXX",
+  "TARGET_AR",
+  "CC",
+  "CXX",
+  "AR",
+  "HOST_CC",
+  "HOST_CXX",
+  "HOST_AR",
+  "BOTAN_CONFIGURE_CC",
+  "BOTAN_CONFIGURE_CC_BIN",
+  "BOTAN_CONFIGURE_AR_COMMAND",
+  "BOTAN_CONFIGURE_DISABLE_MODULES",
+  "BOTAN_CONFIGURE_AMALGAMATION",
+  "BOTAN_SRC_TARBALL",
+]
 EOF
 
 # Guarded append: build-static.sh may already have added this

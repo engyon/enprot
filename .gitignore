@@ -30,5 +30,7 @@ mutants.out*
 # mismatching test writes these and fails until reviewed/accepted.
 *.snap.new
 
-# dhat heap-profile output from benches/memory.rs (TODO.complete/41)
+# patched Botan tarball + crate download (windows-gnu deploy leg)
+botan-src.crate
+botan-windows-posix-install-root.tar.xz
 dhat-heap.json

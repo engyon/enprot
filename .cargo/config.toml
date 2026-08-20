@@ -10,13 +10,14 @@ rustflags = ["--remap-path-prefix=/usr/local/cargo=/cargo"]
 #
 # During parallel codegen, multiple link.exe invocations can race on
 # the same final .pdb (Windows Defender real-time scanning also
-# locks the file mid-write). The default is `/DEBUG:FULL`, which
-# writes a single shared PDB. `/DEBUG:FASTLINK` keeps the debug info
-# inside the .obj files and only emits a tiny PDB for the binary,
-# eliminating the contention. This matches what `cargo build` on
-# Windows does when `split-debuginfo = "unpacked"` is set.
+# locks the file mid-write); the vendored C stack makes the release
+# PDB large enough that the write also fails on runner disk space.
+# Release binaries ship stripped, so emit no debug info at all:
+# `-C debuginfo=0` stops rustc generating PDB-referencing objects
+# and `/DEBUG:NONE` stops link.exe writing one. (/DEBUG:FASTLINK
+# was tried first and still died on release\deps\enprot.pdb.)
 #
 # Symptom: `LINK : fatal error LNK1201: error writing to program
-# database 'target\debug\deps\enprot.pdb'`.
+# database 'target\release\deps\enprot.pdb'`.
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=/DEBUG:FASTLINK"]
+rustflags = ["-C", "debuginfo=0", "-C", "link-arg=/DEBUG:NONE"]

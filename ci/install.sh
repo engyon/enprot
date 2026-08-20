@@ -2,8 +2,12 @@
 . ci/common.inc.sh
 . ci/utils.inc.sh
 
-# Build Botan FIRST — librnp depends on it.
+# Build Botan FIRST — librnp depends on it. Skipped wholesale when
+# a restored PREFIX cache (actions/cache, keyed on this script) is
+# already in place — the deploy extras job pays ~20 min for this
+# otherwise.
 if [ $(get_os) == "linux" ]; then
+if [ ! -e "$PREFIX/lib/libbotan-3.so" ]; then
   # Fail fast + retry: the runners' azure apt mirrors occasionally
   # stall silently (2026-08-19: a 30-minute hang ate every ubuntu
   # job's timeout). Default apt has no network timeout at all.
@@ -22,12 +26,28 @@ if [ $(get_os) == "linux" ]; then
   make -j2
   sudo make install
   cd ..
+fi
 else
   brew install botan
 fi
 
 # librnp is required by rnp-rs (OpenPGP signature support). rnp-rs 0.1.6
 # expects the latest librnp FFI which lags in distro packages, so build
-# from source on every platform.
-ci/build-librnp.sh --prefix "$PREFIX"
+# from source on every platform. Guarded the same way as Botan above.
+if [ ! -e "$PREFIX/lib/librnp-0.so" ] && [ ! -e "$PREFIX/lib/librnp.so" ]; then
+  ci/build-librnp.sh --prefix "$PREFIX"
+fi
+
+# Tell rnp-rs where the stack lives (its build.rs defaults to
+# /usr/include, which only matched the old PREFIX=/usr). Mirrors
+# ci/install.ps1's epilogue.
+export RNP_INCLUDE_DIR="$PREFIX/include"
+export RNP_LIB_DIR="$PREFIX/lib"
+# /usr/local/lib is not on ubuntu's default loader path.
+export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "RNP_INCLUDE_DIR=$RNP_INCLUDE_DIR" >> "$GITHUB_ENV"
+  echo "RNP_LIB_DIR=$RNP_LIB_DIR" >> "$GITHUB_ENV"
+  echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+fi
 

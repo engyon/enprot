@@ -43,6 +43,13 @@ sigstore = []
 # CI and deploy for self-contained builds that don't need
 # system-installed librnp. For local dev, the default (system
 # librnp) is faster.
+# NOTE: deliberately does NOT include botan/vendored. CI tests run
+# with this feature against a system Botan (ci/install.sh +
+# pkg-config); adding botan/vendored here would link TWO static
+# Botans (botan-sys's own + rnp-src's) into every test binary —
+# multiple-definition link errors. Only the Docker cross builds
+# need a vendored Botan (no system one in the containers); they
+# request it explicitly: see ci/build-static.sh.
 vendored-rnp = ["rnp-rs/vendored"]
 # WASM build (TODO.complete/14). When enabled, Botan is replaced
 # with RustCrypto-only crypto (aes-siv, aes-gcm, sha3). Currently
