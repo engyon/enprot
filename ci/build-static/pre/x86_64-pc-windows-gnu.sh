@@ -39,6 +39,30 @@ make_wrappers "$ctx" "$TARGET" \
   x86_64-w64-mingw32-gcc-posix x86_64-w64-mingw32-g++-posix \
   x86_64-w64-mingw32-gcc-ar-posix x86_64-w64-mingw32-g++-posix
 
+# Botan's --os=windows build archives as botan-3.lib, but both
+# consumers want libbotan-3.a: rustc's -l static=botan-3 on
+# pc-windows-gnu, and rnp-src (whose lib-name check is host-
+# conditional — the script runs on Linux, so it looks for the
+# unix name). Replace tool-ar with a version that also emits the
+# unix name whenever it archives botan-3.lib.
+cat > "$ctx/wrappers/tool-ar" <<WAR
+#!/bin/sh
+case "\$OUT_DIR" in
+  */x86_64-pc-windows-gnu/*)
+    x86_64-w64-mingw32-gcc-ar-posix "\$@"
+    st=\$?
+    last=
+    for a in "\$@"; do last=\$a; done
+    case \$last in
+      */botan-3.lib) cp -f "\$last" "\${last%botan-3.lib}libbotan-3.a" 2>/dev/null || true ;;
+    esac
+    exit \$st
+    ;;
+  *) exec /usr/bin/ar "\$@" ;;
+esac
+WAR
+chmod +x "$ctx/wrappers/tool-ar"
+
 docker build -t "$img" "$ctx"
 rm -rf "$ctx"
 
