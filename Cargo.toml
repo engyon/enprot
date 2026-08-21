@@ -99,7 +99,7 @@ zeroize        = { version = "1", features = ["alloc"] }
 flate2         = "1"
 # Hostname + OS user for audit records (TODO.complete/63). Tiny,
 # no transitive deps on the platforms we ship.
-whoami         = "1"
+whoami         = "2"
 # OpenPGP signature support via librnp (the OpenPGP C library from
 # Ribose). rnp-rs 0.1.10 + the `vendored` feature uses rnp-src to
 # build librnp + json-c + sexpp from source — eliminates the need
