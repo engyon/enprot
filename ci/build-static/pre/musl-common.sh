@@ -36,8 +36,8 @@ RUN set -eux; \\
     curl -fsSL https://ziglang.org/download/$ZIG_VERSION/zig-linux-x86_64-$ZIG_VERSION.tar.xz \\
       | tar -xJ -C /opt; \\
     ln -s /opt/zig-linux-x86_64-$ZIG_VERSION/zig /usr/local/bin/zig; \\
-    printf '#!/bin/sh\nZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache\nexport ZIG_GLOBAL_CACHE_DIR\nexec zig cc -target $ZIG_TARGET "\$@"\n' > /usr/local/bin/musl-cc; \\
-    printf '#!/bin/sh\nZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache\nexport ZIG_GLOBAL_CACHE_DIR\nexec zig c++ -target $ZIG_TARGET "\$@"\n' > /usr/local/bin/musl-c++; \\
+    printf '#!/bin/sh\nZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache\nexport ZIG_GLOBAL_CACHE_DIR\nargs=; for a in "\$@"; do [ "\$a" = --fix-cortex-a53-843419 ] || args="\$args \$a"; done\nexec zig cc -target $ZIG_TARGET \$args\n' > /usr/local/bin/musl-cc; \\
+    printf '#!/bin/sh\nZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache\nexport ZIG_GLOBAL_CACHE_DIR\nargs=; for a in "\$@"; do [ "\$a" = --fix-cortex-a53-843419 ] || args="\$args \$a"; done\nexec zig c++ -target $ZIG_TARGET \$args\n' > /usr/local/bin/musl-c++; \\
     chmod +x /usr/local/bin/musl-cc /usr/local/bin/musl-c++
 
 COPY wrappers/ /usr/local/bin/
