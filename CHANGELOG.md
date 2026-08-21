@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.58](https://github.com/engyon/enprot/compare/enprot-v0.5.57...enprot-v0.5.58) - 2026-08-21
+
+### Other
+
+- *(deploy)* strip -Wl,--fix-cortex-a53-843419 too — the compound form reached zig
+- *(deploy)* drop --fix-cortex-a53-843419 before zig links
+
 ## [0.5.57](https://github.com/engyon/enprot/compare/enprot-v0.5.56...enprot-v0.5.57) - 2026-08-20
 
 ### Added
