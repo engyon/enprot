@@ -96,7 +96,7 @@ jobs:
         # /usr/local on a bare ubuntu runner is tiny, so caching it
         # wholesale is cheap and cannot shadow runner tooling that
         # would matter (that lives in /usr, which we leave alone).
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /usr/local
           key: extras-stack-${{ env.BOTAN_VERSION }}-${{ hashFiles('ci/install.sh', 'ci/build-librnp.sh') }}
@@ -326,7 +326,7 @@ jobs:
         # this workflow) so a change in any input — including the
         # BOTAN_CONFIGURE_* matrix values — is a cold rebuild, and
         # legs never see another leg's artifacts.
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             target/release/build/botan-sys-*/out
@@ -351,7 +351,7 @@ jobs:
         # (~30 min); its $stackCacheHit guard skips it all when
         # warm. Keyed on the script + Botan version only.
         if: startsWith(matrix.os, 'windows')
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: installs
           key: msvc-stack-${{ matrix.env.BOTAN_VERSION || env.BOTAN_VERSION }}-${{ hashFiles('ci/install.ps1') }}
