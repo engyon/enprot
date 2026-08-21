@@ -15,7 +15,9 @@
 # rnp-rs's vendored feature ALSO builds a HOST librnp for bindgen
 # (see wrappers.sh) — so the compiler env points at OUT_DIR-
 # branching tool-* wrappers, not the zig binaries directly, and
-# the host side runs the image's native gcc/g++.
+# the host side runs the image's native clang/clang++ (a
+# clang-family driver, so configure.py's clang-only -W flags and
+# -mevex512 parse on both sides).
 
 set -euxo pipefail
 
@@ -24,6 +26,46 @@ ZIG_VERSION=0.13.0
 img="$PROJECT_NAME/cross-build:$TARGET"
 
 ctx=$(mktemp -d)
+mkdir -p "$ctx/tools"
+
+# The zig entry points, written as real files (no printf-escaping
+# inside the Dockerfile). `filter` strips rustc's
+# --fix-cortex-a53-843419 — rustc (>= the 2026-08-20 stable)
+# passes it for aarch64-unknown-linux-musl as BOTH the bare flag
+# and compound `-Wl,...` (standalone or inside a comma list);
+# zig's ld rejects it outright.
+for t in cc c++; do
+  cat > "$ctx/tools/musl-$t" <<WRAP
+#!/bin/sh
+ZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache
+export ZIG_GLOBAL_CACHE_DIR
+
+filter() {
+  for a in "\$@"; do
+    case \$a in
+      --fix-cortex-a53-843419) ;;
+      -Wl,*)
+        segs=\${a#-Wl,}
+        out=
+        oldifs=\${IFS}
+        IFS=,
+        set -- \$segs
+        for seg in "\$@"; do
+          [ "\$seg" = --fix-cortex-a53-843419 ] || out=\${out:+\$out,}\$seg
+        done
+        IFS=\$oldifs
+        [ -n "\$out" ] && printf '%s\n' "-Wl,\$out"
+        ;;
+      *) printf '%s\n' "\$a" ;;
+    esac
+  done
+}
+
+exec zig $t -target $ZIG_TARGET \$(filter "\$@")
+WRAP
+  chmod +x "$ctx/tools/musl-$t"
+done
+
 cat > "$ctx/Dockerfile" <<EOF
 FROM ghcr.io/cross-rs/$TARGET:main
 
@@ -35,13 +77,10 @@ RUN apt-get -y update && \\
 RUN set -eux; \\
     curl -fsSL https://ziglang.org/download/$ZIG_VERSION/zig-linux-x86_64-$ZIG_VERSION.tar.xz \\
       | tar -xJ -C /opt; \\
-    ln -s /opt/zig-linux-x86_64-$ZIG_VERSION/zig /usr/local/bin/zig; \\
-    printf '#!/bin/sh\nZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache\nexport ZIG_GLOBAL_CACHE_DIR\nargs=; for a in "\$@"; do [ "\$a" = --fix-cortex-a53-843419 ] || args="\$args \$a"; done\nexec zig cc -target $ZIG_TARGET \$args\n' > /usr/local/bin/musl-cc; \\
-    printf '#!/bin/sh\nZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache\nexport ZIG_GLOBAL_CACHE_DIR\nargs=; for a in "\$@"; do [ "\$a" = --fix-cortex-a53-843419 ] || args="\$args \$a"; done\nexec zig c++ -target $ZIG_TARGET \$args\n' > /usr/local/bin/musl-c++; \\
-    chmod +x /usr/local/bin/musl-cc /usr/local/bin/musl-c++
+    ln -s /opt/zig-linux-x86_64-$ZIG_VERSION/zig /usr/local/bin/zig
 
+COPY tools/ /usr/local/bin/
 COPY wrappers/ /usr/local/bin/
-
 EOF
 
 # Repo-relative: on Actions $0 is the runner temp wrapper.
