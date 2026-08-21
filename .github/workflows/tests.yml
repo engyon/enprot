@@ -36,7 +36,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install cargo-deny
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.3
         with:
           tool: cargo-deny
       - name: Check licenses and advisories
@@ -131,7 +131,7 @@ jobs:
       - name: Install dependencies
         run: ./ci/install.sh
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.3
         with:
           tool: cargo-llvm-cov
       - name: Generate coverage (gated)
