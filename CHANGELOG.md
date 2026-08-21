@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.59](https://github.com/engyon/enprot/compare/enprot-v0.5.58...enprot-v0.5.59) - 2026-08-21
+
+### Other
+
+- bump actions/cache from 4 to 6
+- bump clap_mangen from 0.3.2 to 0.3.3
+- bump whoami from 1.6.1 to 2.1.3
+- bump docker/metadata-action from 5 to 6
+- bump taiki-e/install-action from 2.85.11 to 2.86.3
+
 ## [0.5.58](https://github.com/engyon/enprot/compare/enprot-v0.5.57...enprot-v0.5.58) - 2026-08-21
 
 ### Other
