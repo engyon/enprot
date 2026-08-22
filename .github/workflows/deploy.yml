@@ -455,7 +455,9 @@ jobs:
           fi
           # The upload step globs '*' at the top level — nothing
           # directory-shaped may remain there.
-          find . -maxdepth 1 -type d ! -name . -print-exec false \; 
+          if find . -mindepth 1 -maxdepth 1 -type d | grep -q .; then
+            echo "directory in upload set:"; find . -mindepth 1 -maxdepth 1 -type d; exit 1
+          fi
       - name: Upload release assets
         # release-plz already created the release object (the tag is
         # its); this step only attaches artifacts. The previous
