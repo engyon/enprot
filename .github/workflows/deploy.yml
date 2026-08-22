@@ -430,6 +430,20 @@ jobs:
         with:
           pattern: archives-*
           merge-multiple: true
+      # The extras artifact (man page, completions, SBOMs) was
+      # uploaded by generate-extras but never downloaded here —
+      # releases shipped binaries only. Pull it into the same
+      # upload set.
+      - name: Download extras
+        uses: actions/download-artifact@v8
+        with:
+          name: extras
+          path: extras
+      - name: Flatten extras into the upload set
+        run: |
+          mv extras/enprot.1 .
+          cp -r extras/completions .
+          mv extras/enprot-*.spdx.json extras/enprot-*.cdx.json . 2>/dev/null || true
       - name: Upload release assets
         # release-plz already created the release object (the tag is
         # its); this step only attaches artifacts. The previous
