@@ -131,8 +131,10 @@ pub fn record_invocation(
 ) -> Result<()> {
     let rec = AuditRecord {
         ts: utils::rfc3339(None),
-        host: whoami::fallible::hostname().unwrap_or_else(|_| "unknown".into()),
-        user: whoami::fallible::username().unwrap_or_else(|_| "unknown".into()),
+        // whoami 2 removed the fallible module; the infallible
+        // accessors return "unknown" themselves on failure.
+        host: whoami::hostname().unwrap_or_else(|_| "unknown".into()),
+        user: whoami::username().unwrap_or_else(|_| "unknown".into()),
         op: op.to_string(),
         words: words.to_vec(),
         files: files.to_vec(),
