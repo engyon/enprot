@@ -453,6 +453,7 @@ jobs:
           if [ "$comp" -gt 0 ]; then
             tar -C extras -czf "enprot-completions.tar.gz" completions
           fi
+          rm -rf extras
           # The upload step globs '*' at the top level — nothing
           # directory-shaped may remain there.
           if find . -mindepth 1 -maxdepth 1 -type d | grep -q .; then
