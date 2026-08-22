@@ -440,10 +440,22 @@ jobs:
           name: extras
           path: extras
       - name: Flatten extras into the upload set
+        # gh release upload takes FILES only — a directory argument
+        # aborts the whole upload ("read <dir>: is a directory"),
+        # which clobbered v0.5.59 down to 3 assets mid-failure.
+        # Completions ship as one tarball; man page and SBOMs are
+        # files already.
         run: |
+          set -euxo pipefail
           mv extras/enprot.1 .
-          cp -r extras/completions .
           mv extras/enprot-*.spdx.json extras/enprot-*.cdx.json . 2>/dev/null || true
+          comp=$(ls extras/completions 2>/dev/null | wc -l)
+          if [ "$comp" -gt 0 ]; then
+            tar -C extras -czf "enprot-completions.tar.gz" completions
+          fi
+          # The upload step globs '*' at the top level — nothing
+          # directory-shaped may remain there.
+          find . -maxdepth 1 -type d ! -name . -print-exec false \; 
       - name: Upload release assets
         # release-plz already created the release object (the tag is
         # its); this step only attaches artifacts. The previous
