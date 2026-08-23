@@ -39,6 +39,11 @@ env:
   BOTAN_VERSION: 3.7.0
   PREFIX: /usr
   CARGO_FUZZ_VERSION: 0.13.2
+  # rust-toolchain.toml pins `stable` for the repo and rustup override
+  # files outrank the action's default — cargo-fuzz's -Zsanitizer
+  # flags need nightly, so force it via the env var that outranks
+  # the override file.
+  RUSTUP_TOOLCHAIN: nightly
 
 jobs:
   fuzz:
