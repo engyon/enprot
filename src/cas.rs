@@ -42,6 +42,25 @@ use crate::crypto;
 use crate::error::{Error, Result};
 use crate::etree::ParseOps;
 
+/// Validate a CAS hash reference before it reaches a backend:
+/// exactly 64 lowercase hex chars (SHA3-256). Shared by every
+/// backend so malformed refs fail fast with one error shape.
+pub fn validate_cas_hash(hash: &str) -> Result<()> {
+    let valid = hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    if valid {
+        Ok(())
+    } else {
+        Err(Error::CasHashInvalid { hash: hash.into() })
+    }
+}
+
+/// S3-backed CAS (TODO.complete/27), behind the `cas-s3` feature.
+#[cfg(feature = "cas-s3")]
+pub mod s3;
+
 /// Pluggable content-addressed storage. The trait abstracts over
 /// local disk, S3, IPFS, in-memory, etc. Implementations must be
 /// idempotent — saving the same blob twice returns the same hash
@@ -446,10 +465,17 @@ pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
     if spec == "memory:" || spec == "memory" {
         return Ok(Box::new(MemoryCas::new()));
     }
+    #[cfg(feature = "cas-s3")]
+    if spec.starts_with("s3://") {
+        return Ok(Box::new(s3::S3Cas::from_spec(spec)?));
+    }
+    #[cfg(not(feature = "cas-s3"))]
     if spec.starts_with("s3://") {
         return Err(crate::error::Error::InvalidArg {
             arg: "--casdir",
-            reason: "S3 CAS requires --features s3 (not yet built); use 'memory:' for testing or a local path".to_string(),
+            reason: "S3 CAS requires a build with the `cas-s3` feature \
+                     (cargo install enprot --features cas-s3)"
+                .to_string(),
         });
     }
     if spec.starts_with("ipfs://") {
@@ -487,6 +513,85 @@ mod backend_tests {
     }
 
     #[test]
+    fn validate_cas_hash_shape() {
+        assert!(
+            validate_cas_hash("d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab")
+                .is_ok()
+        );
+        for bad in [
+            "",
+            "abc",
+            "D094E230861EB0AB43B895B8ECDEEB9E3A7E4A88239341A81DA832AC181FEAAB", // uppercase
+            "z094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab", // non-hex
+            "d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaa",  // 63
+        ] {
+            let err = validate_cas_hash(bad).unwrap_err();
+            assert!(matches!(err, Error::CasHashInvalid { .. }), "{bad}");
+        }
+    }
+
+    #[cfg(feature = "cas-s3")]
+    #[test]
+    fn open_cas_s3_builds_a_backend() {
+        // Construction only — no network: credentials resolve lazily
+        // on first request, parse_url builds the client offline.
+        // Confirms the dispatch returns a backend, not the
+        // rebuild-hint error, when the feature is compiled in.
+        let _store = open_cas("s3://my-bucket/cas/prefix").unwrap();
+    }
+
+    #[cfg(feature = "cas-s3")]
+    #[test]
+    fn s3_spec_malformed_url_is_rejected() {
+        let Err(err) = s3::S3Cas::from_spec("s3://[bad") else {
+            panic!("expected URL parse error");
+        };
+        assert!(matches!(err, Error::InvalidArg { .. }), "{err}");
+        // Non-s3 scheme can't reach here via open_cas, but the
+        // constructor defends in depth.
+        let Err(err) = s3::S3Cas::from_spec("http://bucket/") else {
+            panic!("expected scheme rejection");
+        };
+        assert!(err.to_string().contains("cannot serve scheme"), "{err}");
+    }
+
+    /// Live round-trip against a real (or MinIO) endpoint. Opt-in:
+    /// set ENPROT_S3_TEST_SPEC (e.g. s3://bucket/cas-test/) plus the
+    /// standard object_store env (AWS_ACCESS_KEY_ID,
+    /// AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION, and for MinIO also
+    /// AWS_ENDPOINT_URL + AWS_ALLOW_HTTP=1). CI runs this against a
+    /// MinIO service container.
+    #[cfg(feature = "cas-s3")]
+    #[test]
+    fn s3_live_round_trip_when_configured() {
+        let Ok(spec) = std::env::var("ENPROT_S3_TEST_SPEC") else {
+            eprintln!("skipping: ENPROT_S3_TEST_SPEC not set");
+            return;
+        };
+        let store = open_cas(&spec).unwrap();
+        let policy = crate::crypto::default_policy();
+        for blob in [&b"small"[..], vec![0u8; 65536].as_slice()] {
+            let h = store.save(blob, &*policy).unwrap();
+            // Idempotent save.
+            let h2 = store.save(blob, &*policy).unwrap();
+            assert_eq!(h, h2);
+            assert!(store.contains(&h, &*policy).unwrap());
+            let back = store.load(&h, &*policy).unwrap();
+            assert_eq!(&back, blob);
+            assert!(store.list().unwrap().contains(&h));
+            store.delete(&h).unwrap();
+            assert!(!store.contains(&h, &*policy).unwrap());
+        }
+        let err = store
+            .load(
+                "d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab",
+                &*policy,
+            )
+            .unwrap_err();
+        assert!(matches!(err, Error::CasNotFound { .. }), "{err}");
+    }
+
+    #[test]
     fn open_cas_memory_round_trip() {
         let store = open_cas("memory:").unwrap();
         let policy = crate::crypto::default_policy();
@@ -497,16 +602,13 @@ mod backend_tests {
         assert!(store.contains(&h, &*policy).unwrap());
     }
 
+    #[cfg(not(feature = "cas-s3"))]
     #[test]
     fn open_cas_s3_returns_actionable_error() {
         match open_cas("s3://my-bucket/cas/") {
             Err(e) => {
                 let msg = e.to_string();
-                assert!(msg.contains("requires --features s3"), "msg: {msg}");
-                assert!(
-                    msg.contains("memory:"),
-                    "should suggest memory: alternative: {msg}"
-                );
+                assert!(msg.contains("cas-s3"), "msg: {msg}");
             }
             Ok(_) => panic!("S3 backend should not be available without --features s3"),
         }

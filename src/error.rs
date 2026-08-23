@@ -99,6 +99,16 @@ pub enum Error {
     #[error("CAS operation '{op}' not supported by this backend")]
     CasUnsupported { op: &'static str },
 
+    /// A remote CAS backend (S3, IPFS, …) transport failure —
+    /// network errors, auth rejects, throttling after retries.
+    /// Local-disk failures stay `Io`.
+    #[error("CAS backend {backend} {op} failed: {detail}")]
+    CasBackend {
+        backend: &'static str,
+        op: &'static str,
+        detail: String,
+    },
+
     /// PHC string parse failure (missing `$`, non-numeric param value,
     /// bad base64 salt, etc.).
     #[error("PHC: {0}")]

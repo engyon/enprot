@@ -51,6 +51,15 @@ sigstore = []
 # need a vendored Botan (no system one in the containers); they
 # request it explicitly: see ci/build-static.sh.
 vendored-rnp = ["rnp-rs/vendored"]
+# S3-backed CAS (TODO.complete/27). object_store handles SigV4
+# signing, credential chains, and retries — signing code is never
+# hand-rolled here. aws-base + reqwest(rustls) + ring (NOT the
+# batteries-included `aws` feature, which bundles aws-lc-rs —
+# OpenSSL-lineage licensing, deny-gated). The runtime bridge is a
+# dedicated tokio runtime behind a mutex — the pipeline is
+# synchronous; concurrent saves serialize on the lock.
+cas-s3 = ["dep:object_store", "dep:tokio", "dep:futures", "dep:reqwest"]
+
 # WASM build (TODO.complete/14). When enabled, Botan is replaced
 # with RustCrypto-only crypto (aes-siv, aes-gcm, sha3). Currently
 # a no-op stub — the Botan → RustCrypto migration is tracked in
@@ -101,6 +110,24 @@ opentelemetry_sdk = { version = "0.32", optional = true, default-features = fals
 opentelemetry-otlp = { version = "0.32", optional = true, default-features = false, features = ["http-proto", "reqwest-blocking-client"] }
 tracing-opentelemetry = { version = "0.33", optional = true, default-features = false }
 phf            = { version = "0.14", features = ["macros"] }
+# S3 CAS backend (TODO.complete/27), behind the `cas-s3` feature.
+# aws-base + reqwest(rustls) + ring — NOT the batteries-included
+#  feature, which bundles the aws-lc-rs crypto provider
+# (OpenSSL-lineage licensing; deny-gated). azure/gcp/http stay
+# actionable errors until requested. object_store's HTTP layer is rustls (deny.toml bans
+# openssl by name).
+object_store = { version = "0.14", optional = true, default-features = false, features = ["aws-base", "reqwest", "ring"] }
+# Runtime for the sync→async bridge in the S3 backend only.
+tokio = { version = "1", optional = true, default-features = false, features = ["rt"] }
+# Stream driver for object_store::list (already in-tree via object_store
+# itself; declared so the backend can name it).
+futures = { version = "0.3", optional = true, default-features = false }
+# Direct dep only to flip reqwest's TLS backend for object_store's
+# transport (its plain `reqwest` feature enables no TLS flavor).
+#  (ring provider) — never native-tls/openssl (deny.toml);
+#  not strictly needed here but keeps the door open for
+# reqwest-based backends (ipfs/rekor).
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls", "blocking"] }
 thiserror      = "2"
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
