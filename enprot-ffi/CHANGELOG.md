@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.59](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.58...enprot-ffi-v0.5.59) - 2026-08-23
+
+### Added
+
+- *(cas)* S3 backend behind cas-s3, tested against MinIO in CI
+
 ## [0.5.58](https://github.com/engyon/enprot/compare/enprot-ffi-v0.5.57...enprot-ffi-v0.5.58) - 2026-08-23
 
 ### Other

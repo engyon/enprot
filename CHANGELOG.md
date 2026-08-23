@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.61](https://github.com/engyon/enprot/compare/enprot-v0.5.60...enprot-v0.5.61) - 2026-08-23
+
+### Added
+
+- *(cas)* S3 backend behind cas-s3, tested against MinIO in CI
+- *(telemetry)* OTLP export for spans + the enprot_* metric family
+
+### Fixed
+
+- *(cas-s3)* load the credential chain via AmazonS3Builder::from_env — parse_url builds without credentials and requests then fall through to the EC2 IMDS endpoint (411 from GitHub's link-local proxy in CI); from_env also honors AWS_ENDPOINT_URL/AWS_ALLOW_HTTP for MinIO
+
+### Other
+
+- rebase onto main (otel export) — re-add CasStore::name from #401, regen Cargo.lock for the union feature graph
+- *(cas-s3)* create the bucket with mc — MinIO's S3 API rejects basic-auth curl with 403 (SigV4 required); mc alias-set doubles as the readiness probe
+- *(cas-s3)* run MinIO via docker run — bitnami/minio:latest vanished in the 2025 Bitnami catalog shift, and service containers can't pass the 'server /data' command the official image requires
+- *(cas-s3)* MinIO service needs no health probe — bitnami image ships neither curl nor mc, failing container init; bucket-create now waits via its own retry loop
+- *(tests)* 45-min timeout on the test matrix — the ubuntu-stable leg compiles the telemetry tree and fuzz crate cold; 30 canceled a green run mid-compile
+- *(fuzz)* mkdir the seeds dir too — libFuzzer hard-exits on a missing corpus path; targets without committed seeds (conflict_well_formed's tuple-encoded input) need the empty dir
+- *(fuzz)* force nightly via RUSTUP_TOOLCHAIN — rust-toolchain.toml's stable pin outranks the toolchain action's default, so cargo-fuzz's -Zsanitizer flags hit stable rustc
+- *(site)* full-text search via pagefind
+- weekly CI runs + seeds/dicts; fix ENCRYPTED END panic
+
 ## [0.5.60](https://github.com/engyon/enprot/compare/enprot-v0.5.59...enprot-v0.5.60) - 2026-08-23
 
 ### Other
