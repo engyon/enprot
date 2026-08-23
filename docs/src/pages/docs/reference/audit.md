@@ -72,6 +72,31 @@ Walks the log, verifies every signature batch against the trust
 root, and reports: verified count, unsigned count, and per-line
 failures. Exits non-zero on any failure or unsigned record.
 
+## Auditing the newer surfaces
+
+Two 0.5.61 additions move data outside the process; here is what the
+audit trail says about each:
+
+- **OTLP telemetry** (`--otel-endpoint`, see
+  [Observability](/docs/reference/observability)) exports **span and
+  metric metadata only** — operation names, file paths, byte counts,
+  durations. Passwords, keys, and file contents never enter a span.
+  Even so, for confidentiality-sensitive deployments file *names* and
+  WORD *labels* may themselves be sensitive: the audit trail is the
+  authoritative record of what ran; telemetry is operational
+  telemetry, not evidence. Sampling (`--otel-sample-rate < 1.0`)
+  means telemetry is intentionally incomplete — never treat a
+  collector's view as the audit record.
+- **Remote CAS** (`-c s3://…`, see
+  [CAS backends](/docs/reference/cas-backends)) stores ciphertext
+  blobs and their SHA3-256 names on external infrastructure. The
+  audit trail records the invocation (`files`, `words`, outcome) but
+  not the backend — pair it with your storage-side access logs
+  (CloudTrail etc.) for a complete picture. Loads re-verify the
+  content hash before returning bytes, so a tampered object is
+  detected (and refused) at read time, and the failure lands in the
+  audit trail as a non-zero `exit`.
+
 ## Relationship to chain anchors
 
 | | Chain anchors (`--anchor`) | Audit trail (`--audit-log`) |

@@ -23,6 +23,9 @@ import Base from "../../../layouts/Base.astro";
       <li><strong>Git merge driver</strong> (0.5): <code>enprot merge</code> — block-level commutation for lock-free collaboration.</li>
       <li><strong>Provenance + SBOM</strong> (0.5): manifests, attestations, and self-describing SPDX/CycloneDX via <code>enprot sbom</code>.</li>
       <li><strong>Reproducible builds</strong> (0.5): byte-identical release binaries, verified in CI.</li>
+      <li><strong>S3 CAS backend</strong> (0.5.61): <code>-c s3://bucket/prefix</code> behind the <code>cas-s3</code> feature — SigV4 via object_store, hash-verified reads, live-tested against MinIO in CI.</li>
+      <li><strong>OTLP observability</strong> (0.5.61): <code>--otel-endpoint</code> exports spans + the <code>enprot_*</code> metric family behind the <code>telemetry</code> feature.</li>
+      <li><strong>Continuous fuzzing</strong> (0.5.61): weekly libFuzzer runs over six targets (parser, separators, extfields, CAS hashes, merge, conflicts) with committed seeds and dictionaries.</li>
     </ul>
   </section>
 
