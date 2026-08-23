@@ -1,0 +1,10 @@
+# Content-side tokens; the first 4 input bytes are consumed as the
+# separator pair, the rest is parsed with those separators.
+kw_begin="BEGIN"
+kw_end="END"
+kw_data="DATA"
+kw_stored="STORED"
+kw_encrypted="ENCRYPTED"
+sep_left="// <("
+sep_right=")>"
+word="Agent_007"

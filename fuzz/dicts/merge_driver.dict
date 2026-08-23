@@ -1,0 +1,11 @@
+# The harness splits input on 0xFF sentinels into ancestor/ours/theirs.
+sentinel="\xff"
+kw_begin="BEGIN"
+kw_end="END"
+kw_stored="STORED"
+kw_encrypted="ENCRYPTED"
+kw_conflict="CONFLICT"
+sep_left="// <("
+sep_right=")>"
+word="Agent_007"
+hex_low="0123456789abcdef"

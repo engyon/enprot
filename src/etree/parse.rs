@@ -366,7 +366,7 @@ fn parse_end(
             outer,
             extfields,
         }) => {
-            if keyw != cmd[0] {
+            if cmd.is_empty() || keyw != cmd[0] {
                 return Err(parse_error(
                     paops,
                     lineno,
@@ -939,6 +939,10 @@ mod tests {
             ("// <( ENCRYPTED W short )>", "Invalid CAS identifier"),
             ("// <( ENCRYPTED )>", "wrong number of parameters"),
             ("// <( END W )>", "END without a start clause"),
+            (
+                "// <( ENCRYPTED W )>\n// <( END )>",
+                "END mismatch (expected 'W')",
+            ),
             ("// <( STORED W )>", "STORED needs two parameters"),
             ("// <( CHAIN )>", "CHAIN needs at least one key:value field"),
             ("// <( INCLUDE )>", "INCLUDE needs exactly one hash"),
