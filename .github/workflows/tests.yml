@@ -160,9 +160,11 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadmin
         ports:
           - 9000:9000
-        options: >-
-          --health-cmd "mc ready local || curl -sf http://localhost:9000/minio/health/live"
-          --health-interval 5s --health-timeout 5s --health-retries 10
+        # No --health-cmd: the bitnami image ships neither curl nor mc,
+        # and a failing probe fails "Initialize containers" outright.
+        # Readiness is handled by the retry loop in the bucket-create
+        # step below (first contact is minutes after container start,
+        # after toolchain + ci/install.sh).
     env:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
@@ -176,11 +178,17 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
         run: ./ci/install.sh
-      - name: Create test bucket
+      - name: Create test bucket (waits for MinIO readiness)
         run: |
           set -euxo pipefail
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null "http://localhost:9000/minio/health/live"; then
+              echo "minio ready after ${i} probes"
+              break
+            fi
+            sleep 2
+          done
           code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "http://localhost:9000/enprot-cas-test" -u "minioadmin:minioadmin")
-          # MinIO answers 200 on bucket create (S3 proper: 200).
           [ "$code" = "200" ] || { echo "bucket create failed: $code"; exit 1; }
       - name: Test S3 backend
         run: "cargo test --verbose --features vendored-rnp,cas-s3 --lib cas::"
