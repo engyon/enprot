@@ -110,6 +110,10 @@ fn hash_of(blob: &[u8], policy: &dyn crypto::CryptoPolicy) -> Result<String> {
 }
 
 impl CasStore for S3Cas {
+    fn name(&self) -> &'static str {
+        "s3"
+    }
+
     fn save(&self, blob: &[u8], policy: &dyn crypto::CryptoPolicy) -> Result<String> {
         let hash = hash_of(blob, policy)?;
         let key = self.key(&hash);
