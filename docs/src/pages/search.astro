@@ -1,0 +1,81 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="Search · enprot">
+  <section class="max-w-2xl">
+    <h1 class="text-3xl font-bold mb-2">Search</h1>
+    <p class="text-enprot-muted mb-4">
+      Full-text search across every page of the site.
+    </p>
+    <input
+      id="search-input"
+      type="search"
+      placeholder="Search the docs…"
+      autocomplete="off"
+      class="w-full rounded border border-enprot-ink/20 bg-white px-4 py-2
+             font-mono text-sm focus:border-enprot-accent focus:outline-none"
+      aria-label="Search the documentation"
+    />
+    <div id="search-status" class="mt-2 text-sm text-enprot-muted" aria-live="polite"></div>
+    <ul id="search-results" class="mt-4 space-y-4 list-none p-0"></ul>
+  </section>
+
+  <script>
+    // pagefind's index is generated AFTER the astro build (see the
+    // `build` script in package.json), so the module only exists at
+    // runtime — @vite-ignore keeps the bundler from trying to
+    // resolve it at build time.
+    let pagefind: any;
+
+    async function ensureIndex(): Promise<any> {
+      if (!pagefind) {
+        pagefind = await import(/* @vite-ignore */ "/pagefind/pagefind.js");
+      }
+      return pagefind;
+    }
+
+    const input = document.getElementById("search-input") as HTMLInputElement;
+    const status = document.getElementById("search-status")!;
+    const resultsEl = document.getElementById("search-results")!;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(runSearch, 150);
+    });
+
+    async function runSearch(): Promise<void> {
+      const q = input.value.trim();
+      resultsEl.replaceChildren();
+      if (q.length < 2) {
+        status.textContent = "";
+        return;
+      }
+      status.textContent = "Searching…";
+      const index = await ensureIndex();
+      const search = await index.search(q);
+      const shown = search.results.slice(0, 10);
+      for (const result of shown) {
+        const data = await result.data();
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = data.url;
+        a.className = "block rounded border border-enprot-ink/10 bg-white px-4 py-3 hover:border-enprot-accent";
+        const title = document.createElement("div");
+        title.className = "font-semibold";
+        title.textContent = data.meta.title ?? data.url;
+        const excerpt = document.createElement("div");
+        excerpt.className = "text-sm text-enprot-muted mt-1";
+        excerpt.innerHTML = data.excerpt;
+        a.append(title, excerpt);
+        li.append(a);
+        resultsEl.append(li);
+      }
+      status.textContent =
+        search.results.length === 0
+          ? `No results for “${q}”.`
+          : `${search.results.length} result${search.results.length === 1 ? "" : "s"}${shown.length < search.results.length ? ` (showing ${shown.length})` : ""}.`;
+    }
+  </script>
+</Base>
