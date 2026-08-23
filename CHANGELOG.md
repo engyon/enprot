@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.60](https://github.com/engyon/enprot/compare/enprot-v0.5.59...enprot-v0.5.60) - 2026-08-23
+
+### Other
+
+- *(site)* publish the reference docs + 0.5.x reality
+- *(deploy)* remove the emptied extras/ dir — the upload-set guard caught it
+- *(deploy)* completions as a tarball — gh release upload aborts on directories
+- *(deploy)* completions as a tarball — gh release upload aborts on directories
+- *(deploy)* publish the extras artifact — releases shipped binaries only
+
 ## [0.5.59](https://github.com/engyon/enprot/compare/enprot-v0.5.58...enprot-v0.5.59) - 2026-08-22
 
 ### Fixed
