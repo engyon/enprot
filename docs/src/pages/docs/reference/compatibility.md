@@ -1,4 +1,7 @@
-# Compatibility matrix
+---
+title: "Compatibility matrix"
+layout: ../../../layouts/DocPage.astro
+---
 
 Which enprot version's OUTPUT can be consumed by which enprot
 version. Automated by `cross-version.yml` (TODO.complete/60):
