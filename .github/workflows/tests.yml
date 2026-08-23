@@ -142,6 +142,49 @@ jobs:
         if: "startsWith(matrix.os, 'windows')"
         run: cargo test --verbose -- --nocapture
 
+  cas-s3:
+    # Live round-trip of the S3 CAS backend (TODO.complete/27)
+    # against MinIO — SigV4 signing, PUT/GET/HEAD/LIST/DELETE, hash
+    # verification, and NotFound mapping, exercised for real. The
+    # backend itself compiles under the default gates via the
+    # feature's cfg walls; this job is the only place the feature is
+    # TESTED, so it doubles as the rot-guard for the cas-s3 surface.
+    name: CAS S3 backend (MinIO)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "mc ready local || curl -sf http://localhost:9000/minio/health/live"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localhost:9000
+      AWS_ALLOW_HTTP: "1"
+      ENPROT_S3_TEST_SPEC: s3://enprot-cas-test/cas/
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Create test bucket
+        run: |
+          set -euxo pipefail
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "http://localhost:9000/enprot-cas-test" -u "minioadmin:minioadmin")
+          # MinIO answers 200 on bucket create (S3 proper: 200).
+          [ "$code" = "200" ] || { echo "bucket create failed: $code"; exit 1; }
+      - name: Test S3 backend
+        run: "cargo test --verbose --features vendored-rnp,cas-s3 --lib cas::"
+
   coverage:
     name: Code coverage
     runs-on: ubuntu-latest

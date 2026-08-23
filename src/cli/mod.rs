@@ -885,6 +885,12 @@ fn parse_word_password(s: &str) -> std::result::Result<(String, String), String>
 }
 
 fn parse_casdir(s: &str) -> std::result::Result<PathBuf, String> {
+    // URI-shaped CAS specs (memory:, s3://bucket/prefix, …) are
+    // backend selectors for open_cas, not filesystem paths; carry
+    // them through for dispatch there.
+    if s == "memory:" || s == "memory" || s.contains("://") || s == "rekor:" {
+        return Ok(PathBuf::from(s));
+    }
     let p = PathBuf::from(s);
     if p.is_dir() {
         Ok(p)

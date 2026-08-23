@@ -15,6 +15,10 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-DFS-2016",
+    # webpki-roots / webpki-root-certs (Mozilla CA bundle data),
+    # pulled by the cas-s3 feature's rustls transport. Permissive
+    # data license, standard accompaniment of the rustls ecosystem.
+    "CDLA-Permissive-2.0",
     "Unicode-3.0",
     "CC0-1.0",
 ]

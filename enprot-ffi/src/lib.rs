@@ -196,7 +196,8 @@ fn classify_error(err: &enprot::Error) -> c_int {
         | Error::CasHashInvalid { .. }
         | Error::CasHashMismatch { .. }
         | Error::CasNotFound { .. }
-        | Error::CasUnsupported { .. } => ENPROT_ERR_IO,
+        | Error::CasUnsupported { .. }
+        | Error::CasBackend { .. } => ENPROT_ERR_IO,
         Error::Botan(_)
         | Error::CipherUnknown { .. }
         | Error::AeadFailed { .. }
