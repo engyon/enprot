@@ -6,6 +6,7 @@
 
 #![no_main]
 
+use enprot::cas::CasStore;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

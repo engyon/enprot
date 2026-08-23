@@ -1,0 +1,6 @@
+// <( CONFLICT word )>
+// <( OURS )>
+ours line
+// <( THEIRS )>
+theirs line
+// <( END word )>

@@ -91,6 +91,16 @@ jobs:
       - name: Run tests (unix)
         if: "!startsWith(matrix.os, 'windows')"
         run: cargo test --verbose --features vendored-rnp -- --nocapture
+      # The fuzz crate (fuzz/Cargo.toml) is standalone — excluded
+      # from the workspace, so every other gate here skips it and
+      # it bit-rotted once already (CasStore trait moved out of
+      # scope; found 2026-08). One cheap check per PR keeps the
+      # weekly cargo-fuzz runs buildable. Stable-only: libfuzzer-sys
+      # builds fine without the nightly-only sanitizer flags that
+      # `cargo fuzz` itself adds.
+      - name: Check fuzz crate compiles (unix, stable)
+        if: "matrix.rust == 'stable' && startsWith(matrix.os, 'ubuntu')"
+        run: cargo check --manifest-path fuzz/Cargo.toml --features vendored-rnp
       # Windows: install.ps1 builds the full C dep stack from source.
       # vendored-rnp isn't ready on Windows yet (rnp-src 0.1.3 pending).
       - name: Install dependencies (windows)

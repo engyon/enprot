@@ -1,0 +1,114 @@
+name: fuzz
+
+# Coverage-guided fuzzing (TODO.complete/36): runs every target in
+# fuzz/fuzz_targets/ for a bounded wall-clock budget weekly. The
+# proptest suite samples well-formed inputs; libFuzzer explores the
+# adversarial shapes samplers never emit — unterminated directives,
+# malformed PHC strings, pathological separator pairs, 0xFF-split
+# merge inputs.
+#
+# Seeds (fuzz/seeds/<target>/) and dictionaries (fuzz/dicts/) are
+# committed; grown corpora (fuzz/corpus/) are cached across runs so
+# each week's budget extends the last exploration instead of
+# restarting from the seeds. A crash fails the job and the
+# minimizing input is uploaded as an artifact — reproduce locally:
+#   cargo fuzz run <target> fuzz/artifacts/<target>/<file>
+#
+# One job builds all six targets once (the sanitizer build of the
+# C stack dominates; a per-target matrix would rebuild it 6x) and
+# loops the targets sequentially.
+
+on:
+  schedule:
+    - cron: '0 6 * * 3' # Wednesdays 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      seconds_per_target:
+        description: 'libFuzzer -max_total_time per target (seconds)'
+        default: '300'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: full
+  BOTAN_VERSION: 3.7.0
+  PREFIX: /usr
+  CARGO_FUZZ_VERSION: 0.13.2
+
+jobs:
+  fuzz:
+    name: libFuzzer all targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo-fuzz
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo-fuzz
+          key: cargo-fuzz-${{ env.CARGO_FUZZ_VERSION }}-ubuntu
+
+      - name: Install cargo-fuzz
+        run: |
+          if [ ! -x "$HOME/.cargo-fuzz/bin/cargo-fuzz" ]; then
+            cargo install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked --root "$HOME/.cargo-fuzz"
+          fi
+          echo "$HOME/.cargo-fuzz/bin" >> "$GITHUB_PATH"
+
+      - name: Install Botan
+        run: ./ci/install.sh
+
+      - name: Restore fuzz corpora
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-
+
+      - name: Build all targets
+        run: cargo fuzz build --features vendored-rnp -O
+
+      - name: Fuzz each target
+        run: |
+          set -u
+          fails=0
+          for t in parse_no_panic conflict_well_formed parse_extfields \
+                   merge_driver cas_hash_validation separator_round_trip; do
+            mkdir -p "fuzz/corpus/$t"
+            dict=()
+            if [ -f "fuzz/dicts/$t.dict" ]; then
+              dict=(-dict="fuzz/dicts/$t.dict")
+            fi
+            echo "::group::$t"
+            set +e
+            cargo fuzz run --features vendored-rnp -O "$t" \
+              "fuzz/corpus/$t" "fuzz/seeds/$t" -- \
+              -max_total_time="${{ inputs.seconds_per_target || 300 }}" \
+              -timeout=25 -rss_limit_mb=4096 -max_len=16384 "${dict[@]}"
+            rc=$?
+            set -e
+            echo "::endgroup::"
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::$t exited $rc — crash artifact in fuzz/artifacts/$t"
+              fails=1
+            fi
+          done
+          exit "$fails"
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: fuzz/artifacts/
+          if-no-files-found: ignore

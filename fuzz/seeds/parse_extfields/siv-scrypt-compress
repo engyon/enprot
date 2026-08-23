@@ -1,0 +1,1 @@
+WORD cipher:aes-256-siv pbkdf:$scrypt$ln=2,p=1,r=1$AQIDBAUGBwg= compress:zlib

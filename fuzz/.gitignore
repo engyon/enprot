@@ -1,0 +1,6 @@
+# cargo-fuzz runtime state — never commit grown corpora or crashes;
+# the seed corpus lives in seeds/ and is tracked.
+target/
+corpus/
+artifacts/
+coverage/

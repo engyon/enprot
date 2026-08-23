@@ -7,6 +7,17 @@ edition = "2024"
 [package.metadata]
 cargo-fuzz = true
 
+# Standalone crate, not a workspace member (cargo-fuzz template
+# convention): cargo fuzz manages its own build, and workspace
+# inheritance would pull in the main crate's target dir.
+[workspace]
+
+[features]
+# Mirrors the root crate's vendored-rnp: CI fuzzes with librnp
+# built from source (no system librnp on the runners); local runs
+# against brew librnp just omit the feature.
+vendored-rnp = ["enprot/vendored-rnp"]
+
 [dependencies]
 libfuzzer-sys = "0.4"
 enprot = { path = ".." }
