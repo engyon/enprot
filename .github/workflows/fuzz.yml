@@ -89,7 +89,7 @@ jobs:
           fails=0
           for t in parse_no_panic conflict_well_formed parse_extfields \
                    merge_driver cas_hash_validation separator_round_trip; do
-            mkdir -p "fuzz/corpus/$t"
+            mkdir -p "fuzz/corpus/$t" "fuzz/seeds/$t"
             dict=()
             if [ -f "fuzz/dicts/$t.dict" ]; then
               dict=(-dict="fuzz/dicts/$t.dict")
