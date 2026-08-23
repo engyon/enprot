@@ -175,18 +175,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
         run: ./ci/install.sh
-      - name: Create test bucket (waits for MinIO readiness)
+      - name: Create test bucket (mc; waits for MinIO readiness)
+        # The S3 API needs SigV4-signed requests — curl with basic
+        # auth gets a 403 — so bucket creation goes through the
+        # MinIO client, whose alias-set also doubles as the
+        # readiness probe.
         run: |
           set -euxo pipefail
+          curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/mc
+          chmod +x /tmp/mc
           for i in $(seq 1 30); do
-            if curl -sf -o /dev/null "http://localhost:9000/minio/health/live"; then
+            if /tmp/mc alias set local http://localhost:9000 minioadmin minioadmin >/dev/null 2>&1; then
               echo "minio ready after ${i} probes"
               break
             fi
             sleep 2
           done
-          code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "http://localhost:9000/enprot-cas-test" -u "minioadmin:minioadmin")
-          [ "$code" = "200" ] || { echo "bucket create failed: $code"; exit 1; }
+          /tmp/mc mb --ignore-existing local/enprot-cas-test
       - name: Test S3 backend
         run: "cargo test --verbose --features vendored-rnp,cas-s3 --lib cas::"
 
