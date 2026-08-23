@@ -55,10 +55,20 @@ impl S3Cas {
                 reason: format!("S3Cas cannot serve scheme '{}'", url.scheme()),
             });
         }
-        let (store, prefix) = object_store::parse_url(&url).map_err(|e| Error::InvalidArg {
-            arg: "--casdir",
-            reason: format!("cannot open S3 CAS '{spec}': {e}"),
-        })?;
+        // AmazonS3Builder::from_env() is what loads the credential
+        // chain (AWS_ACCESS_KEY_ID/…, AWS_ENDPOINT_URL,
+        // AWS_ALLOW_HTTP); parse_url alone builds a store with no
+        // credentials, whose requests then fall through to the EC2
+        // IMDS endpoint — wrong everywhere except a real EC2 host.
+        let store = object_store::aws::AmazonS3Builder::from_env()
+            .with_url(url.clone())
+            .build()
+            .map_err(|e| Error::InvalidArg {
+                arg: "--casdir",
+                reason: format!("cannot open S3 CAS '{spec}': {e}"),
+            })?;
+        let store: Box<dyn ObjectStore> = Box::new(store);
+        let prefix = Path::from(url.path().trim_start_matches('/'));
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
