@@ -41,6 +41,8 @@ pub fn encrypt(
     cache: &mut Option<PBKDFCache>,
     policy: &dyn CryptoPolicy,
 ) -> Result<(Vec<u8>, BTreeMap<String, String>)> {
+    #[cfg(feature = "telemetry")]
+    let started = std::time::Instant::now();
     warn_legacy_pbkdf(&pbkdfopts.alg);
 
     policy
@@ -70,7 +72,10 @@ pub fn encrypt(
     let pt_final = apply_compression(pt, cipheropts.compress, &mut extfields)?;
 
     let mut enc = enc;
-    Ok((enc.process(&key, &iv, &[], &pt_final)?, extfields))
+    let out = enc.process(&key, &iv, &[], &pt_final)?;
+    #[cfg(feature = "telemetry")]
+    crate::telemetry::metrics::observe_encrypt_duration(started.elapsed());
+    Ok((out, extfields))
 }
 
 /// Warn when the deprecated legacy PBKDF is in use.

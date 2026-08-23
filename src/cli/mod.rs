@@ -699,6 +699,26 @@ pub struct CommonArgs {
     #[arg(long, global = true, value_name = "PATH")]
     pub policy_file: Option<PathBuf>,
 
+    /// Export spans and metrics to an OTLP/HTTP collector at
+    /// ENDPOINT (e.g. http://localhost:4318). Requires a build with
+    /// the `telemetry` feature; the flag errors with a rebuild hint
+    /// otherwise. See docs/observability for the metric catalog.
+    #[arg(long, global = true, value_name = "URL")]
+    pub otel_endpoint: Option<String>,
+
+    /// Service name reported to the OTLP collector.
+    #[arg(long, global = true, value_name = "NAME", default_value = "enprot")]
+    pub otel_service_name: String,
+
+    /// Trace sampling rate (0.0–1.0; 1.0 exports everything).
+    #[arg(long, global = true, value_name = "RATE", default_value_t = 1.0)]
+    pub otel_sample_rate: f64,
+
+    /// Extra headers for the OTLP collector (e.g. api keys), as
+    /// comma-separated k=v pairs.
+    #[arg(long, global = true, value_name = "K=V,...", value_parser = parse_otel_headers_flag)]
+    pub otel_headers: Option<std::collections::HashMap<String, String>>,
+
     /// Number of parallel threads for multi-file processing (default 1).
     /// When > 1, each file is processed in its own thread with an
     /// independent ParseOps instance — no shared mutable state.
@@ -756,6 +776,10 @@ impl CommonArgs {
             format: output::OutputFormat::Text,
             inline: false,
             policy_file: None,
+            otel_endpoint: None,
+            otel_service_name: "enprot".into(),
+            otel_sample_rate: 1.0,
+            otel_headers: None,
             jobs: 1,
             dry_run: false,
             audit_log: None,
@@ -901,34 +925,38 @@ fn parse_positive_usize(s: &str) -> std::result::Result<usize, String> {
     Ok(n)
 }
 
+fn parse_otel_headers_flag(
+    s: &str,
+) -> std::result::Result<std::collections::HashMap<String, String>, String> {
+    crate::telemetry::parse_otel_headers(s).map_err(|e| e.to_string())
+}
+
 pub fn app_main<I, T>(args: I) -> Result<()>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    // Initialize tracing subscriber. Honors RUST_LOG if set;
-    // otherwise picks a level from --verbose/--quiet after parsing.
-    let default_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
-    tracing_subscriber::fmt()
-        .with_env_filter(default_filter)
-        .with_target(false)
-        .try_init()
-        .ok(); // ok() — don't fail if another subscriber is already set (tests)
-
-    // <( ENCRYPTED AUTHOR )>
-    // <( DATA X417HVMRRAs6Z1xGo5yY4TxUQ2tpAHEKQ1sg9+kfku5uUikK3y2tODtsUiGqfRGW )>
-    // <( DATA xUCGYFu02BCdqPM7uuX5UNvbfrLvKkj6gLYwg/cr42PJmr4o5xnw1qo= )>
-    // <( END AUTHOR )>
-
     let cli = Cli::parse_from(args);
 
-    // Map -v / -q to tracing log level after parsing.
-    if cli.common.verbose {
-        // Re-init at debug for -v.
-        // (subscriber is already set; this just adjusts the filter
-        // via the env var for any child processes.)
-    }
+    // Install the tracing subscriber AFTER parsing so the --otel-*
+    // flags govern export; without an endpoint this is exactly the
+    // old fmt-to-stderr subscriber (ENPROT_LOG, default `warn`).
+    // The guard flushes the OTLP exporters on drop — when app_main
+    // returns.
+    let otel_cfg = cli
+        .common
+        .otel_endpoint
+        .as_ref()
+        .map(|endpoint| {
+            crate::telemetry::OtelConfig::new(
+                endpoint.clone(),
+                cli.common.otel_service_name.clone(),
+                cli.common.otel_sample_rate,
+                cli.common.otel_headers.clone().unwrap_or_default(),
+            )
+        })
+        .transpose()?;
+    let _otel_guard = crate::telemetry::init(otel_cfg.as_ref())?;
 
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "enprot starting");
     // Single dispatch site. Bypass arms (subcommands that don't need

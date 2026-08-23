@@ -50,6 +50,11 @@ use crate::etree::ParseOps;
 /// All hashes are SHA3-256 hex strings of length 64. Backends that
 /// use other hash algorithms internally must map to/from SHA3-256.
 pub trait CasStore: Send + Sync {
+    /// Backend identifier for diagnostics and the
+    /// `enprot_cas_operations_total{backend}` metric label
+    /// (TODO.complete/38). Stable, lowercase, no spaces.
+    fn name(&self) -> &'static str;
+
     /// Save a blob, return its content hash. Idempotent.
     fn save(&self, blob: &[u8], policy: &dyn crypto::CryptoPolicy) -> Result<String>;
 
@@ -99,6 +104,10 @@ impl LocalCas {
 }
 
 impl CasStore for LocalCas {
+    fn name(&self) -> &'static str {
+        "localcas"
+    }
+
     fn save(&self, blob: &[u8], policy: &dyn crypto::CryptoPolicy) -> Result<String> {
         let hexhash = crypto::hexdigest("sha3-256", blob, policy)?;
         let path = self.path_for(&hexhash);
@@ -197,6 +206,10 @@ impl Default for MemoryCas {
 }
 
 impl CasStore for MemoryCas {
+    fn name(&self) -> &'static str {
+        "memorycas"
+    }
+
     fn save(&self, blob: &[u8], policy: &dyn crypto::CryptoPolicy) -> Result<String> {
         let hexhash = crypto::hexdigest("sha3-256", blob, policy)?;
         let mut map = self.entries.write().unwrap();
@@ -246,12 +259,16 @@ impl CasStore for MemoryCas {
 #[tracing::instrument(skip(paops), fields(hash = %hexhash))]
 pub fn load(hexhash: &str, paops: &mut ParseOps) -> Result<Vec<u8>> {
     let policy: &dyn crypto::CryptoPolicy = &*paops.crypto.policy;
+    #[cfg(feature = "telemetry")]
+    crate::telemetry::metrics::record_cas_operation("load", paops.io.cas.name());
     paops.io.cas.load(hexhash, policy)
 }
 
 #[tracing::instrument(skip(blob, paops), fields(bytes = blob.len()))]
 pub fn save(blob: Vec<u8>, paops: &mut ParseOps) -> Result<String> {
     let policy: &dyn crypto::CryptoPolicy = &*paops.crypto.policy;
+    #[cfg(feature = "telemetry")]
+    crate::telemetry::metrics::record_cas_operation("save", paops.io.cas.name());
     let hash = paops.io.cas.save(&blob, policy);
     tracing::Span::current().record(
         "hash",

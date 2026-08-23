@@ -63,5 +63,12 @@ pub fn sign_anchor(
 /// fingerprint. Returns `Ok(())` if the signature is valid, `Err` if
 /// not or if the pubkey doesn't match the recorded fingerprint.
 pub fn verify_anchor(signed: &SignedAnchor, pubkey_pem: &str) -> Result<()> {
-    signed.verify(pubkey_pem)
+    let result = signed.verify(pubkey_pem);
+    #[cfg(feature = "telemetry")]
+    crate::telemetry::metrics::record_anchor_verification(if result.is_ok() {
+        "ok"
+    } else {
+        "failed"
+    });
+    result
 }
