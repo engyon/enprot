@@ -2,8 +2,8 @@
 import Base from "../../../layouts/Base.astro";
 ---
 
-<Base title="Stage 0 — Shipped (0.4.0) · enprot">
-  <h1 class="text-3xl font-bold mb-3">Stage 0 — shipped in 0.4.0</h1>
+<Base title="Stage 0 — Shipped (0.5.x) · enprot">
+  <h1 class="text-3xl font-bold mb-3">Stage 0 — shipped (0.4 → 0.5.x)</h1>
   <p class="text-enprot-muted mb-6">The foundation everything else builds on.</p>
 
   <section class="mb-8">
@@ -16,6 +16,13 @@ import Base from "../../../layouts/Base.astro";
       <li><strong>Subcommand CLI</strong>: encrypt, decrypt, store, fetch, encrypt-store, passthrough, verify, list, completions, keygen, sign, verify-sig, capabilities.</li>
       <li><strong>Host-language presets</strong>: <code>--lang raw|c|python|html|latex</code>.</li>
       <li><strong>Capability model</strong>: formal Viewer/Reader/Decryptor/Signer/Verifier tiers.</li>
+      <li><strong>Chain anchors</strong> (0.5): signed CHAIN blocks, multi-sig, Merkle proofs, <code>verify-chain</code>, snapshot/pin.</li>
+      <li><strong>Operational audit trail</strong> (0.5): append-only signed JSONL via <code>--audit-log</code>; query/verify with <code>enprot audit</code>.</li>
+      <li><strong>KEM encryption</strong> (0.5): ML-KEM multi-recipient segments alongside password AEAD.</li>
+      <li><strong>Streaming mode</strong> (0.5): <code>--streaming</code> — memory bounded by the largest block, byte-identical output.</li>
+      <li><strong>Git merge driver</strong> (0.5): <code>enprot merge</code> — block-level commutation for lock-free collaboration.</li>
+      <li><strong>Provenance + SBOM</strong> (0.5): manifests, attestations, and self-describing SPDX/CycloneDX via <code>enprot sbom</code>.</li>
+      <li><strong>Reproducible builds</strong> (0.5): byte-identical release binaries, verified in CI.</li>
     </ul>
   </section>
 

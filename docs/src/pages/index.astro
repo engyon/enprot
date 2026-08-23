@@ -2,8 +2,8 @@
 import Base from "../layouts/Base.astro";
 
 const stages = [
-  { n: "0", title: "Shipped (0.4.0)", href: "/docs/stages/0",
-    summary: "CAS, 4 transforms, deterministic AEAD, Ed25519 signatures, subcommand CLI." },
+  { n: "0", title: "Shipped (0.5.x)", href: "/docs/stages/0",
+    summary: "CAS, 4 transforms, deterministic AEAD, Ed25519 + PQC, chain anchors, audit trail, SBOM, streaming, merge driver, subcommand CLI." },
   { n: "1", title: "Chain anchor DAG", href: "/docs/stages/1",
     summary: "Append-only chain of mutations with cryptographic back-pointers. The blockchain-in-a-file core." },
   { n: "2", title: "PQC: ML-DSA, ML-KEM, composites", href: "/docs/stages/2",
@@ -53,6 +53,28 @@ const principles = [
       <a href="/docs/architecture" class="px-4 py-2 bg-enprot-accent text-white rounded hover:opacity-90">Read the architecture →</a>
       <a href="https://github.com/engyon/enprot" class="px-4 py-2 border border-enprot-ink/20 rounded hover:bg-enprot-ink/5">Source on GitHub</a>
     </div>
+  </section>
+
+  <section class="mb-12">
+    <h2 class="text-2xl font-semibold mb-4">Install</h2>
+    <p class="mb-3">
+      Prebuilt static binaries for Linux (musl, x86_64 + aarch64), macOS
+      (Intel + Apple Silicon), and Windows (MSVC) ship with every
+      <a href="https://github.com/engyon/enprot/releases" class="text-enprot-accent underline">release</a>,
+      alongside man page, shell completions, and SPDX/CycloneDX SBOMs.
+    </p>
+    <pre class="bg-enprot-ink text-enprot-paper p-4 rounded overflow-x-auto text-sm"><code># From source (Botan 3 + librnp required)
+cargo install enprot
+
+# Homebrew
+brew install rnp botan   # build deps; then cargo install, or grab a release tarball
+
+# Verify the binary you downloaded
+enprot --version</code></pre>
+    <p class="mt-3 text-enprot-muted">
+      Cross-version compatibility is continuously verified — see the
+      <a href="/docs/reference/compatibility" class="text-enprot-accent underline">compatibility matrix</a>.
+    </p>
   </section>
 
   <section class="mb-12">

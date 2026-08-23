@@ -45,7 +45,7 @@ env:
   EXE_NAME: enprot
   # Reproducible-build timestamp: pinned to the deploy tag's commit
   # time so rustc/linker timestamps are stable across reruns (see
-  # docs/reproducible-builds.md). Overridden per-job from git after
+  # docs/src/pages/docs/reference/reproducible-builds.md). Overridden per-job from git after
   # checkout.
   SOURCE_DATE_EPOCH: '0'
   # Resolved tag for both trigger types:

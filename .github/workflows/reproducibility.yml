@@ -3,7 +3,7 @@ name: reproducibility
 # Reproducibility check (TODO.complete/45): rebuild the same commit
 # twice and require byte-identical binaries. Supply-chain trust
 # depends on third parties being able to verify a released binary
-# against its source — see docs/reproducible-builds.md.
+# against its source — see docs/src/pages/docs/reference/reproducible-builds.md.
 #
 # Method (x86_64-unknown-linux-musl, matching the deploy artifact):
 #   build 1 -> copy binary away -> clean -> shuffle source mtimes ->
@@ -18,7 +18,7 @@ name: reproducibility
 # continue-on-error until a verified-green streak exists — the
 # established pattern (OHOS, arm64 leg); drop the flag once the
 # build is proven reproducible, and triage every mismatch against
-# the known-issues list in docs/reproducible-builds.md.
+# the known-issues list in docs/src/pages/docs/reference/reproducible-builds.md.
 
 on:
   schedule:
@@ -89,7 +89,7 @@ jobs:
           set -euxo pipefail
           cat /tmp/repro/build1.sha256 /tmp/repro/build2.sha256
           if ! cmp /tmp/repro/enprot-build1 /tmp/repro/enprot-build2; then
-            echo "::error::builds of the same commit differ — see docs/reproducible-builds.md#known-non-reproducible-elements"
+            echo "::error::builds of the same commit differ — see docs/src/pages/docs/reference/reproducible-builds.md#known-non-reproducible-elements"
             exit 1
           fi
           echo "byte-identical: reproducible"
