@@ -61,6 +61,7 @@ pub mod resolve;
 pub mod sbom;
 pub mod scm;
 pub mod sigstore;
+pub mod telemetry;
 pub mod utils;
 
 pub use error::{Error, Result};

@@ -56,6 +56,19 @@ vendored-rnp = ["rnp-rs/vendored"]
 # a no-op stub — the Botan → RustCrypto migration is tracked in
 # TODO.complete/14.
 wasm = []
+# OpenTelemetry OTLP export (TODO.complete/38): --otel-endpoint
+# wires the existing tracing spans into an OTLP/HTTP collector and
+# exports the five enprot_* metrics. Gated because the
+# opentelemetry + reqwest tree is heavy; the flags themselves exist
+# in every build so users get an actionable error instead of a
+# silent no-op. No measurable cost when the feature is on but no
+# endpoint is given: the SDK installs no-op providers.
+telemetry = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
 
 [lib]
 crate-type = ["rlib"]
@@ -80,6 +93,13 @@ clap           = { version = "4.5", features = ["derive", "wrap_help"], optional
 clap_complete  = { version = "4", optional = true }
 tracing        = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# OTLP telemetry (TODO.complete/38), behind the `telemetry` feature.
+# http-proto + reqwest (blocking) — the tonic/gRPC client would drag
+# the full tokio/tower stack into a synchronous CLI for no benefit.
+opentelemetry = { version = "0.32", optional = true, default-features = false, features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.32", optional = true, default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", optional = true, default-features = false, features = ["http-proto", "reqwest-blocking-client"] }
+tracing-opentelemetry = { version = "0.33", optional = true, default-features = false }
 phf            = { version = "0.14", features = ["macros"] }
 thiserror      = "2"
 serde          = { version = "1", features = ["derive"] }

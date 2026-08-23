@@ -312,6 +312,10 @@ pub fn run(cfg: RunConfig) -> Result<()> {
     )?;
 
     // --- File processing ---
+    // Metric label for the per-file counters: the subcommand's
+    // operation (`encrypt`, `fetch`, …); `passthrough` records none
+    // (op == None means no transformation ran).
+    let op_label = op.as_ref().map(|(_, k)| k.label()).unwrap_or("passthrough");
     // When --jobs > 1 and we have multiple files, process them in
     // parallel using scoped threads. Each thread builds its own
     // ParseOps from the same RunConfig — no shared mutable state.
@@ -333,7 +337,7 @@ pub fn run(cfg: RunConfig) -> Result<()> {
                     s.spawn(move || -> Result<()> {
                         let mut local_paops = cfg_ref.build_paops(policy_name_ref)?;
                         for (path_in, path_out) in chunk.iter() {
-                            process_one_file(path_in, path_out, &mut local_paops)?;
+                            process_one_file(path_in, path_out, op_label, &mut local_paops)?;
                         }
                         Ok(())
                     })
@@ -350,7 +354,7 @@ pub fn run(cfg: RunConfig) -> Result<()> {
             if files.len() > 1 && !common.quiet {
                 eprintln!("[{}/{}] {}", i + 1, files.len(), path_in);
             }
-            process_one_file(path_in, path_out, &mut paops)?;
+            process_one_file(path_in, path_out, op_label, &mut paops)?;
         }
         Ok(())
     }
@@ -407,8 +411,14 @@ fn join_with_basename(dir: &Path, input: &str) -> String {
     dir.join(base).to_string_lossy().into_owned()
 }
 
-#[tracing::instrument(skip(paops), fields(path = %path_in))]
-fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Result<()> {
+#[tracing::instrument(skip(paops, operation), fields(path = %path_in))]
+#[cfg_attr(not(feature = "telemetry"), allow(unused_variables))]
+fn process_one_file(
+    path_in: &str,
+    path_out: &str,
+    operation: &'static str,
+    paops: &mut ParseOps,
+) -> Result<()> {
     tracing::debug!(path_in, path_out, "processing file");
 
     let reader_in: Box<dyn BufRead> = if path_in == "-" {
@@ -503,6 +513,12 @@ fn process_one_file(path_in: &str, path_out: &str, paops: &mut ParseOps) -> Resu
             "Write to {path_out} failed: {e}"
         )))
     })?;
+    #[cfg(feature = "telemetry")]
+    {
+        let bytes = std::fs::metadata(path_in).map(|m| m.len()).unwrap_or(0);
+        crate::telemetry::metrics::record_file_processed(operation);
+        crate::telemetry::metrics::record_bytes_processed(operation, bytes);
+    }
     Ok(())
 }
 

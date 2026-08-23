@@ -101,6 +101,16 @@ jobs:
       - name: Check fuzz crate compiles (unix, stable)
         if: "matrix.rust == 'stable' && startsWith(matrix.os, 'ubuntu')"
         run: cargo check --manifest-path fuzz/Cargo.toml --features vendored-rnp
+      # The OTLP export feature (TODO.complete/38) is opt-in and
+      # therefore invisible to the default-build gates; keep its API
+      # surface compiling (tests included) and its unit tests green
+      # on one leg. The opentelemetry tree is heavy — check, don't
+      # re-run the whole suite with the feature on.
+      - name: Check + unit-test telemetry feature (ubuntu, stable)
+        if: "matrix.rust == 'stable' && startsWith(matrix.os, 'ubuntu')"
+        run: |
+          cargo check --verbose --features vendored-rnp,telemetry --all-targets
+          cargo test --verbose --features vendored-rnp,telemetry --lib telemetry
       # Windows: install.ps1 builds the full C dep stack from source.
       # vendored-rnp isn't ready on Windows yet (rnp-src 0.1.3 pending).
       - name: Install dependencies (windows)
