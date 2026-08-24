@@ -258,6 +258,8 @@ jobs:
               HOST_CXX: g++
               HOST_AR: ar
               EXE_NAME: enprot.exe
+              # issue #368 debug: sampler on for the hang leg only
+              WGNU_DEBUG: "1"
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             env:

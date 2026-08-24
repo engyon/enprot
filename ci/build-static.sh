@@ -48,6 +48,33 @@ case "$TARGET" in
   *-linux-musl) features="vendored-rnp,botan/vendored" ;;
   *)            features="vendored-rnp" ;;
 esac
+# Issue #368 debug instrumentation (temporary): the windows-gnu leg
+# stalls inside `Build (unix)` with no output for its full 240-min
+# timeout. A background sampler tails the cross container's docker
+# logs + top into the job log so the stall point (docker build vs
+# cargo vs a specific C make) is visible in the next dispatched
+# test build. No-op for other legs / local runs.
+if [ "${WGNU_DEBUG:-0}" = "1" ]; then
+  (
+    end=$((SECONDS + 14400))
+    while [ $SECONDS -lt $end ]; do
+      sleep 60
+      {
+        echo "== wgnu-sample t=${SECONDS}s =="
+        docker ps --format '{{.ID}} {{.Image}} {{.Status}}' 2>/dev/null
+        cid=$(docker ps --filter "ancestor=$PROJECT_NAME/cross-build:$TARGET" -q | head -1)
+        if [ -n "$cid" ]; then
+          echo "-- docker top --"
+          docker top "$cid" -o pid,ppid,etime,cmd 2>/dev/null | tail -n 15
+          echo "-- container log tail --"
+          docker logs --tail 20 "$cid" 2>&1
+        fi
+      } || true
+    done
+  ) &
+  WGnuSampler=$!
+fi
+
 if ! cross -vv build --target "$TARGET" --release --features "$features"; then
   echo "=== build failed; dumping assembled config and retrying without -vv ==="
   echo "--- .cargo/config.toml ---"; cat .cargo/config.toml || true
@@ -58,5 +85,7 @@ if ! cross -vv build --target "$TARGET" --release --features "$features"; then
   cross build --target "$TARGET" --release --features "$features" 2>&1 | tail -n 120
   exit 1
 fi
+
+[ -n "${WGnuSampler:-}" ] && kill "$WGnuSampler" 2>/dev/null || true
 
 . "ci/build-static/post/$TARGET.sh"
