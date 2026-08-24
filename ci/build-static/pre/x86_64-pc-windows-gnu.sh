@@ -25,8 +25,32 @@ RUN apt-get -y update && \\
       python3 cmake git ca-certificates make gcc g++ && \\
     rm -rf /var/lib/apt/lists/*
 
+COPY tools/ /usr/local/bin/
 COPY wrappers/ /usr/local/bin/
 EOF
+
+# mingw filter wrappers: cmake inside rnp-src assumes a Linux build
+# (no CMAKE_SYSTEM_NAME is set) and feeds ELF-only flags to the
+# compilers — `-rdynamic` on json-c's sample apps is fatal to mingw.
+# Same pattern as the musl legs' zig filter: strip what mingw
+# cannot parse, exec the real posix-variant toolchain.
+mkdir -p "$ctx/tools"
+for t in cc c++; do
+  real="x86_64-w64-mingw32-gcc-posix"
+  [ "$t" = c++ ] && real="x86_64-w64-mingw32-g++-posix"
+  cat > "$ctx/tools/mingw-$t" <<MW
+#!/bin/sh
+args=
+for a in "\$@"; do
+  case "\$a" in
+    -rdynamic) ;;              # ELF-only; cmake injects it assuming Linux
+    *) args="\$args \$a" ;;
+  esac
+done
+eval exec "$real" "\$args"
+MW
+  chmod +x "$ctx/tools/mingw-$t"
+done
 
 # Repo-relative: on Actions $0 is the runner temp wrapper.
 . ci/build-static/pre/wrappers.sh
@@ -36,8 +60,8 @@ EOF
 # inherit the same env — a static mingw assignment poisons the
 # host copy (issue #368).
 make_wrappers "$ctx" "$TARGET" \
-  x86_64-w64-mingw32-gcc-posix x86_64-w64-mingw32-g++-posix \
-  x86_64-w64-mingw32-gcc-ar-posix x86_64-w64-mingw32-g++-posix
+  mingw-cc mingw-c++ \
+  x86_64-w64-mingw32-gcc-ar-posix mingw-c++
 
 # Botan's --os=windows build archives as botan-3.lib, but both
 # consumers want libbotan-3.a: rustc's -l static=botan-3 on
