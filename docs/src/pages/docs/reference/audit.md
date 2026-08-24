@@ -74,8 +74,8 @@ failures. Exits non-zero on any failure or unsigned record.
 
 ## Auditing the newer surfaces
 
-Two 0.5.61 additions move data outside the process; here is what the
-audit trail says about each:
+Three additions across 0.5.61–0.5.62 move data outside the process;
+here is what the audit trail says about each:
 
 - **OTLP telemetry** (`--otel-endpoint`, see
   [Observability](/docs/reference/observability)) exports **span and
@@ -87,7 +87,7 @@ audit trail says about each:
   telemetry, not evidence. Sampling (`--otel-sample-rate < 1.0`)
   means telemetry is intentionally incomplete — never treat a
   collector's view as the audit record.
-- **Remote CAS** (`-c s3://…`, see
+- **Remote CAS, S3** (`-c s3://…`, see
   [CAS backends](/docs/reference/cas-backends)) stores ciphertext
   blobs and their SHA3-256 names on external infrastructure. The
   audit trail records the invocation (`files`, `words`, outcome) but
@@ -96,6 +96,14 @@ audit trail says about each:
   content hash before returning bytes, so a tampered object is
   detected (and refused) at read time, and the failure lands in the
   audit trail as a non-zero `exit`.
+- **Remote CAS, IPFS** (`-c ipfs://…`): same principles with IPFS
+  mechanics. Blobs are pinned on save — the pin set IS the
+  retention contract; an unpinned blob is collectable by the node,
+  which surfaces as a `CasNotFound` on a later `fetch` (a visible
+  missing-blob event, not a silent gap). Reads are pin-gated and
+  re-hashed on return; tampering is detected and audited the same
+  way. The audit trail shows what enprot did — pair with the node's
+  own logs for infrastructure-side evidence.
 
 ## Relationship to chain anchors
 
