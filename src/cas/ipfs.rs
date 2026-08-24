@@ -135,18 +135,20 @@ impl CasStore for IpfsCas {
             .post(format!("{}/api/v0/add?pin=true&cid-version=1", self.base))
             .multipart(form)
             .send()
-            .map_err(|e| self.rpc_error("add", e))?;
+            .map_err(|e| self.rpc_error("block/put", e))?;
         if !resp.status().is_success() {
             return Err(Error::CasBackend {
                 backend: "ipfs",
-                op: "add",
+                op: "block/put",
                 detail: format!("HTTP {}", resp.status()),
             });
         }
         // The node computed its own CID; it must equal ours or the
         // content/naming contract is broken (wrong hash function,
         // codec drift, truncated upload).
-        let body = resp.text().map_err(|e| self.rpc_error("add (read)", e))?;
+        let body = resp
+            .text()
+            .map_err(|e| self.rpc_error("block/put (read)", e))?;
         let returned = serde_json::from_str::<serde_json::Value>(&body)
             .ok()
             .and_then(|v| v.get("Hash").and_then(|h| h.as_str()).map(String::from));
@@ -158,7 +160,7 @@ impl CasStore for IpfsCas {
             }),
             None => Err(Error::CasBackend {
                 backend: "ipfs",
-                op: "add",
+                op: "block/put",
                 detail: format!("unparsable response: {body}"),
             }),
         }
@@ -169,9 +171,9 @@ impl CasStore for IpfsCas {
         let cid = cid_for_hash(hash)?;
         let resp = self
             .api
-            .post(format!("{}/api/v0/cat?arg={cid}", self.base))
+            .post(format!("{}/api/v0/block/get?arg={cid}", self.base))
             .send()
-            .map_err(|e| self.rpc_error("cat", e))?;
+            .map_err(|e| self.rpc_error("block/get", e))?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND
             || resp.status() == reqwest::StatusCode::BAD_REQUEST
         {
@@ -184,7 +186,7 @@ impl CasStore for IpfsCas {
             }
             return Err(Error::CasBackend {
                 backend: "ipfs",
-                op: "cat",
+                op: "block/get",
                 detail: format!("HTTP {body}"),
             });
         }
