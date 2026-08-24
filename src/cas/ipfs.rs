@@ -159,7 +159,7 @@ impl CasStore for IpfsCas {
             None => Err(Error::CasBackend {
                 backend: "ipfs",
                 op: "add",
-                detail: format!("unparseable response: {body}"),
+                detail: format!("unparsable response: {body}"),
             }),
         }
     }
