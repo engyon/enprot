@@ -51,11 +51,15 @@ case "\$OUT_DIR" in
   */x86_64-pc-windows-gnu/*)
     x86_64-w64-mingw32-gcc-ar-posix "\$@"
     st=\$?
-    last=
-    for a in "\$@"; do last=\$a; done
-    case \$last in
-      */botan-3.lib) cp -f "\$last" "\${last%botan-3.lib}libbotan-3.a" 2>/dev/null || true ;;
-    esac
+    # `ar crs <lib> <obj>...` puts the ARCHIVE first, objects after —
+    # the previous last-arg match never fired (last = the .obj), so
+    # libbotan-3.a was never produced and rnp-src's lib-name check
+    # panicked. Scan every argument instead.
+    for a in "\$@"; do
+      case \$a in
+        */botan-3.lib) cp -f "\$a" "\${a%botan-3.lib}libbotan-3.a" 2>/dev/null || true ;;
+      esac
+    done
     exit \$st
     ;;
   *) exec /usr/bin/ar "\$@" ;;
