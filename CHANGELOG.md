@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.63](https://github.com/engyon/enprot/compare/enprot-v0.5.62...enprot-v0.5.63) - 2026-08-24
+
+### Other
+
+- *(site)* reflect 0.5.62 — IPFS CAS on the shipped list and in the audit guide
+
 ## [0.5.62](https://github.com/engyon/enprot/compare/enprot-v0.5.61...enprot-v0.5.62) - 2026-08-24
 
 ### Added
