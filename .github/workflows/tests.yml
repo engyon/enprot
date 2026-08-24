@@ -195,6 +195,42 @@ jobs:
       - name: Test S3 backend
         run: "cargo test --verbose --features vendored-rnp,cas-s3 --lib cas::"
 
+  cas-ipfs:
+    # Live round-trip of the IPFS CAS backend (TODO.complete/27)
+    # against a real Kubo node: add/cat/pin/ls/rm, CID↔hash purity,
+    # re-hash verification, NotFound mapping. Also the feature's
+    # rot-guard (default gates never compile it). The kubo image's
+    # default CMD runs the daemon with the RPC API bound to
+    # 0.0.0.0:5001; no health probe (no curl in image) — the test
+    # itself retries via reqwest timeouts... see retry in run step.
+    name: CAS IPFS backend (Kubo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      kubo:
+        image: ipfs/kubo:latest
+        ports:
+          - 5001:5001
+    env:
+      ENPROT_IPFS_TEST_SPEC: ipfs://localhost:5001
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Wait for Kubo RPC
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null -X POST "http://localhost:5001/api/v0/id"; then
+              echo "kubo ready after ${i} probes"; exit 0
+            fi
+            sleep 2
+          done
+          echo "kubo RPC never became ready"; exit 1
+      - name: Test IPFS backend
+        run: "cargo test --verbose --features vendored-rnp,cas-ipfs --lib cas::"
+
   coverage:
     name: Code coverage
     runs-on: ubuntu-latest

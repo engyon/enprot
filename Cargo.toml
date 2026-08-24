@@ -50,6 +50,13 @@ sigstore = []
 # multiple-definition link errors. Only the Docker cross builds
 # need a vendored Botan (no system one in the containers); they
 # request it explicitly: see ci/build-static.sh.
+# IPFS-backed CAS (TODO.complete/27): ipfs://host:port speaks the
+# Kubo RPC (api/v0 add/cat/pin/ls) over reqwest. Blobs are named by
+# their SHA3-256 digest, which maps 1:1 onto CIDv1 raw multihash —
+# no sidecar mapping. Reuses the reqwest + runtime deps from cas-s3
+# (shared with that feature's transport).
+cas-ipfs = ["dep:reqwest", "dep:cid", "dep:multibase"]
+
 vendored-rnp = ["rnp-rs/vendored"]
 # S3-backed CAS (TODO.complete/27). object_store handles SigV4
 # signing, credential chains, and retries — signing code is never
@@ -117,6 +124,12 @@ phf            = { version = "0.14", features = ["macros"] }
 # actionable errors until requested. object_store's HTTP layer is rustls (deny.toml bans
 # openssl by name).
 object_store = { version = "0.14", optional = true, default-features = false, features = ["aws-base", "reqwest", "ring"] }
+# IPFS CAS backend (TODO.complete/27), behind the `cas-ipfs`
+# feature. cid+multibase: CIDv1 raw/sha3-256 derivation for the
+# hash↔CID pure mapping. Default features off — no bundled hashers
+# (we only encode digests, never hash via these crates).
+cid = { version = "0.11", optional = true, default-features = false, features = ["std"] }
+multibase = { version = "0.9", optional = true, default-features = false, features = ["std"] }
 # Runtime for the sync→async bridge in the S3 backend only.
 tokio = { version = "1", optional = true, default-features = false, features = ["rt"] }
 # Stream driver for object_store::list (already in-tree via object_store
@@ -127,7 +140,7 @@ futures = { version = "0.3", optional = true, default-features = false }
 #  (ring provider) — never native-tls/openssl (deny.toml);
 #  not strictly needed here but keeps the door open for
 # reqwest-based backends (ipfs/rekor).
-reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls", "blocking"] }
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls", "blocking", "multipart"] }
 thiserror      = "2"
 serde          = { version = "1", features = ["derive"] }
 serde_json     = "1"
