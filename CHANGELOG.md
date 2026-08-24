@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.62](https://github.com/engyon/enprot/compare/enprot-v0.5.61...enprot-v0.5.62) - 2026-08-24
+
+### Added
+
+- *(cas)* IPFS backend behind cas-ipfs, live-tested against Kubo in CI
+
+### Fixed
+
+- *(cas-ipfs)* add-with-sha3 design + absent-block guard — verified live against Kubo
+- *(cas-ipfs)* raw blocks via block/put — /add wraps content in UnixFS, so its CID hashes the wrapper and can never equal the sha3-256 of the bytes; block/put with cid-codec=raw+mhtype=sha3-256 keeps the pure hash↔CID mapping, loads switch to block/get, and saves beyond Kubo's 1 MiB max block size fail loudly with a pointer to the s3 backend
+- *(cas-ipfs)* unparseable → unparsable (typos gate)
+
+### Other
+
+- *(site)* reflect 0.5.61 — S3 CAS, OTLP observability, fuzzing
+
 ## [0.5.61](https://github.com/engyon/enprot/compare/enprot-v0.5.60...enprot-v0.5.61) - 2026-08-23
 
 ### Added
