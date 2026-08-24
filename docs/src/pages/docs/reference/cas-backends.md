@@ -76,17 +76,20 @@ retrieval — no gateway fetches, no swarm dialing by enprot.
 The mapping is **table-free**: enprot names blobs by SHA3-256, and
 CIDv1 with the raw codec and sha3-256 multihash is a pure encoding
 of that same digest — so hash ↔ CID is a pair of local functions.
-Blobs are stored as **raw blocks** (`block/put` with
-`cid-codec=raw` and `mhtype=sha3-256`, not `/add` — UnixFS wrapping
-would hash the wrapper, breaking the mapping); saves pin and verify
-the node's returned CID equals ours; loads (`block/get`) re-hash
-and compare; `enprot cas list` enumerates the node's pins filtered
-to this namespace. A CID with a different codec or hash function is
-rejected, not mapped.
+Blobs are stored via `add` with `hash=sha3-256`, raw leaves, and a
+1 MiB chunker — under the chunk size a blob is a **single raw leaf
+block**, so the returned CID IS the sha3-256 multihash of the exact
+bytes and `cat` unwraps it transparently. Saves pin and verify the
+node's returned CID equals ours; loads gate on the pin set (Kubo's
+streaming endpoints hang on absent blocks rather than error) then
+re-hash and compare; `enprot cas list` enumerates the node's pins
+filtered to this namespace. A CID with a different codec or hash
+function is rejected, not mapped.
 
-**Size ceiling**: Kubo's default maximum block size is 1 MiB
-(`Import.MaxBlockSize`); larger saves fail with an explicit
-unsupported-op error pointing at the S3 backend for large segments.
+**Size ceiling**: blobs above 1 MiB would chunk into a UnixFS tree
+whose root no longer equals the content hash — saves beyond that
+fail with an explicit unsupported-op error pointing at the S3
+backend for large segments.
 
 The `CAS IPFS backend (Kubo)` CI job runs the full round-trip —
 save/idempotency/contains/load/list/delete, NotFound mapping —

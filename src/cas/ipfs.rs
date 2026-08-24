@@ -39,6 +39,12 @@ pub struct IpfsCas {
     base: String,
 }
 
+/// Kubo's default max block size is 1 MiB (`Import.MaxBlockSize`);
+/// larger raw blocks are refused by the node. enprot CAS blobs are
+/// per-segment ciphertexts; very large segments need the S3 backend
+/// until chunked IPFS storage lands.
+const MAX_BLOCK_BYTES: usize = 1024 * 1024;
+
 impl IpfsCas {
     /// Build from an `ipfs://host:port` spec (the Kubo RPC endpoint;
     /// port defaults to 5001). Plain HTTP is accepted deliberately —
@@ -70,6 +76,13 @@ impl IpfsCas {
         // Probe-shape validation only; real reachability surfaces on
         // first use with a precise error.
         let api = reqwest::blocking::Client::builder()
+            // The daemon closes idle keep-alive connections aggressively;
+            // a pooled stale connection surfaces as "error sending
+            // request" on the NEXT call. No idle pooling, and a hard
+            // request timeout so any transport stall is loud and fast.
+            .pool_max_idle_per_host(0)
+            .timeout(std::time::Duration::from_secs(60))
+            .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .map_err(|e| Error::InvalidArg {
                 arg: "--casdir",
@@ -126,32 +139,51 @@ impl CasStore for IpfsCas {
     }
 
     fn save(&self, blob: &[u8], policy: &dyn crypto::CryptoPolicy) -> Result<String> {
+        if blob.len() > MAX_BLOCK_BYTES {
+            return Err(Error::CasUnsupported {
+                op: "ipfs save (blob exceeds Kubo's 1 MiB max block size; use the s3 backend for large segments)",
+            });
+        }
         let hash = crypto::hexdigest("sha3-256", blob, policy)?;
         let cid = cid_for_hash(&hash)?;
+        // add with a 1 MiB chunker and raw leaves: a blob under the
+        // chunk size becomes a SINGLE raw leaf block, so the returned
+        // CID IS the sha3-256 multihash of the exact bytes — the pure
+        // mapping holds, and cat unwraps the leaf transparently. (The
+        // chunker bound doubles as the size ceiling above.) Note the
+        // param is `hash` on add, unlike block/put's `mhtype`.
         let part = reqwest::blocking::multipart::Part::bytes(blob.to_vec()).file_name(hash.clone());
         let form = reqwest::blocking::multipart::Form::new().part("file", part);
         let resp = self
             .api
-            .post(format!("{}/api/v0/add?pin=true&cid-version=1", self.base))
+            .post(format!(
+                "{}/api/v0/add?hash=sha3-256&raw-leaves=true&cid-version=1&chunker=size-1048576&pin=true",
+                self.base
+            ))
             .multipart(form)
             .send()
-            .map_err(|e| self.rpc_error("block/put", e))?;
-        if !resp.status().is_success() {
+            .map_err(|e| self.rpc_error("add", e))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().unwrap_or_default();
             return Err(Error::CasBackend {
                 backend: "ipfs",
-                op: "block/put",
-                detail: format!("HTTP {}", resp.status()),
+                op: "add",
+                detail: format!("HTTP {} {body}", status.as_u16()),
             });
         }
         // The node computed its own CID; it must equal ours or the
         // content/naming contract is broken (wrong hash function,
         // codec drift, truncated upload).
-        let body = resp
-            .text()
-            .map_err(|e| self.rpc_error("block/put (read)", e))?;
+        let body = resp.text().map_err(|e| self.rpc_error("add (read)", e))?;
         let returned = serde_json::from_str::<serde_json::Value>(&body)
             .ok()
-            .and_then(|v| v.get("Hash").and_then(|h| h.as_str()).map(String::from));
+            .and_then(|v| {
+                v.get("Key")
+                    .or_else(|| v.get("Hash"))
+                    .and_then(|h| h.as_str())
+                    .map(String::from)
+            });
         match returned {
             Some(r) if hash_for_cid(&r)? == hash => Ok(hash),
             Some(r) => Err(Error::CasHashMismatch {
@@ -160,7 +192,7 @@ impl CasStore for IpfsCas {
             }),
             None => Err(Error::CasBackend {
                 backend: "ipfs",
-                op: "block/put",
+                op: "add",
                 detail: format!("unparsable response: {body}"),
             }),
         }
@@ -168,12 +200,21 @@ impl CasStore for IpfsCas {
 
     fn load(&self, hash: &str, policy: &dyn crypto::CryptoPolicy) -> Result<Vec<u8>> {
         super::validate_cas_hash(hash)?;
+        // Absent blocks make Kubo's streaming endpoints hang instead
+        // of erroring (verified daemon-side with curl), so gate on the
+        // pin set first — pin/ls is a plain JSON endpoint that answers
+        // immediately either way. Everything we save is pinned, so
+        // unpinned means absent for this backend's namespace.
+        if !self.contains(hash, policy)? {
+            return Err(Error::CasNotFound { hash: hash.into() });
+        }
         let cid = cid_for_hash(hash)?;
         let resp = self
             .api
-            .post(format!("{}/api/v0/block/get?arg={cid}", self.base))
+            .post(format!("{}/api/v0/cat?arg={cid}", self.base))
+            .header(reqwest::header::CONTENT_LENGTH, "0")
             .send()
-            .map_err(|e| self.rpc_error("block/get", e))?;
+            .map_err(|e| self.rpc_error("cat", e))?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND
             || resp.status() == reqwest::StatusCode::BAD_REQUEST
         {
@@ -186,7 +227,7 @@ impl CasStore for IpfsCas {
             }
             return Err(Error::CasBackend {
                 backend: "ipfs",
-                op: "block/get",
+                op: "cat",
                 detail: format!("HTTP {body}"),
             });
         }
@@ -213,6 +254,7 @@ impl CasStore for IpfsCas {
                 "{}/api/v0/pin/ls?arg={cid}&type=recursive",
                 self.base
             ))
+            .header(reqwest::header::CONTENT_LENGTH, "0")
             .send()
             .map_err(|e| self.rpc_error("pin/ls", e))?;
         if resp.status().is_success() {
@@ -233,6 +275,7 @@ impl CasStore for IpfsCas {
         let resp = self
             .api
             .post(format!("{}/api/v0/pin/ls?type=recursive", self.base))
+            .header(reqwest::header::CONTENT_LENGTH, "0")
             .send()
             .map_err(|e| self.rpc_error("pin/ls", e))?;
         if !resp.status().is_success() {
@@ -272,6 +315,7 @@ impl CasStore for IpfsCas {
         let resp = self
             .api
             .post(format!("{}/api/v0/pin/rm?arg={cid}", self.base))
+            .header(reqwest::header::CONTENT_LENGTH, "0")
             .send()
             .map_err(|e| self.rpc_error("pin/rm", e))?;
         if !resp.status().is_success() {
