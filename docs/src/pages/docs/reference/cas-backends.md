@@ -13,7 +13,8 @@ when it exists). Two schemes always work:
 | *(local path)* | `LocalCas` | default; atomic writes, fsync |
 | `memory:` | `MemoryCas` | tests, ephemeral runs |
 | `s3://bucket/prefix` | `S3Cas` | shared/durable CAS — **requires the `cas-s3` build feature** |
-| `ipfs://…`, `rekor:` | — | actionable error; not yet implemented |
+| `ipfs://host:port` | `IpfsCas` | Kubo-node CAS — **requires the `cas-ipfs` build feature** |
+| `rekor:` | — | actionable error; transparency-log layer not yet built |
 
 ## S3 backend (`--features cas-s3`)
 
@@ -60,6 +61,29 @@ enprot encrypt --inline=false -w SECRET -k SECRET=pw \
 The `CAS S3 backend (MinIO)` CI job exercises the full round-trip —
 save/load/contains/list/delete, hash verification, NotFound mapping —
 against a real MinIO container on every PR.
+
+## IPFS backend (`--features cas-ipfs`)
+
+```sh
+cargo install enprot --features cas-ipfs
+enprot encrypt -w SECRET -k SECRET=pw -c ipfs://localhost:5001 src/
+```
+
+Points at a Kubo node's HTTP RPC (default port 5001; TLS endpoints
+as `ipfs://https://node.example`). The node owns pinning and
+retrieval — no gateway fetches, no swarm dialing by enprot.
+
+The mapping is **table-free**: enprot names blobs by SHA3-256, and
+CIDv1 with the raw codec and sha3-256 multihash is a pure encoding
+of that same digest — so hash ↔ CID is a pair of local functions.
+Saves pin on add and verify the node's returned CID equals ours;
+loads re-hash and compare; `enprot cas list` enumerates the node's
+pins filtered to this namespace. A CID with a different codec or
+hash function is rejected, not mapped.
+
+The `CAS IPFS backend (Kubo)` CI job runs the full round-trip —
+save/idempotency/contains/load/list/delete, NotFound mapping —
+against a real Kubo container on every PR.
 
 ## Not yet implemented
 

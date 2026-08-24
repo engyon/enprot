@@ -61,6 +61,10 @@ pub fn validate_cas_hash(hash: &str) -> Result<()> {
 #[cfg(feature = "cas-s3")]
 pub mod s3;
 
+/// IPFS-backed CAS (TODO.complete/27), behind the `cas-ipfs` feature.
+#[cfg(feature = "cas-ipfs")]
+pub mod ipfs;
+
 /// Pluggable content-addressed storage. The trait abstracts over
 /// local disk, S3, IPFS, in-memory, etc. Implementations must be
 /// idempotent — saving the same blob twice returns the same hash
@@ -478,10 +482,17 @@ pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
                 .to_string(),
         });
     }
+    #[cfg(feature = "cas-ipfs")]
+    if spec.starts_with("ipfs://") {
+        return Ok(Box::new(ipfs::IpfsCas::from_spec(spec)?));
+    }
+    #[cfg(not(feature = "cas-ipfs"))]
     if spec.starts_with("ipfs://") {
         return Err(crate::error::Error::InvalidArg {
             arg: "--casdir",
-            reason: "IPFS CAS requires --features ipfs (not yet built); use 'memory:' for testing or a local path".to_string(),
+            reason: "IPFS CAS requires a build with the `cas-ipfs` feature \
+                     (cargo install enprot --features cas-ipfs)"
+                .to_string(),
         });
     }
     if spec == "rekor:" || spec.starts_with("rekor://") {
@@ -578,6 +589,84 @@ mod backend_tests {
             assert!(store.contains(&h, &*policy).unwrap());
             let back = store.load(&h, &*policy).unwrap();
             assert_eq!(&back, blob);
+            assert!(store.list().unwrap().contains(&h));
+            store.delete(&h).unwrap();
+            assert!(!store.contains(&h, &*policy).unwrap());
+        }
+        let err = store
+            .load(
+                "d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab",
+                &*policy,
+            )
+            .unwrap_err();
+        assert!(matches!(err, Error::CasNotFound { .. }), "{err}");
+    }
+
+    #[cfg(feature = "cas-ipfs")]
+    #[test]
+    fn ipfs_cid_hash_round_trip_is_pure() {
+        let hash = "d094e230861eb0ab43b895b8ecdeeb9e3a7e4a88239341a81da832ac181feaab";
+        let cid = ipfs::cid_for_hash(hash).unwrap();
+        assert!(cid.starts_with('b'), "multibase base32-lower prefix: {cid}");
+        assert!(
+            cid[1..]
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
+            "{cid}"
+        );
+        assert_eq!(ipfs::hash_for_cid(&cid).unwrap(), hash);
+    }
+
+    #[cfg(feature = "cas-ipfs")]
+    #[test]
+    fn ipfs_cid_rejects_foreign_names() {
+        // Not a CID at all.
+        assert!(ipfs::hash_for_cid("nonsense").is_err());
+        // Valid CIDv1 raw but sha2-256 multihash (0x12), not sha3-256:
+        // "hello" sha2-256 raw CID.
+        let sha2 = "bafkreifpj2l24plcfto7mjqbqehsma6hh27qn7ewmxjaxj4pwanfighyme";
+        let err = ipfs::hash_for_cid(sha2).unwrap_err();
+        assert!(err.to_string().contains("sha3-256"), "{err}");
+    }
+
+    #[cfg(feature = "cas-ipfs")]
+    #[test]
+    fn ipfs_spec_parsing() {
+        let _ = ipfs::IpfsCas::from_spec("ipfs://localhost:5001").unwrap();
+        let _ = ipfs::IpfsCas::from_spec("ipfs://https://node.example").unwrap();
+        let err = ipfs::IpfsCas::from_spec("ipfs://").unwrap_err();
+        assert!(err.to_string().contains("needs a host"), "{err}");
+        let err = ipfs::IpfsCas::from_spec("s3://x").unwrap_err();
+        assert!(err.to_string().contains("must start with ipfs://"), "{err}");
+    }
+
+    #[cfg(not(feature = "cas-ipfs"))]
+    #[test]
+    fn open_cas_ipfs_without_feature_gives_rebuild_hint() {
+        let Err(err) = open_cas("ipfs://localhost:5001") else {
+            panic!("expected rebuild-hint error");
+        };
+        assert!(err.to_string().contains("cas-ipfs"), "{}", err);
+    }
+
+    /// Live round-trip against a Kubo node (CI runs an ipfs/kubo
+    /// service container). Opt-in via ENPROT_IPFS_TEST_SPEC, e.g.
+    /// ipfs://localhost:5001.
+    #[cfg(feature = "cas-ipfs")]
+    #[test]
+    fn ipfs_live_round_trip_when_configured() {
+        let Ok(spec) = std::env::var("ENPROT_IPFS_TEST_SPEC") else {
+            eprintln!("skipping: ENPROT_IPFS_TEST_SPEC not set");
+            return;
+        };
+        let store = open_cas(&spec).unwrap();
+        let policy = crate::crypto::default_policy();
+        for blob in [&b"small ipfs blob"[..], vec![7u8; 65536].as_slice()] {
+            let h = store.save(blob, &*policy).unwrap();
+            let h2 = store.save(blob, &*policy).unwrap();
+            assert_eq!(h, h2);
+            assert!(store.contains(&h, &*policy).unwrap());
+            assert_eq!(&store.load(&h, &*policy).unwrap(), blob);
             assert!(store.list().unwrap().contains(&h));
             store.delete(&h).unwrap();
             assert!(!store.contains(&h, &*policy).unwrap());
