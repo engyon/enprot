@@ -32,11 +32,6 @@ COPY wrappers/ /usr/local/bin/
 # librnp.a + headers install fine, then the CLI rule references an
 # executable rnp's CMakeLists never builds when cross-compiling.
 RUN chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
-
-# libclang shim (compiled from tools/shim.c): logs
-# clang_parseTranslationUnit2 args to /project/shim.log, forwards
-# everything else. Selected via LIBCLANG_PATH=/shim.
-RUN mkdir -p /shim && gcc -shared -fPIC -o /shim/libclang.so.1 /usr/local/bin/shim.c -ldl
 EOF
 
 # mingw filter wrappers: cmake inside rnp-src assumes a Linux build
@@ -244,9 +239,9 @@ mkdir -p .cargo
 if ! grep -qF "[env]" .cargo/config.toml 2>/dev/null; then
 cat <<EOF >> .cargo/config.toml
 [env]
-LIBCLANG_PATH = "/shim"
-BINDGEN_EXTRA_CLANG_ARGS = "--target=x86_64-w64-mingw32 -isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
-RUST_LOG = { value = "bindgen=debug", force = true }
+# -v makes clang print its header search dirs into the diagnostic —
+# shows exactly why stdbool.h resolves or not.
+BINDGEN_EXTRA_CLANG_ARGS = "-v --target=x86_64-w64-mingw32 -isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
 EOF
 fi
 
