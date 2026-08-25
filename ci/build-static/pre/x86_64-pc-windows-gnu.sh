@@ -41,13 +41,25 @@ for t in cc c++; do
   cat > "$ctx/tools/mingw-$t" <<MW
 #!/bin/sh
 args=
+out=
+prev=
 for a in "\$@"; do
   case "\$a" in
     -rdynamic) ;;              # ELF-only; cmake injects it assuming Linux
     *) args="\$args \$a" ;;
   esac
+  [ "\$prev" = "-o" ] && out="\$a"
+  prev="\$a"
 done
-eval exec "$real" "\$args"
+eval "$real" "\$args"
+st=\$?
+# mingw appends .exe to -o targets; cmake (believing it builds for
+# Linux) looks for the extensionless name — CheckTypeSize dies with
+# "Cannot copy output executable". Emit both names.
+if [ -n "\$out" ] && [ \$st -eq 0 ] && [ ! -e "\$out" ] && [ -e "\$out.exe" ]; then
+  cp -f "\$out.exe" "\$out" 2>/dev/null || true
+fi
+exit \$st
 MW
   chmod +x "$ctx/tools/mingw-$t"
 done
