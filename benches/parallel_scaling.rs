@@ -68,6 +68,7 @@ fn run_config(files: Vec<PathBuf>, jobs: usize) -> RunConfig {
             Operation::Encrypt,
         )),
         recipient_pubs: Vec::new(),
+        recovery_pubs: Vec::new(),
         recipient_privs: Vec::new(),
     }
 }

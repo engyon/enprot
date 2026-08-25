@@ -97,7 +97,7 @@ fn warn_legacy_pbkdf(alg: &str) {
 ///   `(password, plaintext)` → same `(key, iv)` → same ciphertext.
 /// - **Random** (GCM etc.): RNG-generated or user-supplied IV.
 /// - **SIV** (deterministic by design): no IV, master key used directly.
-fn compute_iv(
+pub(crate) fn compute_iv(
     cipheropts: &etree::CipherOptions,
     master_key: &[u8],
     pt: &[u8],
@@ -150,7 +150,7 @@ fn compute_iv(
 /// `compress:zlib` extfield only when compression actually reduced
 /// the size. Returns the original bytes unchanged when compression
 /// is disabled or ineffective.
-fn apply_compression(
+pub(crate) fn apply_compression(
     pt: Vec<u8>,
     compress: bool,
     extfields: &mut BTreeMap<String, String>,
@@ -209,7 +209,7 @@ pub fn decrypt(
 /// Derive the master decryption key from the password + PHC extfield.
 /// Falls back to the legacy unsalted SHA3-512 path when no PHC string
 /// is present (old blobs encrypted before PBKDF extfields existed).
-fn derive_decrypt_key(
+pub(crate) fn derive_decrypt_key(
     password: &str,
     pbkdf: Option<&str>,
     key_len: usize,
@@ -246,7 +246,11 @@ fn derive_decrypt_key(
 /// variants (`-det` suffix), the encrypt path domain-separated the
 /// key via HKDF; decrypt must do the same to recover it. For all
 /// other algorithms, the master key is used directly.
-fn recover_key(cipher_alg: &str, master_key: Vec<u8>, key_len: usize) -> Result<Vec<u8>> {
+pub(crate) fn recover_key(
+    cipher_alg: &str,
+    master_key: Vec<u8>,
+    key_len: usize,
+) -> Result<Vec<u8>> {
     if cipher_alg.ends_with("-det") {
         crypto::hkdf_sha256(&master_key, b"enprot-enc", key_len)
     } else {

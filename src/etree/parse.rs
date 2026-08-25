@@ -25,7 +25,7 @@
 //! the preceding `Plain` node; a directive line is dispatched to the
 //! per-command parser by `Command::from_keyword`.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::io::BufRead;
 
 use crate::error::{Error, Result};
@@ -275,6 +275,26 @@ pub(crate) fn parse_encrypted_extfields(
     Ok(extfields)
 }
 
+/// Static ENCRYPTED extfield names plus the dynamic per-fingerprint
+/// prefixes the KEM recipient (TODO.roadmap/60) and escrow
+/// (TODO.complete/59) modes emit. Unknown fields still parse (the
+/// parser is forward-compatible); this only decides whether the
+/// unrecognized-field warning fires.
+fn is_known_encrypted_extfield(key: &str) -> bool {
+    const STATIC: &[&str] = &[
+        "pbkdf",
+        "cipher",
+        "compress",
+        "recipients",
+        "recovery",
+        "pw-wrap",
+    ];
+    STATIC.contains(&key)
+        || key.starts_with("recipient-mlkem-")
+        || key.starts_with("recovery-kem-mlkem-")
+        || key.starts_with("recovery-wrap-mlkem-")
+}
+
 fn parse_encrypted(
     cmd: &[&str],
     line: &str,
@@ -285,11 +305,7 @@ fn parse_encrypted(
 ) -> Result<()> {
     let extfields = parse_encrypted_extfields(cmd, paops, lineno, line)?;
     let param_count = cmd.len() - extfields.len();
-    let extfield_keys: HashSet<String> = extfields.keys().cloned().collect();
-    let known_extfields: HashSet<String> = ["pbkdf".to_string(), "cipher".to_string()]
-        .into_iter()
-        .collect();
-    if extfield_keys.difference(&known_extfields).next().is_some() {
+    if extfields.keys().any(|k| !is_known_encrypted_extfield(k)) {
         eprintln!("Warning: Unrecognized extended field(s) present");
     }
 

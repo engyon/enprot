@@ -75,6 +75,24 @@ impl<'a> EncryptedExtFields<'a> {
         self.map.get("recipients").map(|s| s.as_str())
     }
 
+    /// The `recovery:` list (`mlkem:<fp>,…`) — escrow mode.
+    pub fn recovery(&self) -> Option<&str> {
+        self.map.get("recovery").map(|s| s.as_str())
+    }
+
+    /// The `pw-wrap:` blob (base64 `iv ‖ GCM-ct` of the CEK under
+    /// the PBKDF key) — escrow mode, password path.
+    pub fn pw_wrap(&self) -> Option<&str> {
+        self.map.get("pw-wrap").map(|s| s.as_str())
+    }
+
+    /// True when this block is escrow-mode (TODO.complete/59): the
+    /// payload key is a wrapped CEK reachable via password or any
+    /// recovery privkey.
+    pub fn is_recovery_mode(&self) -> bool {
+        self.map.contains_key("recovery")
+    }
+
     /// Look up a specific recipient's KEM ciphertext by fingerprint.
     pub fn recipient_ct(&self, fp_hex: &str) -> Option<&str> {
         self.map
@@ -165,6 +183,16 @@ pub enum EncryptedExtField {
     Compress(String),
     /// Comma-separated recipient fingerprints for KEM-mode blocks.
     Recipients(String),
+    /// Comma-separated recovery recipient list (`mlkem:<fp>,…`) for
+    /// escrow-mode blocks (TODO.complete/59). Each fp has matching
+    /// `recovery-kem-mlkem-<fp>` / `recovery-wrap-mlkem-<fp>` fields
+    /// (inserted directly by `escrow` — dynamic keys, like the
+    /// recipient mode).
+    Recovery(String),
+    /// Base64(`iv ‖ GCM-ct`) — the CEK wrapped under the
+    /// PBKDF-derived key. Present exactly when the block is
+    /// escrow-mode and the password path is available.
+    PwWrap(String),
     /// Per-recipient KEM ciphertext, keyed by fingerprint.
     RecipientMlKemCt { fp_hex: String, ct_base64: String },
     /// Attribute-based access predicate (URL-encoded; TODO.completion/11).
@@ -182,6 +210,8 @@ impl EncryptedExtField {
             EncryptedExtField::Cipher(v) => ("cipher".to_string(), v),
             EncryptedExtField::Compress(v) => ("compress".to_string(), v),
             EncryptedExtField::Recipients(v) => ("recipients".to_string(), v),
+            EncryptedExtField::Recovery(v) => ("recovery".to_string(), v),
+            EncryptedExtField::PwWrap(v) => ("pw-wrap".to_string(), v),
             EncryptedExtField::RecipientMlKemCt { fp_hex, ct_base64 } => {
                 (format!("recipient-mlkem-{}", fp_hex), ct_base64)
             }
@@ -207,6 +237,8 @@ impl EncryptedExtField {
             "cipher" => EncryptedExtField::Cipher(value.to_string()),
             "compress" => EncryptedExtField::Compress(value.to_string()),
             "recipients" => EncryptedExtField::Recipients(value.to_string()),
+            "recovery" => EncryptedExtField::Recovery(value.to_string()),
+            "pw-wrap" => EncryptedExtField::PwWrap(value.to_string()),
             "attr" => EncryptedExtField::Attribute(value.to_string()),
             other if other.starts_with("recipient-mlkem-") => EncryptedExtField::RecipientMlKemCt {
                 fp_hex: other["recipient-mlkem-".len()..].to_string(),

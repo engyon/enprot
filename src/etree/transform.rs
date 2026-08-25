@@ -103,6 +103,20 @@ fn transform_begin_end(
                 &paops.crypto.cipheropts.alg,
                 rng,
             )?
+        } else if !paops.crypto.recovery_pubs.is_empty() {
+            // Escrow mode (TODO.complete/59): password path plus a
+            // CEK wrapped to each recovery pubkey.
+            let pass = ensure_password(keyw, paops, true)?;
+            crate::escrow::encrypt(
+                pt,
+                &pass,
+                &paops.crypto.recovery_pubs,
+                &mut paops.crypto.rng,
+                &paops.crypto.pbkdfopts,
+                &paops.crypto.cipheropts,
+                &mut paops.crypto.pbkdf_cache,
+                &*paops.crypto.policy,
+            )?
         } else {
             // Password mode (default).
             let pass = ensure_password(keyw, paops, true)?;
@@ -180,6 +194,43 @@ fn transform_encrypted(
                     ),
                 })?;
             crate::kemenc::decrypt(&ct, priv_pem, extfields)?
+        } else if ef.is_recovery_mode() {
+            // Escrow mode (TODO.complete/59): password or any
+            // recovery privkey, whichever the caller supplied.
+            // Password first when present (cheaper, and the common
+            // path), then the key. Never prompt: a recovery block
+            // with only a key must decrypt key-only.
+            let password = paops.passwords.get(keyw).cloned();
+            let priv_pem = paops
+                .crypto
+                .recipient_privkeys
+                .get(keyw)
+                .or_else(|| paops.crypto.recipient_privkeys.values().next())
+                .cloned();
+            match (password, priv_pem) {
+                (Some(pass), _) => crate::escrow::decrypt_with_password(
+                    ct,
+                    &pass,
+                    extfields,
+                    &mut paops.crypto.pbkdf_cache,
+                    &*paops.crypto.policy,
+                )?,
+                (None, Some(priv_pem)) => crate::escrow::decrypt_with_key(
+                    ct,
+                    &priv_pem,
+                    extfields,
+                    &*paops.crypto.policy,
+                )?,
+                (None, None) => {
+                    return Err(Error::InvalidArg {
+                        arg: "key-file",
+                        reason: format!(
+                            "escrow-mode block for WORD {keyw}: supply the password (-k) \
+                             or a recovery privkey (--key-file)"
+                        ),
+                    });
+                }
+            }
         } else {
             let pass = ensure_password(keyw, paops, false)?;
             match prot::decrypt(

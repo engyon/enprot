@@ -30,6 +30,7 @@ mod pki;
 mod policy;
 mod provenance;
 mod recipient_encrypt;
+mod recovery;
 mod resolve;
 mod scm;
 mod smudge_clean;

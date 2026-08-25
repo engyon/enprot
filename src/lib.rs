@@ -42,6 +42,7 @@ mod config;
 mod consts;
 pub mod crypto;
 mod error;
+pub mod escrow;
 pub mod etree;
 pub mod extfield;
 pub mod kemenc;
