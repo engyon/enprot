@@ -866,6 +866,13 @@ pub struct EncryptOpts {
     /// extfield is recorded so decrypt knows to decompress.
     #[arg(long)]
     pub compress: bool,
+
+    /// Recovery pubkey (PEM) for escrow-mode encryption
+    /// (TODO.complete/59). The payload key is additionally wrapped to
+    /// this key; decrypt then works with the password OR any recovery
+    /// privkey (`decrypt --key-file`). Repeatable.
+    #[arg(long = "recovery-key", value_name = "PUB.pem")]
+    pub recovery_key: Vec<PathBuf>,
 }
 
 /// Input/output wiring: which WORDs to operate on, which files to read,
@@ -1038,6 +1045,7 @@ where
             pipeline::run(pipeline::RunConfig {
                 common,
                 output: a.output,
+                recovery_pubs: load_pems(&a.encrypt.recovery_key)?,
                 op: Some((a.encrypt, Operation::Encrypt)),
                 recipient_pubs: load_pems(&a.recipients)?,
                 recipient_privs: Vec::new(),
@@ -1050,6 +1058,7 @@ where
                 op: Some((EncryptOpts::default(), Operation::Decrypt)),
                 recipient_pubs: Vec::new(),
                 recipient_privs: load_privkey_pems(&a.key_files)?,
+                recovery_pubs: Vec::new(),
             })
         }),
         Command::Store(a) => with_config(cli.common, |common| {
@@ -1059,6 +1068,7 @@ where
                 op: Some((EncryptOpts::default(), Operation::Store)),
                 recipient_pubs: Vec::new(),
                 recipient_privs: Vec::new(),
+                recovery_pubs: Vec::new(),
             })
         }),
         Command::Fetch(a) => with_config(cli.common, |common| {
@@ -1068,12 +1078,14 @@ where
                 op: Some((EncryptOpts::default(), Operation::Fetch)),
                 recipient_pubs: Vec::new(),
                 recipient_privs: Vec::new(),
+                recovery_pubs: Vec::new(),
             })
         }),
         Command::EncryptStore(a) => with_config(cli.common, |common| {
             pipeline::run(pipeline::RunConfig {
                 common,
                 output: a.output,
+                recovery_pubs: load_pems(&a.encrypt.recovery_key)?,
                 op: Some((a.encrypt, Operation::EncryptStore)),
                 recipient_pubs: load_pems(&a.recipients)?,
                 recipient_privs: Vec::new(),
@@ -1086,6 +1098,7 @@ where
                 op: None,
                 recipient_pubs: Vec::new(),
                 recipient_privs: Vec::new(),
+                recovery_pubs: Vec::new(),
             })
         }),
         Command::Verify(a) => with_config(cli.common, |common| verify::run(common, a.output)),
