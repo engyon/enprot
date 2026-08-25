@@ -35,13 +35,13 @@ COPY wrappers/ /usr/local/bin/
 # AND stderr must match the CMakeRelink CLI miss exactly.
 RUN printf '%s\n' \
   '#!/bin/sh' \
-  'if [ "$1" != "--install" ]; then exec /usr/bin/cmake "$@"; fi' \
-  'out=$(/usr/bin/cmake "$@" 2>/tmp/cmakew.err); st=$?' \
-  '[ $st -eq 0 ] && { printf "%s" "$out"; exit 0; }' \
-  'if grep -q "CMakeRelink.dir/rnp" /tmp/cmakew.err && printf "%s" "$out" | grep -q "librnp.a"; then' \
-  '  echo "cmakew: tolerating cross-CLI install miss (rnpgp/rnp-rs#72)"; printf "%s" "$out"; exit 0' \
+  'if [ "\$1" != "--install" ]; then exec /usr/bin/cmake "\$@"; fi' \
+  'out=$(/usr/bin/cmake "\$@" 2>/tmp/cmakew.err); st=\$?' \
+  '[ \$st -eq 0 ] && { printf "%s" "\$out"; exit 0; }' \
+  'if grep -q "CMakeRelink.dir/rnp" /tmp/cmakew.err && printf "%s" "\$out" | grep -q "librnp.a"; then' \
+  '  echo "cmakew: tolerating cross-CLI install miss (rnpgp/rnp-rs#72)"; printf "%s" "\$out"; exit 0' \
   'fi' \
-  'printf "%s" "$out"; cat /tmp/cmakew.err >&2; exit $st' \
+  'printf "%s" "\$out"; cat /tmp/cmakew.err >&2; exit \$st' \
   > /usr/local/bin/cmakew && chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
 
 # libclang shim: logs clang_parseTranslationUnit2 args to
