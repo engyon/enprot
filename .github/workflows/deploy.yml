@@ -244,7 +244,7 @@ jobs:
               # bindgen parses the TARGET headers on the HOST; its
               # clang needs the mingw triple + system include dirs or
               # stdbool.h & friends are "not found".
-              BINDGEN_EXTRA_CLANG_ARGS: "--target=x86_64-w64-mingw32 -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
+              BINDGEN_EXTRA_CLANG_ARGS: "--target=x86_64-w64-mingw32 -isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
               BOTAN_CONFIGURE_CC: gcc
               BOTAN_CONFIGURE_CC_BIN: tool-ccbin
               BOTAN_CONFIGURE_AR_COMMAND: tool-ar
