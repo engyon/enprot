@@ -58,11 +58,11 @@ RUN mkdir -p /shim && printf '%s\n' \
   '  if (!real_mkidx) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_mkidx = (mkidx_fn)dlsym(h, "clang_createIndex"); }' \
   '  return real_mkidx(e, (void *)(size_t)x);' \
   '}' \
-  'typedef const char *(*ver_fn)(void);'
-  'ver_fn real_ver;'
-  'const char *clang_getClangVersion(void) {'
-  '  if (!real_ver) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_ver = (ver_fn)dlsym(h, "clang_getClangVersion"); }'
-  '  return real_ver();'
+  'typedef const char *(*ver_fn)(void);' \
+  'ver_fn real_ver;' \
+  'const char *clang_getClangVersion(void) {' \
+  '  if (!real_ver) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_ver = (ver_fn)dlsym(h, "clang_getClangVersion"); }' \
+  '  return real_ver();' \
   '}'
   'typedef int (*parse_fn)(void *, const char *, const char *const *, int, void *, int, unsigned, void **);' \
   'parse_fn real_parse;' \
