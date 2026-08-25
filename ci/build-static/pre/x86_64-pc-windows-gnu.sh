@@ -44,6 +44,12 @@ RUN printf '%s\n' \
   'printf "%s" "\$out"; cat /tmp/cmakew.err >&2; exit \$st' \
   > /usr/local/bin/cmakew && chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
 
+# cmakew: tolerate the cross-CLI install miss (rnpgp/rnp-rs#72) —
+# sourced as a script file (same zero-quoting approach as shim.c).
+COPY tools/cmakew /usr/local/bin/cmakew
+RUN chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
+EOF
+
 # cmakew: tolerate the cross-CLI install miss (rnpgp/rnp-rs#72).
 RUN printf '%s\n' \
   '#!/bin/sh' \
@@ -101,6 +107,19 @@ EOF
 mkdir -p "$ctx/tools"
 
 # quoted heredoc: zero escaping; C verbatim
+cat > "$ctx/tools/cmakew" <<'CW'
+#!/bin/sh
+if [ "$1" != "--install" ]; then exec /usr/bin/cmake "$@"; fi
+out=$(/usr/bin/cmake "$@" 2>/tmp/cmakew.err); st=$?
+[ $st -eq 0 ] && { printf "%s" "$out"; exit 0; }
+if grep -q "CMakeRelink.dir/rnp" /tmp/cmakew.err && printf "%s" "$out" | grep -q "librnp.a"; then
+  echo "cmakew: tolerating cross-CLI install miss (rnpgp/rnp-rs#72)"
+  printf "%s" "$out"; exit 0
+fi
+printf "%s" "$out"; cat /tmp/cmakew.err >&2; exit $st
+CW
+chmod +x "$ctx/tools/cmakew"
+
 cat > "$ctx/tools/shim.c" <<'CSRC'
 #define _GNU_SOURCE
 #include <dlfcn.h>
