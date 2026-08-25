@@ -180,6 +180,18 @@ passthrough = [
 ]
 EOF
 
+# cross-rs word-splits passthrough env values, so multi-flag
+# BINDGEN_EXTRA_CLANG_ARGS never arrives intact. cargo's [env]
+# table sets build-script env inside the container directly — no
+# passthrough involved.
+mkdir -p .cargo
+if ! grep -qF "[env]" .cargo/config.toml 2>/dev/null; then
+cat <<EOF >> .cargo/config.toml
+[env]
+BINDGEN_EXTRA_CLANG_ARGS = "--target=x86_64-w64-mingw32 -isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
+EOF
+fi
+
 # Guarded append: build-static.sh may already have added this
 # target's block (TOML forbids duplicate tables — an unconditional
 # second append makes every later cargo invocation fail to parse
