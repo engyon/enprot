@@ -189,6 +189,7 @@ if ! grep -qF "[env]" .cargo/config.toml 2>/dev/null; then
 cat <<EOF >> .cargo/config.toml
 [env]
 BINDGEN_EXTRA_CLANG_ARGS = "--target=x86_64-w64-mingw32 -isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
+RUST_LOG = { value = "bindgen=debug", force = true }
 EOF
 fi
 
