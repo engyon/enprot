@@ -20,83 +20,23 @@ ctx=$(mktemp -d)
 cat > "$ctx/Dockerfile" <<EOF
 FROM ghcr.io/cross-rs/$TARGET:main
 
-RUN apt-get -y update && \\
-    apt-get -y install --no-install-recommends \\
-      python3 cmake git ca-certificates make gcc g++ && \\
+RUN apt-get -y update && \
+    apt-get -y install --no-install-recommends \
+      python3 cmake git ca-certificates make gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
 COPY tools/ /usr/local/bin/
 COPY wrappers/ /usr/local/bin/
 
-# cmakew: on --install, tolerate the cross-CLI failure (rnpgp/rnp-rs#72):
+# cmakew: tolerate the cross-CLI install miss (rnpgp/rnp-rs#72) —
 # librnp.a + headers install fine, then the CLI rule references an
 # executable rnp's CMakeLists never builds when cross-compiling.
-# Tolerance is NARROW: real-cmake output must have installed librnp
-# AND stderr must match the CMakeRelink CLI miss exactly.
-RUN printf '%s\n' \
-  '#!/bin/sh' \
-  'if [ "\$1" != "--install" ]; then exec /usr/bin/cmake "\$@"; fi' \
-  'out=$(/usr/bin/cmake "\$@" 2>/tmp/cmakew.err); st=\$?' \
-  '[ \$st -eq 0 ] && { printf "%s" "\$out"; exit 0; }' \
-  'if grep -q "CMakeRelink.dir/rnp" /tmp/cmakew.err && printf "%s" "\$out" | grep -q "librnp.a"; then' \
-  '  echo "cmakew: tolerating cross-CLI install miss (rnpgp/rnp-rs#72)"; printf "%s" "\$out"; exit 0' \
-  'fi' \
-  'printf "%s" "\$out"; cat /tmp/cmakew.err >&2; exit \$st' \
-  > /usr/local/bin/cmakew && chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
-
-# cmakew: tolerate the cross-CLI install miss (rnpgp/rnp-rs#72) —
-# sourced as a script file (same zero-quoting approach as shim.c).
-COPY tools/cmakew /usr/local/bin/cmakew
 RUN chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
-EOF
 
-# cmakew: tolerate the cross-CLI install miss (rnpgp/rnp-rs#72).
-RUN printf '%s\n' \
-  '#!/bin/sh' \
-  'if [ "$1" != "--install" ]; then exec /usr/bin/cmake "$@"; fi' \
-  'out=$(/usr/bin/cmake "$@" 2>/tmp/cmakew.err); st=$?' \
-  '[ $st -eq 0 ] && { printf "%s" "$out"; exit 0; }' \
-  'if grep -q "CMakeRelink.dir/rnp" /tmp/cmakew.err && printf "%s" "$out" | grep -q "librnp.a"; then' \
-  '  echo "cmakew: tolerating cross-CLI install miss (rnpgp/rnp-rs#72)"; printf "%s" "$out"; exit 0' \
-  'fi' \
-  'printf "%s" "$out"; cat /tmp/cmakew.err >&2; exit $st' \
-  > /usr/local/bin/cmakew && chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
-
-# libclang shim, compiled from a plain COPYed source file (no inline
-# quoting battles). Logs clang_parseTranslationUnit2 args to
-# /project/shim.log, forwards everything else.
+# libclang shim (compiled from tools/shim.c): logs
+# clang_parseTranslationUnit2 args to /project/shim.log, forwards
+# everything else. Selected via LIBCLANG_PATH=/shim.
 RUN mkdir -p /shim && gcc -shared -fPIC -o /shim/libclang.so.1 /usr/local/bin/shim.c -ldl
-EOF
-
-# libclang shim: logs clang_parseTranslationUnit2 args to
-# /project/shim.log, then forwards to the real libclang. Selected
-# via LIBCLANG_PATH=/shim (clang-sys honors the directory).
-RUN mkdir -p /shim && printf '%s\n' \
-  '#define _GNU_SOURCE' \
-  '#include <dlfcn.h>' \
-  '#include <stdio.h>' \
-  '#include <stddef.h>' \
-  'typedef void *(*mkidx_fn)(int, void *);' \
-  'mkidx_fn real_mkidx;' \
-  'void *clang_createIndex(int e, int x) {' \
-  '  if (!real_mkidx) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_mkidx = (mkidx_fn)dlsym(h, "clang_createIndex"); }' \
-  '  return real_mkidx(e, (void *)(size_t)x);' \
-  '}' \
-  'typedef const char *(*ver_fn)(void);' \
-  'ver_fn real_ver;' \
-  'const char *clang_getClangVersion(void) {' \
-  '  if (!real_ver) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_ver = (ver_fn)dlsym(h, "clang_getClangVersion"); }' \
-  '  return real_ver();' \
-  '}'
-  'typedef int (*parse_fn)(void *, const char *, const char *const *, int, void *, int, unsigned, void **);' \
-  'parse_fn real_parse;' \
-  'int clang_parseTranslationUnit2(void *idx, const char *file, const char *const *args, int n, void *unsaved, int nu, unsigned opts, void **out) {' \
-  '  FILE *f = fopen("/project/shim.log", "a");' \
-  '  if (f) { fprintf(f, "PARSE file=%s args=%d\n", file, n); for (int i = 0; i < n; i++) fprintf(f, "  [%d] %s\n", i, args[i]); fclose(f); }' \
-  '  if (!real_parse) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_parse = (parse_fn)dlsym(h, "clang_parseTranslationUnit2"); }' \
-  '  return real_parse(idx, file, args, n, unsaved, nu, opts, out);' \
-  '}' \
-  > /shim/shim.c && gcc -shared -fPIC -o /shim/libclang.so.1 /shim/shim.c -ldl
 EOF
 
 # mingw filter wrappers: cmake inside rnp-src assumes a Linux build
