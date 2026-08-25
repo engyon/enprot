@@ -15,7 +15,7 @@ rust-version = "1.88"
 autotests   = false
 
 [workspace]
-members = [".", "enprot-ffi"]
+members = [".", "enprot-ffi", "enprot-mcp"]
 default-members = [".", "enprot-ffi"]
 resolver = "2"
 
