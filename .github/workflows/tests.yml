@@ -142,6 +142,26 @@ jobs:
         if: "startsWith(matrix.os, 'windows')"
         run: cargo test --verbose -- --nocapture
 
+  mcp:
+    # enprot-mcp (TODO.complete/57) is opted out of default-members
+    # so the default build stays lean — this leg is its build/test
+    # rot-guard: clippy, unit tests, and the e2e suite that spawns
+    # the real server and speaks MCP JSON-RPC over stdio against the
+    # real enprot CLI.
+    name: MCP server
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Clippy
+        run: cargo clippy -p enprot-mcp --all-targets -- -D warnings
+      - name: Test (unit + e2e)
+        run: cargo test -p enprot-mcp --verbose
+
   cas-s3:
     # Live round-trip of the S3 CAS backend (TODO.complete/27)
     # against MinIO — SigV4 signing, PUT/GET/HEAD/LIST/DELETE, hash
