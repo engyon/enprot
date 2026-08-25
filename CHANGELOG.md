@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.64](https://github.com/engyon/enprot/compare/enprot-v0.5.63...enprot-v0.5.64) - 2026-08-25
+
+### Added
+
+- *(mcp)* enprot-mcp server for AI agent integration (TODO 57)
+- *(cli)* RecoveryWithDet validation gate for escrow mode
+- *(escrow)* key escrow / recovery envelope (TODO 59)
+- *(cli)* migrate-keys — post-quantum anchor migration (TODO 58)
+- *(cli)* per-subcommand semantic validation rules (TODO 33 phase 2)
+
+### Fixed
+
+- *(ci)* six windows-gnu cross-build fixes — hang to fast-fail (issue #368)
+
+### Other
+
+- *(mcp)* build the enprot binary for the e2e suite — -p enprot-mcp never builds it (not a cargo dependency); and fail e2e hard on JSON-RPC error responses instead of silently asserting on null results.
+- MCP server leg — enprot-mcp is opted out of default-members, so the default clippy/test gates skip it; give it its own build + clippy + e2e leg.
+
 ## [0.5.63](https://github.com/engyon/enprot/compare/enprot-v0.5.62...enprot-v0.5.63) - 2026-08-24
 
 ### Other
