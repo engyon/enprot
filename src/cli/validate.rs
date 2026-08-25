@@ -42,7 +42,8 @@
 //!   single [`crate::Error::InvalidArg`] whose `reason` lists every
 //!   error. Warnings never block; errors always do.
 
-use crate::cli::CommonArgs;
+use crate::cli::{CommonArgs, EncryptOpts, OutputArgs};
+use crate::crypto::CryptoPolicy;
 use crate::error::{Error, Result};
 
 /// One semantic issue with a resolved configuration. Variants are
@@ -67,6 +68,17 @@ pub enum ConfigIssue {
     /// `--jobs` exceeds the number of detected CPUs. Scheduling
     /// overhead may dominate the parallelism benefit. Warning.
     JobsExceedsCpus { requested: usize, available: usize },
+
+    /// `--output-dir` was set but at least one input is `-` (stdin).
+    /// Stdin always writes to stdout; the directory is silently
+    /// ignored for that input. Warning — the operation itself is
+    /// well-defined, the flag just doesn't apply.
+    OutputDirWithStdin,
+
+    /// `--pbkdf-msec` was set below the active policy's floor
+    /// ([`CryptoPolicy::min_pbkdf_millis`]). A derivation budget
+    /// that weak defeats the policy's compliance posture.
+    PbkdfMsecBelowFloor { requested: u32, floor: u32 },
 }
 
 impl ConfigIssue {
@@ -74,7 +86,9 @@ impl ConfigIssue {
     pub fn is_error(&self) -> bool {
         matches!(
             self,
-            ConfigIssue::FipsPolicyConflict { .. } | ConfigIssue::JobsZero
+            ConfigIssue::FipsPolicyConflict { .. }
+                | ConfigIssue::JobsZero
+                | ConfigIssue::PbkdfMsecBelowFloor { .. }
         )
     }
 
@@ -98,6 +112,15 @@ impl ConfigIssue {
                     "warning: --jobs {requested} exceeds available CPUs ({available}); scheduling overhead may dominate"
                 )
             }
+            ConfigIssue::OutputDirWithStdin => {
+                "warning: --output-dir has no effect when input is stdin ('-'); stdin always writes to stdout"
+                    .to_string()
+            }
+            ConfigIssue::PbkdfMsecBelowFloor { requested, floor } => {
+                format!(
+                    "error: --pbkdf-msec {requested} is below the policy minimum of {floor} ms"
+                )
+            }
         }
     }
 
@@ -107,6 +130,8 @@ impl ConfigIssue {
             ConfigIssue::FipsPolicyConflict { .. } => "--policy",
             ConfigIssue::SignerWithoutAnchor => "--signer",
             ConfigIssue::JobsZero | ConfigIssue::JobsExceedsCpus { .. } => "--jobs",
+            ConfigIssue::OutputDirWithStdin => "--output-dir",
+            ConfigIssue::PbkdfMsecBelowFloor { .. } => "--pbkdf-msec",
         }
     }
 }
@@ -139,6 +164,43 @@ pub fn collect(common: &CommonArgs) -> Vec<ConfigIssue> {
             requested: common.jobs,
             available,
         });
+    }
+
+    issues
+}
+
+/// Collect output-wiring issues: relationships between
+/// [`OutputArgs`] fields that no single flag's parser can express.
+/// Per-subcommand counterpart of [`collect`], called from
+/// `pipeline::run` where the `OutputArgs` live.
+pub fn collect_output(output: &OutputArgs) -> Vec<ConfigIssue> {
+    let mut issues = Vec::new();
+
+    if output.output_dir.is_some() && output.files.iter().any(|f| f == "-") {
+        issues.push(ConfigIssue::OutputDirWithStdin);
+    }
+
+    issues
+}
+
+/// Collect encrypt-knob issues against the resolved policy. Only the
+/// two encrypt-bearing subcommands pass real `EncryptOpts`; the
+/// others pass `EncryptOpts::default()` (all `None`), which
+/// collects nothing.
+///
+/// Manual-params mode (`--pbkdf-params`) is exempt from the msec
+/// floor: it overrides the timed budget entirely and its iteration
+/// count is gated by [`CryptoPolicy::check_pbkdf`] at derive time.
+pub fn collect_encrypt(enc: &EncryptOpts, policy: &dyn CryptoPolicy) -> Vec<ConfigIssue> {
+    let mut issues = Vec::new();
+
+    let floor = policy.min_pbkdf_millis();
+    if floor > 0
+        && enc.pbkdf_params.is_none()
+        && let Some(requested) = enc.pbkdf_msec
+        && requested < floor
+    {
+        issues.push(ConfigIssue::PbkdfMsecBelowFloor { requested, floor });
     }
 
     issues
@@ -313,6 +375,119 @@ mod tests {
             }
             .describe()
             .starts_with("warning:")
+        );
+        assert!(
+            ConfigIssue::OutputDirWithStdin
+                .describe()
+                .starts_with("warning:")
+        );
+        assert!(
+            ConfigIssue::PbkdfMsecBelowFloor {
+                requested: 10,
+                floor: 100
+            }
+            .describe()
+            .starts_with("error:")
+        );
+    }
+
+    fn base_output(files: &[&str]) -> OutputArgs {
+        OutputArgs {
+            word: Vec::new(),
+            output: Vec::new(),
+            prefix: String::new(),
+            output_dir: None,
+            files: files.iter().map(|f| f.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn output_dir_with_stdin_warns() {
+        let mut o = base_output(&["-"]);
+        o.output_dir = Some(Path::new("out").to_path_buf());
+        assert_eq!(collect_output(&o), vec![ConfigIssue::OutputDirWithStdin]);
+    }
+
+    #[test]
+    fn output_dir_with_mixed_stdin_warns() {
+        // A single stdin input among real files still can't use the dir.
+        let mut o = base_output(&["a.ept", "-", "b.ept"]);
+        o.output_dir = Some(Path::new("out").to_path_buf());
+        assert_eq!(collect_output(&o), vec![ConfigIssue::OutputDirWithStdin]);
+    }
+
+    #[test]
+    fn output_dir_with_files_only_is_clean() {
+        let mut o = base_output(&["a.ept", "b.ept"]);
+        o.output_dir = Some(Path::new("out").to_path_buf());
+        assert!(collect_output(&o).is_empty());
+    }
+
+    #[test]
+    fn stdin_without_output_dir_is_clean() {
+        assert!(collect_output(&base_output(&["-"])).is_empty());
+    }
+
+    #[test]
+    fn nist_rejects_msec_below_floor() {
+        let enc = EncryptOpts {
+            pbkdf_msec: Some(10),
+            ..EncryptOpts::default()
+        };
+        let nist = crate::policy::nist::CryptoPolicyNIST {};
+        let issues = collect_encrypt(&enc, &nist);
+        assert_eq!(
+            issues,
+            vec![ConfigIssue::PbkdfMsecBelowFloor {
+                requested: 10,
+                floor: nist.min_pbkdf_millis()
+            }]
+        );
+        assert!(issues[0].is_error());
+    }
+
+    #[test]
+    fn nist_accepts_msec_at_floor() {
+        let nist = crate::policy::nist::CryptoPolicyNIST {};
+        let enc = EncryptOpts {
+            pbkdf_msec: Some(nist.min_pbkdf_millis()),
+            ..EncryptOpts::default()
+        };
+        assert!(collect_encrypt(&enc, &nist).is_empty());
+    }
+
+    #[test]
+    fn default_policy_has_no_floor() {
+        // Tests deliberately use tiny msec budgets for speed under
+        // the default policy; it must not grow an opinion.
+        let default = crate::policy::default::CryptoPolicyDefault {};
+        assert_eq!(default.min_pbkdf_millis(), 0);
+        let enc = EncryptOpts {
+            pbkdf_msec: Some(1),
+            ..EncryptOpts::default()
+        };
+        assert!(collect_encrypt(&enc, &default).is_empty());
+    }
+
+    #[test]
+    fn manual_params_exempt_from_msec_floor() {
+        // --pbkdf-params overrides the timed budget; its iteration
+        // count is gated by check_pbkdf at derive time instead.
+        let nist = crate::policy::nist::CryptoPolicyNIST {};
+        let enc = EncryptOpts {
+            pbkdf_msec: Some(1),
+            pbkdf_params: Some("i=1000,r=8,p=1".to_string()),
+            ..EncryptOpts::default()
+        };
+        assert!(collect_encrypt(&enc, &nist).is_empty());
+    }
+
+    #[test]
+    fn unset_msec_never_flags() {
+        let nist = crate::policy::nist::CryptoPolicyNIST {};
+        assert!(
+            collect_encrypt(&EncryptOpts::default(), &nist).is_empty(),
+            "no explicit --pbkdf-msec means the policy default applies"
         );
     }
 }

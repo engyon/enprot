@@ -226,6 +226,63 @@ fn fips_flag() {
 }
 
 #[test]
+fn fips_rejects_pbkdf_msec_below_floor() {
+    let ept = Fixture::copy("sample/simple.ept");
+
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("--fips")
+        .arg("encrypt")
+        .arg("-w")
+        .arg("Agent_007")
+        .arg("--pbkdf-msec")
+        .arg("10")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .arg("-o")
+        .arg("-")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "--pbkdf-msec 10 is below the policy minimum of 100 ms",
+        ));
+
+    // At the floor itself (the NIST default target) the flag is fine.
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("--fips")
+        .arg("encrypt")
+        .arg("-w")
+        .arg("Agent_007")
+        .arg("--pbkdf-msec")
+        .arg("100")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .arg("-o")
+        .arg("-")
+        .assert()
+        .success();
+
+    // The default policy holds no opinion about msec budgets.
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("encrypt")
+        .arg("-w")
+        .arg("Agent_007")
+        .arg("--pbkdf-msec")
+        .arg("10")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .arg("-o")
+        .arg("-")
+        .assert()
+        .success();
+}
+
+#[test]
 fn defaults_policy_conflict() {
     let ept = Fixture::copy("sample/simple.ept");
 

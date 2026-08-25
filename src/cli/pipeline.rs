@@ -16,7 +16,7 @@ use crate::{capability, cappolicy};
 
 use super::{
     CommonArgs, EncryptOpts, Operation, OutputArgs, build_anchor_config, make_policy,
-    resolve_policy_name, resolve_separators, walk_for_chains,
+    resolve_policy_name, resolve_separators, validate, walk_for_chains,
 };
 
 /// Typed configuration for the four core transform operations
@@ -175,6 +175,15 @@ pub fn run(cfg: RunConfig) -> Result<()> {
     // for library callers that bypass validate_common.
     let policy_name = resolve_policy_name(&common)?;
     let policy = make_policy(&policy_name);
+    // Per-subcommand semantic rules (TODO.complete/33 phase 2): output
+    // wiring and encrypt knobs against the resolved policy. Same gate
+    // as validate_common — all issues at once, before any file is
+    // processed.
+    let mut issues = validate::collect_output(&output);
+    if let Some((enc_opts, _)) = op.as_ref() {
+        issues.extend(validate::collect_encrypt(enc_opts, policy.as_ref()));
+    }
+    validate::report(&issues)?;
     let mut paops = if let Some(defaults) = common.defaults.as_deref() {
         let mut p = ParseOps::new(make_policy(defaults))?;
         p.crypto.policy = policy;

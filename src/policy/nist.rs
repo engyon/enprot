@@ -117,12 +117,6 @@ impl CryptoPolicy for CryptoPolicyNIST {
         Ok(())
     }
 
-    fn check_cipher_alg(&self, alg: &str) -> Result<(), String> {
-        // Strip the `-det` suffix used by the deterministic AES-GCM variants
-        // before delegating; the underlying cipher backend is the same.
-        self.check_cipher_alg_impl(alg.trim_end_matches("-det"))
-    }
-
     fn check_cipher_alg_impl(&self, alg: &str) -> Result<(), String> {
         AlgKind::Cipher.is_approved(alg)
     }
@@ -147,6 +141,13 @@ impl CryptoPolicy for CryptoPolicyNIST {
     }
 
     fn default_pbkdf_millis(&self) -> u32 {
+        Self::DEFAULT_PBKDF_MSEC
+    }
+
+    /// FIPS mode derives at no less than the policy's own default
+    /// target — a timed derivation below it is a compliance misstep,
+    /// rejected upfront by the CLI validation gate.
+    fn min_pbkdf_millis(&self) -> u32 {
         Self::DEFAULT_PBKDF_MSEC
     }
 
