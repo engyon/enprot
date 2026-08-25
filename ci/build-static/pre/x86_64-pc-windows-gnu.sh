@@ -20,13 +20,82 @@ ctx=$(mktemp -d)
 cat > "$ctx/Dockerfile" <<EOF
 FROM ghcr.io/cross-rs/$TARGET:main
 
-RUN apt-get -y update && \\
-    apt-get -y install --no-install-recommends \\
-      python3 cmake git ca-certificates make gcc g++ && \\
+RUN apt-get -y update && \
+    apt-get -y install --no-install-recommends \
+      python3 cmake git ca-certificates make gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
+COPY tools/ /usr/local/bin/
 COPY wrappers/ /usr/local/bin/
+
+# cmakew: tolerate the cross-CLI install miss (rnpgp/rnp-rs#72) —
+# librnp.a + headers install fine, then the CLI rule references an
+# executable rnp's CMakeLists never builds when cross-compiling.
+RUN chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
 EOF
+
+# mingw filter wrappers: cmake inside rnp-src assumes a Linux build
+# (no CMAKE_SYSTEM_NAME is set) and feeds ELF-only flags to the
+# compilers — `-rdynamic` on json-c's sample apps is fatal to mingw.
+# Same pattern as the musl legs' zig filter: strip what mingw
+# cannot parse, exec the real posix-variant toolchain.
+mkdir -p "$ctx/tools"
+
+# quoted heredoc: zero escaping; C verbatim
+cat > "$ctx/tools/cmakew" <<'CW'
+#!/bin/sh
+if [ "$1" != "--install" ]; then exec /usr/bin/cmake "$@"; fi
+out=$(/usr/bin/cmake "$@" 2>/tmp/cmakew.err); st=$?
+[ $st -eq 0 ] && { printf "%s" "$out"; exit 0; }
+if grep -q "CMakeRelink.dir/rnp" /tmp/cmakew.err && printf "%s" "$out" | grep -q "librnp.a"; then
+  echo "cmakew: tolerating cross-CLI install miss (rnpgp/rnp-rs#72)"
+  printf "%s" "$out"; exit 0
+fi
+printf "%s" "$out"; cat /tmp/cmakew.err >&2; exit $st
+CW
+chmod +x "$ctx/tools/cmakew"
+
+for t in cc c++; do
+  real="x86_64-w64-mingw32-gcc-posix"
+  [ "$t" = c++ ] && real="x86_64-w64-mingw32-g++-posix"
+  cat > "$ctx/tools/mingw-$t" <<MW
+#!/bin/sh
+args=
+out=
+prev=
+for a in "\$@"; do
+  case "\$a" in
+    -rdynamic) ;;              # ELF-only; cmake injects it assuming Linux
+    *) args="\$args \$a" ;;
+  esac
+  [ "\$prev" = "-o" ] && out="\$a"
+  prev="\$a"
+done
+# Link mode (an -o target and no -c/-S/-E): Botan's winsock and
+# Windows cert-store code (OS-integrated, not a disableable module)
+# imports ws2_32/crypt32 — unresolved in rnp's example links and in
+# the final enprot.exe link alike. Import libs are inert when
+# unused, so append them on every mingw link.
+linking=
+for a in "\$@"; do
+  case "\$a" in
+    -c|-S|-E) linking=; break ;;
+    -o) linking=1 ;;
+  esac
+done
+[ -n "\$out" ] && [ -n "\$linking" ] && args="\$args -lws2_32 -lcrypt32"
+eval "$real" "\$args"
+st=\$?
+# mingw appends .exe to -o targets; cmake (believing it builds for
+# Linux) looks for the extensionless name — CheckTypeSize dies with
+# "Cannot copy output executable". Emit both names.
+if [ -n "\$out" ] && [ \$st -eq 0 ] && [ ! -e "\$out" ] && [ -e "\$out.exe" ]; then
+  cp -f "\$out.exe" "\$out" 2>/dev/null || true
+fi
+exit \$st
+MW
+  chmod +x "$ctx/tools/mingw-$t"
+done
 
 # Repo-relative: on Actions $0 is the runner temp wrapper.
 . ci/build-static/pre/wrappers.sh
@@ -36,8 +105,8 @@ EOF
 # inherit the same env — a static mingw assignment poisons the
 # host copy (issue #368).
 make_wrappers "$ctx" "$TARGET" \
-  x86_64-w64-mingw32-gcc-posix x86_64-w64-mingw32-g++-posix \
-  x86_64-w64-mingw32-gcc-ar-posix x86_64-w64-mingw32-g++-posix
+  mingw-cc mingw-c++ \
+  x86_64-w64-mingw32-gcc-ar-posix mingw-c++
 
 # Botan's --os=windows build archives as botan-3.lib, but both
 # consumers want libbotan-3.a: rustc's -l static=botan-3 on
@@ -51,11 +120,15 @@ case "\$OUT_DIR" in
   */x86_64-pc-windows-gnu/*)
     x86_64-w64-mingw32-gcc-ar-posix "\$@"
     st=\$?
-    last=
-    for a in "\$@"; do last=\$a; done
-    case \$last in
-      */botan-3.lib) cp -f "\$last" "\${last%botan-3.lib}libbotan-3.a" 2>/dev/null || true ;;
-    esac
+    # `ar crs <lib> <obj>...` puts the ARCHIVE first, objects after —
+    # the previous last-arg match never fired (last = the .obj), so
+    # libbotan-3.a was never produced and rnp-src's lib-name check
+    # panicked. Scan every argument instead.
+    for a in "\$@"; do
+      case \$a in
+        */botan-3.lib) cp -f "\$a" "\${a%botan-3.lib}libbotan-3.a" 2>/dev/null || true ;;
+      esac
+    done
     exit \$st
     ;;
   *) exec /usr/bin/ar "\$@" ;;
@@ -117,6 +190,7 @@ passthrough = [
   "HOST_CC",
   "HOST_CXX",
   "HOST_AR",
+  "BINDGEN_EXTRA_CLANG_ARGS",
   "BOTAN_CONFIGURE_CC",
   "BOTAN_CONFIGURE_CC_BIN",
   "BOTAN_CONFIGURE_AR_COMMAND",
@@ -126,6 +200,20 @@ passthrough = [
 ]
 EOF
 
+# cross-rs word-splits passthrough env values, so multi-flag
+# BINDGEN_EXTRA_CLANG_ARGS never arrives intact. cargo's [env]
+# table sets build-script env inside the container directly — no
+# passthrough involved.
+mkdir -p .cargo
+if ! grep -qF "[env]" .cargo/config.toml 2>/dev/null; then
+cat <<EOF >> .cargo/config.toml
+[env]
+# -v makes clang print its header search dirs into the diagnostic —
+# shows exactly why stdbool.h resolves or not.
+BINDGEN_EXTRA_CLANG_ARGS = "--target=x86_64-w64-mingw32 -isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
+EOF
+fi
+
 # Guarded append: build-static.sh may already have added this
 # target's block (TOML forbids duplicate tables — an unconditional
 # second append makes every later cargo invocation fail to parse
@@ -134,6 +222,9 @@ mkdir -p .cargo
 if ! grep -qF "[target.$TARGET]" .cargo/config.toml 2>/dev/null; then
 cat <<EOF >> .cargo/config.toml
 [target.$TARGET]
-rustflags = ["-C", "link-args=-s"]
+# ws2_32/crypt32: Botan's winsock + Windows cert-store imports; the
+# final link goes through RUSTC_LINKER directly, bypassing the
+# mingw wrappers.
+rustflags = ["-C", "link-args=-s", "-C", "link-args=-lws2_32", "-C", "link-args=-lcrypt32"]
 EOF
 fi
