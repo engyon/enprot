@@ -57,6 +57,38 @@ esac
 # cargo vs a specific C make) is visible in the next dispatched
 # test build. No-op for other legs / local runs.
 if [ "${WGNU_DEBUG:-0}" = "1" ]; then
+  # One-shot libclang probe inside the freshly built image: which
+  # libclang exists, and can it parse stdbool.h with/without the
+  # bindgen args? Settles the "file not found" chain empirically.
+  docker run --rm "$PROJECT_NAME/cross-build:$TARGET" python3 -c "
+import ctypes
+from ctypes.util import find_library
+lib = ctypes.CDLL(find_library('clang') or '/usr/lib/llvm-18/lib/libclang.so.1')
+lib.clang_createIndex.restype = ctypes.c_void_p
+idx = lib.clang_createIndex(0, 0)
+lib.clang_parseTranslationUnit2.restype = ctypes.c_int
+lib.clang_getNumDiagnostics.restype = ctypes.c_int
+lib.clang_getDiagnosticSpelling.restype = ctypes.c_char_p
+open('/tmp/t.c','w').write('#include <stdbool.h>
+int x;
+')
+for name, args in [
+    ('host-default', []),
+    ('mingw-full', ['--target=x86_64-w64-mingw32',
+      '-isystem','/usr/lib/llvm-18/lib/clang/18/include',
+      '-isystem','/usr/lib/gcc/x86_64-w64-mingw32/13-posix/include',
+      '-isystem','/usr/x86_64-w64-mingw32/include']),
+]:
+    argv = (ctypes.c_char_p * (len(args)+1))(*[a.encode() for a in args], None)
+    tu = ctypes.c_void_p()
+    rc = lib.clang_parseTranslationUnit2(idx, b'/tmp/t.c', argv, len(args), None, 0, 0, ctypes.byref(tu))
+    n = lib.clang_getNumDiagnostics(tu)
+    print('BINDGEN-PROBE', name, 'rc=', rc, 'diags=', n)
+    for i in range(min(n,2)):
+        d = lib.clang_getDiagnostic(tu, i)
+        print('BINDGEN-PROBE   ', lib.clang_getDiagnosticSpelling(d)[:120])
+" 2>&1 | sed 's/^/wgnu-probe: /' || true
+
   (
     end=$((SECONDS + 14400))
     while [ $SECONDS -lt $end ]; do
