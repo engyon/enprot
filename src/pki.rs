@@ -168,6 +168,39 @@ fn split_pem_bundle(pem: &str) -> Vec<String> {
     blocks
 }
 
+/// Derive the PEM-encoded public key from a private key PEM. For
+/// composite algorithms the private PEM is a bundle of leg PEMs; the
+/// public key is derived per leg and returned as the matching bundle
+/// (same leg order). Inverse relationship of `keygen`'s output pair.
+pub fn pubkey_from_priv_pem(kind: SigAlgKind, priv_pem: &str) -> Result<String> {
+    match kind {
+        SigAlgKind::CompositeEd25519MlDsa => {
+            let legs = split_pem_bundle(priv_pem);
+            if legs.len() != 2 {
+                return Err(Error::InvalidArg {
+                    arg: "new-key",
+                    reason: format!(
+                        "composite private key bundle expected 2 PEM blocks, got {}",
+                        legs.len()
+                    ),
+                });
+            }
+            let e_pub = pubkey_from_priv_pem(SigAlgKind::Ed25519, &legs[0])?;
+            let m_pub = pubkey_from_priv_pem(SigAlgKind::MlDsa, &legs[1])?;
+            Ok(format!("{}\n{}", e_pub.trim_end(), m_pub))
+        }
+        _ => {
+            let privkey = Privkey::load_pem(priv_pem).map_err(Error::botan)?;
+            let pub_pem = privkey
+                .pubkey()
+                .map_err(Error::botan)?
+                .pem_encode()
+                .map_err(Error::botan)?;
+            Ok(pub_pem)
+        }
+    }
+}
+
 /// Sign `msg` with `privkey_pem`. For composite algorithms, signs
 /// with each leg and concatenates the signatures with 4-byte
 /// big-endian length prefixes.

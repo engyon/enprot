@@ -49,6 +49,7 @@ mod init;
 mod inspect;
 mod list;
 mod merge_cmd;
+mod migrate_keys;
 pub mod pipeline;
 mod pki_cmd;
 mod provenance_cmd;
@@ -144,6 +145,12 @@ pub enum Command {
     /// that parent references resolve to earlier anchors, and that
     /// There are no cycles. Exit non-zero on any failure (CI-friendly).
     VerifyChain(VerifyChainSubcmd),
+    /// Re-sign CHAIN anchors in FILE(s) under a new key/algorithm —
+    /// the post-quantum migration path (TODO.complete/58). Verifies
+    /// every old signature before rewriting anything; parents and
+    /// payload hashes are preserved, parent references are rewired
+    /// to the re-signed anchors' new hashes.
+    MigrateKeys(MigrateKeysSubcmd),
     /// Append-only signed audit log. Each line on stdin becomes a
     /// signed chain anchor in FILE — `tail -f` for cryptographic
     /// logs. Verify later with `enprot verify-chain --trust-root`.
@@ -563,6 +570,41 @@ pub struct VerifyChainSubcmd {
     pub trust_roots: Vec<PathBuf>,
 
     /// Input file(s). Each is verified independently.
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
+}
+
+/// `migrate-keys` subcommand (TODO.complete/58): re-sign every CHAIN
+/// anchor in FILE(s) whose signer matches `--from` + `--old-key`,
+/// using `--new-key` under `--to`. Per-anchor migration — each anchor
+/// is self-describing (`signer:<alg>:<fp>`), so hybrid files with
+/// classical and post-quantum anchors verify fine.
+#[derive(Args)]
+pub struct MigrateKeysSubcmd {
+    /// Algorithm the anchors to migrate are signed with
+    /// (ed25519 | mldsa | composite-ed25519-mldsa).
+    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub from: String,
+
+    /// Algorithm to re-sign with. Must differ from `--from`.
+    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub to: String,
+
+    /// The old signer's PUBLIC key. Every anchor must verify against
+    /// it before anything is rewritten (fail closed).
+    #[arg(long = "old-key", value_name = "PUB.pem")]
+    pub old_key: PathBuf,
+
+    /// The new signer's PRIVATE key, used to re-sign.
+    #[arg(long = "new-key", value_name = "PRIV.pem")]
+    pub new_key: PathBuf,
+
+    /// Input file(s), each migrated in place. Stdin is not
+    /// supported — the rewrite must land somewhere durable.
     #[arg(value_name = "FILE")]
     pub files: Vec<String>,
 }
@@ -1058,6 +1100,7 @@ where
         Command::VerifySig(a) => with_config(cli.common, |common| pki_cmd::verify_sig(common, a)),
         Command::Fingerprint(a) => pki_cmd::fingerprint(a),
         Command::VerifyChain(a) => with_config(cli.common, |common| verify_chain::run(common, a)),
+        Command::MigrateKeys(a) => with_config(cli.common, |common| migrate_keys::run(common, a)),
         Command::AuditLog(a) => with_config(cli.common, |common| {
             chain_head_cmd::audit_log_stream(common, a)
         }),
