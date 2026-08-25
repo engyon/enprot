@@ -79,6 +79,12 @@ pub enum ConfigIssue {
     /// ([`CryptoPolicy::min_pbkdf_millis`]). A derivation budget
     /// that weak defeats the policy's compliance posture.
     PbkdfMsecBelowFloor { requested: u32, floor: u32 },
+
+    /// `--recovery-key` was combined with a deterministic cipher
+    /// (`-det`). Escrow mode encrypts under a fresh random CEK, so
+    /// the same-input → same-output (CAS dedup) contract cannot
+    /// hold. Error.
+    RecoveryWithDet { alg: String },
 }
 
 impl ConfigIssue {
@@ -89,6 +95,7 @@ impl ConfigIssue {
             ConfigIssue::FipsPolicyConflict { .. }
                 | ConfigIssue::JobsZero
                 | ConfigIssue::PbkdfMsecBelowFloor { .. }
+                | ConfigIssue::RecoveryWithDet { .. }
         )
     }
 
@@ -121,6 +128,13 @@ impl ConfigIssue {
                     "error: --pbkdf-msec {requested} is below the policy minimum of {floor} ms"
                 )
             }
+            ConfigIssue::RecoveryWithDet { alg } => {
+                format!(
+                    "error: --recovery-key is incompatible with {alg}: escrow mode uses a fresh \
+                     random key per encryption, so the deterministic (same-input → same-output) \
+                     contract cannot hold; use a non-det cipher such as aes-256-siv"
+                )
+            }
         }
     }
 
@@ -132,6 +146,7 @@ impl ConfigIssue {
             ConfigIssue::JobsZero | ConfigIssue::JobsExceedsCpus { .. } => "--jobs",
             ConfigIssue::OutputDirWithStdin => "--output-dir",
             ConfigIssue::PbkdfMsecBelowFloor { .. } => "--pbkdf-msec",
+            ConfigIssue::RecoveryWithDet { .. } => "--recovery-key",
         }
     }
 }
@@ -201,6 +216,17 @@ pub fn collect_encrypt(enc: &EncryptOpts, policy: &dyn CryptoPolicy) -> Vec<Conf
         && requested < floor
     {
         issues.push(ConfigIssue::PbkdfMsecBelowFloor { requested, floor });
+    }
+
+    if !enc.recovery_key.is_empty() {
+        // The explicit --cipher flag, or the policy's default.
+        let alg = enc
+            .cipher
+            .clone()
+            .unwrap_or_else(|| policy.default_cipher_alg());
+        if alg.ends_with("-det") {
+            issues.push(ConfigIssue::RecoveryWithDet { alg });
+        }
     }
 
     issues
@@ -479,6 +505,55 @@ mod tests {
             pbkdf_params: Some("i=1000,r=8,p=1".to_string()),
             ..EncryptOpts::default()
         };
+        assert!(collect_encrypt(&enc, &nist).is_empty());
+    }
+
+    #[test]
+    fn recovery_key_with_det_cipher_errors() {
+        let enc = EncryptOpts {
+            cipher: Some("aes-256-gcm-det".to_string()),
+            recovery_key: vec![Path::new("r.pem").to_path_buf()],
+            ..EncryptOpts::default()
+        };
+        let default = crate::policy::default::CryptoPolicyDefault {};
+        let issues = collect_encrypt(&enc, &default);
+        assert!(matches!(issues[0], ConfigIssue::RecoveryWithDet { .. }));
+        assert!(issues[0].is_error());
+    }
+
+    #[test]
+    fn recovery_key_with_explicit_non_det_cipher_ok() {
+        let enc = EncryptOpts {
+            cipher: Some("aes-256-siv".to_string()),
+            recovery_key: vec![Path::new("r.pem").to_path_buf()],
+            ..EncryptOpts::default()
+        };
+        let default = crate::policy::default::CryptoPolicyDefault {};
+        assert!(collect_encrypt(&enc, &default).is_empty());
+    }
+
+    #[test]
+    fn recovery_key_with_default_policy_cipher_errors() {
+        // The default policy's cipher is aes-256-gcm-siv-det; escrow
+        // must refuse out of the box, not deep inside the transform.
+        let enc = EncryptOpts {
+            recovery_key: vec![Path::new("r.pem").to_path_buf()],
+            ..EncryptOpts::default()
+        };
+        let default = crate::policy::default::CryptoPolicyDefault {};
+        let issues = collect_encrypt(&enc, &default);
+        assert!(matches!(issues[0], ConfigIssue::RecoveryWithDet { .. }));
+    }
+
+    #[test]
+    fn recovery_key_under_nist_default_cipher_ok() {
+        // The NIST default (aes-256-gcm) is not det; escrow works
+        // out of the box under --fips.
+        let enc = EncryptOpts {
+            recovery_key: vec![Path::new("r.pem").to_path_buf()],
+            ..EncryptOpts::default()
+        };
+        let nist = crate::policy::nist::CryptoPolicyNIST {};
         assert!(collect_encrypt(&enc, &nist).is_empty());
     }
 
