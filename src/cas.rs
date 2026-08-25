@@ -65,6 +65,11 @@ pub mod s3;
 #[cfg(feature = "cas-ipfs")]
 pub mod ipfs;
 
+/// Rekor transparency-log wrapper (TODO.complete/27's remaining
+/// backend), behind the `cas-rekor` feature.
+#[cfg(feature = "cas-rekor")]
+pub mod rekor;
+
 /// Pluggable content-addressed storage. The trait abstracts over
 /// local disk, S3, IPFS, in-memory, etc. Implementations must be
 /// idempotent — saving the same blob twice returns the same hash
@@ -495,10 +500,17 @@ pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
                 .to_string(),
         });
     }
+    #[cfg(feature = "cas-rekor")]
+    if spec == "rekor:" || spec.starts_with("rekor://") {
+        return Ok(Box::new(rekor::RekorTlog::from_spec(spec)?));
+    }
+    #[cfg(not(feature = "cas-rekor"))]
     if spec == "rekor:" || spec.starts_with("rekor://") {
         return Err(crate::error::Error::InvalidArg {
             arg: "--casdir",
-            reason: "Rekor CAS requires --features sigstore (not yet built); use 'memory:' for testing or a local path".to_string(),
+            reason: "Rekor CAS requires a build with the `cas-rekor` feature \
+                     (cargo install enprot --features cas-rekor)"
+                .to_string(),
         });
     }
     // Default: treat as local filesystem path.
@@ -705,12 +717,18 @@ mod backend_tests {
 
     #[test]
     fn open_cas_rekor_returns_actionable_error() {
+        // Both build flavors fail fast with an actionable message:
+        // without the feature, the rebuild hint; with it, the missing
+        // signer env (no ENPROT_REKOR_SIGNER in the test env).
         match open_cas("rekor:") {
             Err(e) => {
                 let msg = e.to_string();
-                assert!(msg.contains("requires --features sigstore"), "msg: {msg}");
+                #[cfg(not(feature = "cas-rekor"))]
+                assert!(msg.contains("cas-rekor"), "msg: {msg}");
+                #[cfg(feature = "cas-rekor")]
+                assert!(msg.contains("ENPROT_REKOR_SIGNER"), "msg: {msg}");
             }
-            Ok(_) => panic!("Rekor backend should not be available without --features sigstore"),
+            Ok(_) => panic!("rekor: must not open without configuration"),
         }
     }
 }

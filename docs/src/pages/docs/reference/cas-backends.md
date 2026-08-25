@@ -95,10 +95,41 @@ The `CAS IPFS backend (Kubo)` CI job runs the full round-trip —
 save/idempotency/contains/load/list/delete, NotFound mapping —
 against a real Kubo container on every PR.
 
+## Rekor transparency layer (`--features cas-rekor`)
+
+`--casdir rekor://host:port` wraps an inner CAS with a Rekor
+transparency log: every `save` stores the blob in the inner backend
+AND appends a `hashedrekord` entry, giving the repository
+non-repudiation — anyone with the log can see a blob was recorded,
+and nobody can silently remove it.
+
+Configuration (env):
+
+- `ENPROT_REKOR_INNER` — inner CAS spec (a path, or `memory:`);
+  default `.`.
+- `ENPROT_REKOR_SIGNER` — Ed25519 private key (PEM) that signs each
+  entry (over the blob's SHA3-256 CAS key).
+
+Wire details: the entry's `data.hash` is SHA-256 of the blob (Rekor's
+hashedrekord format mandates SHA-256 — transport encoding, not
+enprot's content addressing, which stays SHA3-256). Ed25519
+signatures are deterministic, so `verify_inclusion(blob)` rebuilds
+the exact entry client-side, retrieves it from the log by value, and
+checks the returned inclusion proof's RFC 6962-style Merkle path
+folds from the leaf to the returned root.
+
+Works against a self-hosted Rekor or `rekor.sigstore.dev` (never
+submit test entries to the public log — run a local instance; the
+[Rekor docs](https://docs.sigstore.dev/) cover docker-compose
+deployments with Trillian).
+
+No CI leg yet: the MinIO/Kubo pattern needs a multi-container
+Trillian deployment; tests are env-gated
+(`ENPROT_REKOR_TEST_SPEC`) and run on demand, with the unit suite
+covering entry determinism and proof-chain verification.
+
 ## Not yet implemented
 
-- `ipfs://` — planned as plain HTTP against a Kubo RPC (`/api/v0`),
-  storing blobs under their SHA3-256 multihash CID.
-- `rekor://` — modeled as a transparency-log *layer* wrapping another
-  backend (write-through to Rekor, read from the inner store), not a
-  primary CAS; see TODO.complete/27.
+- Nothing in this list for CAS backends — S3, IPFS, and the Rekor
+  transparency layer have all shipped. Future work: a CI leg with a
+  self-hosted Rekor once a single-container deployment story lands.
