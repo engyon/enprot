@@ -60,34 +60,7 @@ if [ "${WGNU_DEBUG:-0}" = "1" ]; then
   # One-shot libclang probe inside the freshly built image: which
   # libclang exists, and can it parse stdbool.h with/without the
   # bindgen args? Settles the "file not found" chain empirically.
-  docker run --rm "$PROJECT_NAME/cross-build:$TARGET" python3 -c "
-import ctypes
-from ctypes.util import find_library
-lib = ctypes.CDLL(find_library('clang') or '/usr/lib/llvm-18/lib/libclang.so.1')
-lib.clang_createIndex.restype = ctypes.c_void_p
-idx = lib.clang_createIndex(0, 0)
-lib.clang_parseTranslationUnit2.restype = ctypes.c_int
-lib.clang_getNumDiagnostics.restype = ctypes.c_int
-lib.clang_getDiagnosticSpelling.restype = ctypes.c_char_p
-open('/tmp/t.c','w').write('#include <stdbool.h>
-int x;
-')
-for name, args in [
-    ('host-default', []),
-    ('mingw-full', ['--target=x86_64-w64-mingw32',
-      '-isystem','/usr/lib/llvm-18/lib/clang/18/include',
-      '-isystem','/usr/lib/gcc/x86_64-w64-mingw32/13-posix/include',
-      '-isystem','/usr/x86_64-w64-mingw32/include']),
-]:
-    argv = (ctypes.c_char_p * (len(args)+1))(*[a.encode() for a in args], None)
-    tu = ctypes.c_void_p()
-    rc = lib.clang_parseTranslationUnit2(idx, b'/tmp/t.c', argv, len(args), None, 0, 0, ctypes.byref(tu))
-    n = lib.clang_getNumDiagnostics(tu)
-    print('BINDGEN-PROBE', name, 'rc=', rc, 'diags=', n)
-    for i in range(min(n,2)):
-        d = lib.clang_getDiagnostic(tu, i)
-        print('BINDGEN-PROBE   ', lib.clang_getDiagnosticSpelling(d)[:120])
-" 2>&1 | sed 's/^/wgnu-probe: /' || true
+  docker run --rm "$PROJECT_NAME/cross-build:$TARGET" sh -c 'echo aW1wb3J0IGN0eXBlcwpmcm9tIGN0eXBlcy51dGlsIGltcG9ydCBmaW5kX2xpYnJhcnkKbGliID0gY3R5cGVzLkNETEwoZmluZF9saWJyYXJ5KCJjbGFuZyIpIG9yICIvdXNyL2xpYi9sbHZtLTE4L2xpYi9jbGFuZy5zby4xIiBpZiBGYWxzZSBlbHNlIGZpbmRfbGlicmFyeSgiY2xhbmciKSBvciAiL3Vzci9saWIvbGx2bS0xOC9saWIvbGliY2xhbmcuc28uMSIpCmxpYi5jbGFuZ19jcmVhdGVJbmRleC5yZXN0eXBlID0gY3R5cGVzLmNfdm9pZF9wCmlkeCA9IGxpYi5jbGFuZ19jcmVhdGVJbmRleCgwLCAwKQpsaWIuY2xhbmdfcGFyc2VUcmFuc2xhdGlvblVuaXQyLnJlc3R5cGUgPSBjdHlwZXMuY19pbnQKbGliLmNsYW5nX2dldE51bURpYWdub3N0aWNzLnJlc3R5cGUgPSBjdHlwZXMuY19pbnQKbGliLmNsYW5nX2dldERpYWdub3N0aWNTcGVsbGluZy5yZXN0eXBlID0gY3R5cGVzLmNfY2hhcl9wCndpdGggb3BlbigiL3RtcC90LmMiLCAidyIpIGFzIGY6CiAgICBmLndyaXRlKCIjaW5jbHVkZSA8c3RkYm9vbC5oPlxuaW50IHg7XG4iKQpmb3IgbmFtZSwgYXJncyBpbiBbCiAgICAoImhvc3QtZGVmYXVsdCIsIFtdKSwKICAgICgibWluZ3ctZnVsbCIsIFsiLS10YXJnZXQ9eDg2XzY0LXc2NC1taW5ndzMyIiwKICAgICAgIi1pc3lzdGVtIiwgIi91c3IvbGliL2xsdm0tMTgvbGliL2NsYW5nLzE4L2luY2x1ZGUiLAogICAgICAiLWlzeXN0ZW0iLCAiL3Vzci9saWIvZ2NjL3g4Nl82NC13NjQtbWluZ3czMi8xMy1wb3NpeC9pbmNsdWRlIiwKICAgICAgIi1pc3lzdGVtIiwgIi91c3IveDg2XzY0LXc2NC1taW5ndzMyL2luY2x1ZGUiXSksCl06CiAgICBlbmNvZGVkID0gW2EuZW5jb2RlKCkgZm9yIGEgaW4gYXJnc10KICAgIGFyZ3YgPSAoY3R5cGVzLmNfY2hhcl9wICogKGxlbihlbmNvZGVkKSArIDEpKSgqZW5jb2RlZCwgTm9uZSkKICAgIHR1ID0gY3R5cGVzLmNfdm9pZF9wKCkKICAgIHJjID0gbGliLmNsYW5nX3BhcnNlVHJhbnNsYXRpb25Vbml0MihpZHgsIGIiL3RtcC90LmMiLCBhcmd2LCBsZW4oZW5jb2RlZCksIE5vbmUsIDAsIDAsIGN0eXBlcy5ieXJlZih0dSkpCiAgICBuID0gbGliLmNsYW5nX2dldE51bURpYWdub3N0aWNzKHR1KQogICAgcHJpbnQoIkJJTkRHRU4tUFJPQkUiLCBuYW1lLCAicmM9IiwgcmMsICJkaWFncz0iLCBuKQogICAgZm9yIGkgaW4gcmFuZ2UobWluKG4sIDIpKToKICAgICAgICBkID0gbGliLmNsYW5nX2dldERpYWdub3N0aWModHUsIGkpCiAgICAgICAgcHJpbnQoIkJJTkRHRU4tUFJPQkUtZGlhZyIsIGxpYi5jbGFuZ19nZXREaWFnbm9zdGljU3BlbGxpbmcoZClbOjEyMF0uZGVjb2RlKGVycm9ycz0icmVwbGFjZSIpKQo= | base64 -d | python3' 2>&1 | sed 's/^/wgnu-probe: /' || true
 
   (
     end=$((SECONDS + 14400))
