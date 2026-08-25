@@ -57,6 +57,10 @@ impl McpChild {
             }
             let msg: Value = serde_json::from_str(&line).expect("valid JSON-RPC line");
             if msg.get("id").and_then(|i| i.as_u64()) == Some(id) {
+                assert!(
+                    msg.get("result").is_some(),
+                    "JSON-RPC error response: {msg}"
+                );
                 return msg;
             }
             // notifications and other responses: skip
