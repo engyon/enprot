@@ -29,29 +29,28 @@ COPY tools/ /usr/local/bin/
 COPY wrappers/ /usr/local/bin/
 
 # libclang shim: logs clang_parseTranslationUnit2 args to
-# /tmp/shim.log, then forwards to the real libclang. Selected via
-# LIBCLANG_PATH=/shim (clang-sys honors the directory).
-RUN gcc -shared -fPIC -o /shim-libclang.so.1 -x c - -ldl <<'SHIM'
-#define _GNU_SOURCE
-#include <dlfcn.h>
-#include <stdio.h>
-#include <stddef.h>
-typedef void *(*mkidx_fn)(int, void *);
-mkidx_fn real_mkidx;
-void *clang_createIndex(int e, int x) {
-  if (!real_mkidx) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_mkidx = (mkidx_fn)dlsym(h, "clang_createIndex"); }
-  return real_mkidx(e, (void *)(size_t)x);
-}
-typedef int (*parse_fn)(void *, const char *, const char *const *, int, void *, int, unsigned, void **);
-parse_fn real_parse;
-int clang_parseTranslationUnit2(void *idx, const char *file, const char *const *args, int n, void *unsaved, int nu, unsigned opts, void **out) {
-  FILE *f = fopen("/project/shim.log", "a");
-  if (f) { fprintf(f, "PARSE file=%s args=%d\n", file, n); for (int i = 0; i < n; i++) fprintf(f, "  [%d] %s\n", i, args[i]); fclose(f); }
-  if (!real_parse) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_parse = (parse_fn)dlsym(h, "clang_parseTranslationUnit2"); }
-  return real_parse(idx, file, args, n, unsaved, nu, opts, out);
-}
-SHIM
-mkdir -p /shim && mv /shim-libclang.so.1 /shim/libclang.so.1
+# /project/shim.log, then forwards to the real libclang. Selected
+# via LIBCLANG_PATH=/shim (clang-sys honors the directory).
+RUN mkdir -p /shim && printf '%s\n' \
+  '#define _GNU_SOURCE' \
+  '#include <dlfcn.h>' \
+  '#include <stdio.h>' \
+  '#include <stddef.h>' \
+  'typedef void *(*mkidx_fn)(int, void *);' \
+  'mkidx_fn real_mkidx;' \
+  'void *clang_createIndex(int e, int x) {' \
+  '  if (!real_mkidx) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_mkidx = (mkidx_fn)dlsym(h, "clang_createIndex"); }' \
+  '  return real_mkidx(e, (void *)(size_t)x);' \
+  '}' \
+  'typedef int (*parse_fn)(void *, const char *, const char *const *, int, void *, int, unsigned, void **);' \
+  'parse_fn real_parse;' \
+  'int clang_parseTranslationUnit2(void *idx, const char *file, const char *const *args, int n, void *unsaved, int nu, unsigned opts, void **out) {' \
+  '  FILE *f = fopen("/project/shim.log", "a");' \
+  '  if (f) { fprintf(f, "PARSE file=%s args=%d\n", file, n); for (int i = 0; i < n; i++) fprintf(f, "  [%d] %s\n", i, args[i]); fclose(f); }' \
+  '  if (!real_parse) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_parse = (parse_fn)dlsym(h, "clang_parseTranslationUnit2"); }' \
+  '  return real_parse(idx, file, args, n, unsaved, nu, opts, out);' \
+  '}' \
+  > /shim/shim.c && gcc -shared -fPIC -o /shim/libclang.so.1 /shim/shim.c -ldl
 EOF
 
 # mingw filter wrappers: cmake inside rnp-src assumes a Linux build
