@@ -94,5 +94,9 @@ if ! cross -vv build --target "$TARGET" --release --features "$features"; then
 fi
 
 [ -n "${WGnuSampler:-}" ] && kill "$WGnuSampler" 2>/dev/null || true
+if [ "${WGNU_DEBUG:-0}" = "1" ]; then
+  echo "===== libclang shim log ====="
+  cat shim.log 2>/dev/null | head -60 || true
+fi
 
 . "ci/build-static/post/$TARGET.sh"

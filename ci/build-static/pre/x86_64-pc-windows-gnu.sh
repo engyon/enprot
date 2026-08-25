@@ -27,6 +27,31 @@ RUN apt-get -y update && \\
 
 COPY tools/ /usr/local/bin/
 COPY wrappers/ /usr/local/bin/
+
+# libclang shim: logs clang_parseTranslationUnit2 args to
+# /tmp/shim.log, then forwards to the real libclang. Selected via
+# LIBCLANG_PATH=/shim (clang-sys honors the directory).
+RUN gcc -shared -fPIC -o /shim-libclang.so.1 -x c - -ldl <<'SHIM'
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stddef.h>
+typedef void *(*mkidx_fn)(int, void *);
+mkidx_fn real_mkidx;
+void *clang_createIndex(int e, int x) {
+  if (!real_mkidx) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_mkidx = (mkidx_fn)dlsym(h, "clang_createIndex"); }
+  return real_mkidx(e, (void *)(size_t)x);
+}
+typedef int (*parse_fn)(void *, const char *, const char *const *, int, void *, int, unsigned, void **);
+parse_fn real_parse;
+int clang_parseTranslationUnit2(void *idx, const char *file, const char *const *args, int n, void *unsaved, int nu, unsigned opts, void **out) {
+  FILE *f = fopen("/project/shim.log", "a");
+  if (f) { fprintf(f, "PARSE file=%s args=%d\n", file, n); for (int i = 0; i < n; i++) fprintf(f, "  [%d] %s\n", i, args[i]); fclose(f); }
+  if (!real_parse) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_parse = (parse_fn)dlsym(h, "clang_parseTranslationUnit2"); }
+  return real_parse(idx, file, args, n, unsaved, nu, opts, out);
+}
+SHIM
+mkdir -p /shim && mv /shim-libclang.so.1 /shim/libclang.so.1
 EOF
 
 # mingw filter wrappers: cmake inside rnp-src assumes a Linux build
@@ -188,6 +213,7 @@ mkdir -p .cargo
 if ! grep -qF "[env]" .cargo/config.toml 2>/dev/null; then
 cat <<EOF >> .cargo/config.toml
 [env]
+LIBCLANG_PATH = "/shim"
 BINDGEN_EXTRA_CLANG_ARGS = "--target=x86_64-w64-mingw32 -isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
 RUST_LOG = { value = "bindgen=debug", force = true }
 EOF
