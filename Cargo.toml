@@ -66,6 +66,11 @@ vendored-rnp = ["rnp-rs/vendored"]
 # dedicated tokio runtime behind a mutex — the pipeline is
 # synchronous; concurrent saves serialize on the lock.
 cas-s3 = ["dep:object_store", "dep:tokio", "dep:futures", "dep:reqwest"]
+# Rekor transparency-log CAS wrapper (TODO.complete/27). Delegates
+# storage to an inner backend (ENPROT_REKOR_INNER, default local
+# path) and appends a hashedrekord entry per save (ENPROT_REKOR_SIGNER
+# = Ed25519 privkey). Reuses the reqwest + runtime deps from cas-s3.
+cas-rekor = ["dep:reqwest", "dep:tokio"]
 
 # WASM build (TODO.complete/14). When enabled, Botan is replaced
 # with RustCrypto-only crypto (aes-siv, aes-gcm, sha3). Currently
