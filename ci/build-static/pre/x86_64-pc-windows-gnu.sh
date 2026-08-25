@@ -28,6 +28,22 @@ RUN apt-get -y update && \\
 COPY tools/ /usr/local/bin/
 COPY wrappers/ /usr/local/bin/
 
+# cmakew: on --install, tolerate the cross-CLI failure (rnpgp/rnp-rs#72):
+# librnp.a + headers install fine, then the CLI rule references an
+# executable rnp's CMakeLists never builds when cross-compiling.
+# Tolerance is NARROW: real-cmake output must have installed librnp
+# AND stderr must match the CMakeRelink CLI miss exactly.
+RUN printf '%s\n' \
+  '#!/bin/sh' \
+  'if [ "$1" != "--install" ]; then exec /usr/bin/cmake "$@"; fi' \
+  'out=$(/usr/bin/cmake "$@" 2>/tmp/cmakew.err); st=$?' \
+  '[ $st -eq 0 ] && { printf "%s" "$out"; exit 0; }' \
+  'if grep -q "CMakeRelink.dir/rnp" /tmp/cmakew.err && printf "%s" "$out" | grep -q "librnp.a"; then' \
+  '  echo "cmakew: tolerating cross-CLI install miss (rnpgp/rnp-rs#72)"; printf "%s" "$out"; exit 0' \
+  'fi' \
+  'printf "%s" "$out"; cat /tmp/cmakew.err >&2; exit $st' \
+  > /usr/local/bin/cmakew && chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
+
 # libclang shim: logs clang_parseTranslationUnit2 args to
 # /project/shim.log, then forwards to the real libclang. Selected
 # via LIBCLANG_PATH=/shim (clang-sys honors the directory).
@@ -42,6 +58,12 @@ RUN mkdir -p /shim && printf '%s\n' \
   '  if (!real_mkidx) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_mkidx = (mkidx_fn)dlsym(h, "clang_createIndex"); }' \
   '  return real_mkidx(e, (void *)(size_t)x);' \
   '}' \
+  'typedef const char *(*ver_fn)(void);'
+  'ver_fn real_ver;'
+  'const char *clang_getClangVersion(void) {'
+  '  if (!real_ver) { void *h = dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); real_ver = (ver_fn)dlsym(h, "clang_getClangVersion"); }'
+  '  return real_ver();'
+  '}'
   'typedef int (*parse_fn)(void *, const char *, const char *const *, int, void *, int, unsigned, void **);' \
   'parse_fn real_parse;' \
   'int clang_parseTranslationUnit2(void *idx, const char *file, const char *const *args, int n, void *unsaved, int nu, unsigned opts, void **out) {' \
