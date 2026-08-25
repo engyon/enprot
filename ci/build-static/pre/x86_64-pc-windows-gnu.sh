@@ -44,6 +44,24 @@ RUN printf '%s\n' \
   'printf "%s" "\$out"; cat /tmp/cmakew.err >&2; exit \$st' \
   > /usr/local/bin/cmakew && chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
 
+# cmakew: tolerate the cross-CLI install miss (rnpgp/rnp-rs#72).
+RUN printf '%s\n' \
+  '#!/bin/sh' \
+  'if [ "$1" != "--install" ]; then exec /usr/bin/cmake "$@"; fi' \
+  'out=$(/usr/bin/cmake "$@" 2>/tmp/cmakew.err); st=$?' \
+  '[ $st -eq 0 ] && { printf "%s" "$out"; exit 0; }' \
+  'if grep -q "CMakeRelink.dir/rnp" /tmp/cmakew.err && printf "%s" "$out" | grep -q "librnp.a"; then' \
+  '  echo "cmakew: tolerating cross-CLI install miss (rnpgp/rnp-rs#72)"; printf "%s" "$out"; exit 0' \
+  'fi' \
+  'printf "%s" "$out"; cat /tmp/cmakew.err >&2; exit $st' \
+  > /usr/local/bin/cmakew && chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
+
+# libclang shim, compiled from a plain COPYed source file (no inline
+# quoting battles). Logs clang_parseTranslationUnit2 args to
+# /project/shim.log, forwards everything else.
+RUN mkdir -p /shim && gcc -shared -fPIC -o /shim/libclang.so.1 /usr/local/bin/shim.c -ldl
+EOF
+
 # libclang shim: logs clang_parseTranslationUnit2 args to
 # /project/shim.log, then forwards to the real libclang. Selected
 # via LIBCLANG_PATH=/shim (clang-sys honors the directory).
@@ -81,6 +99,39 @@ EOF
 # Same pattern as the musl legs' zig filter: strip what mingw
 # cannot parse, exec the real posix-variant toolchain.
 mkdir -p "$ctx/tools"
+
+# quoted heredoc: zero escaping; C verbatim
+cat > "$ctx/tools/shim.c" <<'CSRC'
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stddef.h>
+static void *real_lib(void) { return dlopen("/usr/lib/llvm-18/lib/libclang.so.1", RTLD_NOW); }
+typedef void *(*mkidx_fn)(int, void *);
+void *clang_createIndex(int e, int x) {
+  static mkidx_fn f;
+  if (!f) f = (mkidx_fn)dlsym(real_lib(), "clang_createIndex");
+  return f(e, (void *)(size_t)x);
+}
+typedef const char *(*ver_fn)(void);
+const char *clang_getClangVersion(void) {
+  static ver_fn f;
+  if (!f) f = (ver_fn)dlsym(real_lib(), "clang_getClangVersion");
+  return f();
+}
+typedef int (*parse_fn)(void *, const char *, const char *const *, int, void *, int, unsigned, void **);
+int clang_parseTranslationUnit2(void *idx, const char *file, const char *const *args, int n, void *unsaved, int nu, unsigned opts, void **out) {
+  static parse_fn f;
+  FILE *lf = fopen("/project/shim.log", "a");
+  if (lf) {
+    fprintf(lf, "PARSE file=%s args=%d\n", file, n);
+    for (int i = 0; i < n; i++) fprintf(lf, "  [%d] %s\n", i, args[i]);
+    fclose(lf);
+  }
+  if (!f) f = (parse_fn)dlsym(real_lib(), "clang_parseTranslationUnit2");
+  return f(idx, file, args, n, unsaved, nu, opts, out);
+}
+CSRC
 for t in cc c++; do
   real="x86_64-w64-mingw32-gcc-posix"
   [ "$t" = c++ ] && real="x86_64-w64-mingw32-g++-posix"
