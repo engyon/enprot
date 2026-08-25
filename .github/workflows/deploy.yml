@@ -247,7 +247,10 @@ jobs:
               # Botan's getentropy entropy source does not exist on
               # mingw ('::getentropy' has not been declared); Windows
               # uses the system_rng/bcrypt path instead.
-              BOTAN_CONFIGURE_DISABLE_MODULES: getentropy
+              # certstore_windows pulls crypt32/ws2_32 imports that
+              # rnp-src's internal links don't satisfy on mingw; we
+              # never use Windows system cert stores.
+              BOTAN_CONFIGURE_DISABLE_MODULES: getentropy certstore_windows
               # Single-TU Botan: the mingw build was also hitting the
               # archive job timeout.
               BOTAN_CONFIGURE_AMALGAMATION: "1"
