@@ -102,6 +102,26 @@ fn output_dir_flag_places_files_in_directory() {
     assert!(out_dir.path().join("b.ept").is_file());
 }
 
+// --output-dir can't apply to stdin: '-' always writes to stdout.
+// The flag must not be silently dropped — warn (but still succeed;
+// the passthrough to stdout is the well-defined behavior).
+#[test]
+fn output_dir_with_stdin_warns() {
+    let out_dir = tempdir().unwrap();
+    assert_cmd::Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("passthrough")
+        .arg("--output-dir")
+        .arg(out_dir.path())
+        .arg("-")
+        .write_stdin("// <( BEGIN Agent_007 )>\nhi\n// <( END Agent_007 )>\n")
+        .assert()
+        .success()
+        .stderr(predicates::str::contains(
+            "--output-dir has no effect when input is stdin",
+        ));
+}
+
 #[test]
 fn output_dir_conflicts_with_prefix() {
     let out_dir = tempdir().unwrap();

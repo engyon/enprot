@@ -40,6 +40,16 @@ pub mod nist;
 pub trait CryptoPolicy: Send + Sync {
     fn check_hash(&self, alg: &str) -> Result<(), String>;
 
+    /// Minimum timed-derivation budget (ms) this policy tolerates when
+    /// the user overrides `--pbkdf-msec`. Enforced by the startup
+    /// validation gate (`cli::validate`), not per-derivation, so a
+    /// weak budget is rejected before any file is processed. Manual
+    /// params mode (`--pbkdf-params`) is exempt — its iteration count
+    /// is gated by `check_pbkdf` instead. Default: no floor.
+    fn min_pbkdf_millis(&self) -> u32 {
+        0
+    }
+
     fn check_pbkdf(
         &self,
         alg: &str,
