@@ -21,6 +21,7 @@ mod inspect;
 mod issue_15;
 mod json_output;
 mod merge_driver;
+mod migrate_keys;
 mod misc;
 mod multi_file;
 mod pbkdf;

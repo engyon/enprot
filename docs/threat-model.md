@@ -36,6 +36,7 @@ The most valuable assets are the **plaintext**, **passwords**, and
 | Disk-only adversary | Steals laptop / disk image; reads `.ept` files | Ciphertext confidentiality (AES-256-SIV); CAS content addressing |
 | Same-user process | Reads `~/.enprot/`, env vars, `ps` output | No plaintext in env vars; passwords via TTY prompt (no echo); 0600 perms on key files |
 | Cryptanalytic adversary (current) | Knows the cipher algorithm; tries to break it | Policy-approved ciphers only (AES-256-SIV, AES-256-GCM-SIV); constant-time comparison where applicable |
+| Quantum adversary (signatures, future) | Harvests anchors today; forges Ed25519 chain signatures once a CRQC exists | ML-DSA + composite signature algorithms (`keygen`, chain anchors); `migrate-keys` for per-anchor rollout ([pq-migration.md](pq-migration.md)) |
 | Compromised dependency | A crate in the dep tree is malicious | `cargo audit` + `cargo deny` in CI; reproducible builds (#45) |
 | Supply-chain CI attacker | Modifies a GHA workflow to inject code | Tag-protected workflow changes; signed releases |
 
@@ -45,7 +46,7 @@ The most valuable assets are the **plaintext**, **passwords**, and
 |---|---|
 | Root/admin on the host | Can read process memory, swap, etc. — beyond enprot's threat model |
 | Hardware side-channel (Spectre, etc.) | OS/hardware concern; use full mitigations at OS level |
-| Quantum adversary (current) | PQC roadmap; not in scope for current versions |
+| Quantum adversary (symmetric, current) | AES-256 and SHA3-256 have comfortable margins against Grover; nothing to do at current sizes |
 | Coercion ("rubber-hose") | Out of scope; use a real password manager + deniable encryption if needed |
 
 ## 3. Attack surface
