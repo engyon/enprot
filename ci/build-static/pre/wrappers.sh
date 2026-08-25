@@ -36,6 +36,16 @@ make_wrappers() {
   # hardcoded compiler references rnp-src passes to CMake.
   _emit() {
     name=$1 target_tool=$2 host_tool=$3
+    # A shadow whose host fallback is its own bare name would exec
+    # ITSELF forever (/usr/local/bin precedes /usr/bin): the
+    # windows-gnu leg's host build-script links spin in that loop
+    # from the build's first minute (issue #368 — seen live via the
+    # container sampler: quote/proc-macro2/libc linker wrappers at
+    # ~70min elapsed on a 70min-old container). Pin the absolute
+    # path so PATH lookup cannot re-enter the shadow.
+    case "$host_tool" in
+      "$name"|cc|c++|gcc|g++) host_tool="/usr/bin/$host_tool" ;;
+    esac
     w="$ctx/wrappers/$name"
     cat > "$w" <<WRAP
 #!/bin/sh

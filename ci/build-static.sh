@@ -40,13 +40,15 @@ cargo install --version "$CROSS_VERSION" cross
 # feature): the containers have no system Botan, and on unix the
 # botan crate otherwise defaults to pkg-config and its build script
 # dies. Tests use system Botan and must not get the vendored copy.
-# windows-gnu EXCLUDED: its botan dep uses the 'static' feature
-# (link-only), so rnp-src's own Botan satisfies it — skipping a
-# third full Botan build that pushed the cold leg past the job
-# timeout (it needs to succeed once to populate the cache).
+# windows-gnu needs it too: botan-sys compiles INDEPENDENTLY of
+# rnp-src (no ordering guarantee), and its rustc fails fast on -l
+# static=botan-3 with no search path. The "share rnp-src's Botan"
+# design has no transport for the link path, so this leg builds
+# Botan twice — the second one lands in the OUT_DIR cache like
+# every other C artifact.
 case "$TARGET" in
-  *-linux-musl) features="vendored-rnp,botan/vendored" ;;
-  *)            features="vendored-rnp" ;;
+  *-linux-musl|*-windows-gnu) features="vendored-rnp,botan/vendored" ;;
+  *)                          features="vendored-rnp" ;;
 esac
 if ! cross -vv build --target "$TARGET" --release --features "$features"; then
   echo "=== build failed; dumping assembled config and retrying without -vv ==="
