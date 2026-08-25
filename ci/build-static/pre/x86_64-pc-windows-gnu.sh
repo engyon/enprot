@@ -51,6 +51,19 @@ for a in "\$@"; do
   [ "\$prev" = "-o" ] && out="\$a"
   prev="\$a"
 done
+# Link mode (an -o target and no -c/-S/-E): Botan's winsock and
+# Windows cert-store code (OS-integrated, not a disableable module)
+# imports ws2_32/crypt32 — unresolved in rnp's example links and in
+# the final enprot.exe link alike. Import libs are inert when
+# unused, so append them on every mingw link.
+linking=
+for a in "\$@"; do
+  case "\$a" in
+    -c|-S|-E) linking=; break ;;
+    -o) linking=1 ;;
+  esac
+done
+[ -n "\$out" ] && [ -n "\$linking" ] && args="\$args -lws2_32 -lcrypt32"
 eval "$real" "\$args"
 st=\$?
 # mingw appends .exe to -o targets; cmake (believing it builds for
@@ -174,6 +187,9 @@ mkdir -p .cargo
 if ! grep -qF "[target.$TARGET]" .cargo/config.toml 2>/dev/null; then
 cat <<EOF >> .cargo/config.toml
 [target.$TARGET]
-rustflags = ["-C", "link-args=-s"]
+# ws2_32/crypt32: Botan's winsock + Windows cert-store imports; the
+# final link goes through RUSTC_LINKER directly, bypassing the
+# mingw wrappers.
+rustflags = ["-C", "link-args=-s", "-C", "link-args=-lws2_32", "-C", "link-args=-lcrypt32"]
 EOF
 fi
