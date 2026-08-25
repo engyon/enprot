@@ -1,0 +1,26 @@
+[package]
+name = "enprot-mcp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "BSD-2-Clause"
+description = "MCP server exposing enprot tools to AI agents (inspect, encrypt, decrypt, verify, chain-head pinning, capabilities)"
+repository = "https://github.com/engyon/enprot"
+homepage = "https://github.com/engyon/enprot"
+keywords = ["mcp", "encryption", "enprot", "ai", "agent"]
+categories = ["cryptography", "development-tools"]
+
+[dependencies]
+rmcp = { version = "3.1", features = ["server", "transport-io"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+glob = "0.3"
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "enprot-mcp"
+path = "src/main.rs"
