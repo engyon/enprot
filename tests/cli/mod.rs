@@ -32,6 +32,7 @@ mod provenance;
 mod recipient_encrypt;
 mod recovery;
 mod resolve;
+mod rotate;
 mod scm;
 mod smudge_clean;
 mod snapshot_pin;

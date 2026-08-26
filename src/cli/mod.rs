@@ -54,6 +54,7 @@ mod migrate_keys;
 pub mod pipeline;
 mod pki_cmd;
 mod provenance_cmd;
+mod rotate;
 mod sbom_cmd;
 mod smudge;
 mod validate;
@@ -143,6 +144,11 @@ pub enum Command {
     /// payload hashes are preserved, parent references are rewired
     /// to the re-signed anchors' new hashes.
     MigrateKeys(MigrateKeysSubcmd),
+    /// Re-wrap escrow-mode blocks' key material under a new password
+    /// and/or new recovery keys WITHOUT re-encrypting the payload.
+    /// The payload ciphertext stays byte-identical (CAS pointers
+    /// remain valid); only the CEK wraps change.
+    Rotate(RotateSubcmd),
     /// Append-only signed audit log. Each line on stdin becomes a
     /// signed chain anchor in FILE — `tail -f` for cryptographic
     /// logs. Verify later with `enprot verify-chain --trust-root`.
@@ -602,6 +608,29 @@ pub struct MigrateKeysSubcmd {
 
     /// Input file(s), each migrated in place. Stdin is not
     /// supported — the rewrite must land somewhere durable.
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
+}
+
+/// `rotate` subcommand (TODO 59's rotation gap): re-wrap escrow
+/// blocks' CEK under new key material. Payload unchanged.
+#[derive(Args)]
+pub struct RotateSubcmd {
+    /// Current recovery privkey (PEM) — the alternative unwrap
+    /// credential when the password isn't available.
+    #[arg(long = "key-file", value_name = "PRIV.pem")]
+    pub key_file: Option<PathBuf>,
+
+    /// The NEW password to wrap under.
+    #[arg(long, value_name = "PASSWORD")]
+    pub new_password: String,
+
+    /// Recovery pubkey (PEM) for the new wrap. Repeatable; at
+    /// least one required.
+    #[arg(long = "recovery-key", value_name = "PUB.pem")]
+    pub recovery_key: Vec<PathBuf>,
+
+    /// Input file(s), each rotated in place.
     #[arg(value_name = "FILE")]
     pub files: Vec<String>,
 }
@@ -1121,6 +1150,7 @@ where
         Command::Fingerprint(a) => pki_cmd::fingerprint(a),
         Command::VerifyChain(a) => with_config(cli.common, |common| verify_chain::run(common, a)),
         Command::MigrateKeys(a) => with_config(cli.common, |common| migrate_keys::run(common, a)),
+        Command::Rotate(a) => with_config(cli.common, |common| rotate::run(common, a)),
         Command::AuditLog(a) => with_config(cli.common, |common| {
             chain_head_cmd::audit_log_stream(common, a)
         }),

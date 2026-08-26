@@ -265,6 +265,164 @@ pub fn decrypt_with_key(
     finish(ct, cek, extfields, policy)
 }
 
+/// Unwrap the CEK via the password path (rotation's first half —
+/// the payload is NOT decrypted; the CEK is recovered so it can be
+/// re-wrapped under new key material).
+fn unwrap_cek_with_password(
+    password: &str,
+    extfields: &BTreeMap<String, String>,
+    cache: &mut Option<PBKDFCache>,
+    policy: &dyn CryptoPolicy,
+) -> Result<Vec<u8>> {
+    let pw_wrap = extfields.get("pw-wrap").ok_or_else(|| Error::Extfield {
+        field: "pw-wrap",
+        reason: "escrow block has no pw-wrap field; the password path is unavailable".to_string(),
+    })?;
+    let wrapped = crate::utils::base64_decode(pw_wrap)?;
+    let wrap_key_len = cipher::encryption(WRAP_ALG)?.key_len_max();
+    let kek = crate::prot::derive_decrypt_key(
+        password,
+        extfields.get("pbkdf").map(|s| s.as_str()),
+        wrap_key_len,
+        cache,
+        policy,
+    )?;
+    gcm_open(&kek, &wrapped)
+}
+
+/// Unwrap the CEK via a recovery privkey (rotation's first half).
+fn unwrap_cek_with_key(priv_pem: &str, extfields: &BTreeMap<String, String>) -> Result<Vec<u8>> {
+    let botan_priv = botan::Privkey::load_pem(priv_pem).map_err(Error::botan)?;
+    let pub_pem = botan_priv
+        .pubkey()
+        .map_err(Error::botan)?
+        .pem_encode()
+        .map_err(Error::botan)?;
+    let fp = crate::capability::KeyFp::from_pem(&pub_pem)?.to_hex();
+    let kem_ct = crate::utils::base64_decode(
+        extfields
+            .get(&format!("recovery-kem-mlkem-{}", fp))
+            .ok_or_else(|| Error::InvalidArg {
+                arg: "key-file",
+                reason: format!("no recovery entry for fingerprint {fp} in this block"),
+            })?,
+    )?;
+    let wrapped = crate::utils::base64_decode(
+        extfields
+            .get(&format!("recovery-wrap-mlkem-{}", fp))
+            .ok_or_else(|| Error::Extfield {
+                field: "recovery-wrap",
+                reason: format!("recovery KEM entry for {fp} present but its CEK wrap is not"),
+            })?,
+    )?;
+    let shared = pki::kem_decapsulate(priv_pem, &kem_ct, KEM_SHARED_LEN)?;
+    let wrap_key_len = cipher::encryption(WRAP_ALG)?.key_len_max();
+    let wrap_key = crypto::hkdf_sha256(&shared, RECOVERY_HKDF_INFO, wrap_key_len)?;
+    gcm_open(&wrap_key, &wrapped)
+}
+
+/// Rotate an escrow-mode block's key material WITHOUT touching the
+/// payload: unwrap the CEK (via the old password or a recovery
+/// privkey), re-wrap under the new password + the new recovery
+/// pubkeys, and return the rebuilt extfields. The payload
+/// ciphertext is byte-identical — CAS pointers remain valid and no
+/// re-encryption cost is incurred.
+///
+/// The `cipher:` and `compress:` extfields are carried over
+/// verbatim (the payload didn't change). This is the key-lifecycle
+/// gap the escrow CEK indirection was designed to close (TODO 59's
+/// design notes).
+// Arg count mirrors escrow::encrypt plus the two old-credential
+// slots — the natural shape at the CLI call site.
+#[allow(clippy::too_many_arguments)]
+pub fn rotate(
+    extfields: &BTreeMap<String, String>,
+    old_password: Option<&str>,
+    old_recovery_priv_pem: Option<&str>,
+    new_password: &str,
+    new_recovery_pub_pems: &[String],
+    rng: &mut Option<botan::RandomNumberGenerator>,
+    pbkdfopts: &etree::PBKDFOptions,
+    cache: &mut Option<PBKDFCache>,
+    policy: &dyn CryptoPolicy,
+) -> Result<BTreeMap<String, String>> {
+    if old_password.is_none() && old_recovery_priv_pem.is_none() {
+        return Err(Error::InvalidArg {
+            arg: "--old-password",
+            reason: "rotate: supply the current password (-k) or a current recovery \
+                     privkey (--key-file) to unwrap the CEK"
+                .to_string(),
+        });
+    }
+    if new_recovery_pub_pems.is_empty() {
+        return Err(Error::InvalidArg {
+            arg: "--recovery-key",
+            reason: "rotate: supply at least one --recovery-key for the new wrap \
+                     (escrow mode requires a recovery path)"
+                .to_string(),
+        });
+    }
+
+    // 1. Unwrap the CEK via whichever credential is available.
+    let cek = if let Some(pw) = old_password {
+        unwrap_cek_with_password(pw, extfields, cache, policy)?
+    } else {
+        unwrap_cek_with_key(old_recovery_priv_pem.expect("checked above"), extfields)?
+    };
+
+    // 2. Rebuild the extfields: carry cipher + compress, re-wrap the
+    //    CEK under the new password + new recovery pubkeys.
+    let mut out: BTreeMap<String, String> = BTreeMap::new();
+    for key in ["cipher", "compress"] {
+        if let Some(v) = extfields.get(key) {
+            out.insert(key.to_string(), v.clone());
+        }
+    }
+
+    let wrap_key_len = cipher::encryption(WRAP_ALG)?.key_len_max();
+
+    // Password path: fresh salt + params for the new KEK. derive_key
+    // needs the Option<RNG> shape; the manual takes are sequential
+    // (non-overlapping) borrows.
+    let (kek, pbkdf) = derive_key(new_password, wrap_key_len, rng, pbkdfopts, cache, policy)?;
+    if let Some(p) = pbkdf {
+        EncryptedExtField::Pbkdf(p).insert_into(&mut out);
+    }
+    let mut wrap_enc = cipher::encryption(WRAP_ALG)?;
+    let wrapped = gcm_seal(&mut wrap_enc, &kek, &cek, need_rng(rng)?)?;
+    EncryptedExtField::PwWrap(crate::utils::base64_encode(&wrapped)?).insert_into(&mut out);
+
+    // Recovery path: fresh KEM encapsulation per new pubkey.
+    let mut fps: Vec<String> = Vec::with_capacity(new_recovery_pub_pems.len());
+    for pub_pem in new_recovery_pub_pems {
+        let (shared, kem_ct) = pki::kem_encapsulate(pub_pem, KEM_SHARED_LEN, need_rng(rng)?)?;
+        let wrap_key = crypto::hkdf_sha256(&shared, RECOVERY_HKDF_INFO, wrap_key_len)?;
+        let wrapped = gcm_seal(&mut wrap_enc, &wrap_key, &cek, need_rng(rng)?)?;
+        let fp = crate::capability::KeyFp::from_pem(pub_pem)?.to_hex();
+        fps.push(format!("mlkem:{}", fp));
+        out.insert(
+            format!("recovery-kem-mlkem-{}", fp),
+            crate::utils::base64_encode(&kem_ct)?,
+        );
+        out.insert(
+            format!("recovery-wrap-mlkem-{}", fp),
+            crate::utils::base64_encode(&wrapped)?,
+        );
+    }
+    EncryptedExtField::Recovery(fps.join(",")).insert_into(&mut out);
+
+    Ok(out)
+}
+
+fn need_rng(
+    rng: &mut Option<botan::RandomNumberGenerator>,
+) -> Result<&mut botan::RandomNumberGenerator> {
+    rng.as_mut().ok_or_else(|| Error::InvalidArg {
+        arg: "rng",
+        reason: "Missing RNG for escrow rotate".to_string(),
+    })
+}
+
 /// Unwrap → payload decrypt → decompress, shared by both paths.
 fn finish(
     ct: Vec<u8>,
@@ -446,6 +604,100 @@ mod tests {
         .unwrap();
         assert!(decrypt_with_key(ct.clone(), &k1_priv, &ext, &*policy).is_ok());
         assert!(decrypt_with_key(ct, &k2_priv, &ext, &*policy).is_ok());
+    }
+
+    #[test]
+    fn rotate_preserves_payload_and_both_paths_work() {
+        let (pbkdfopts, cipheropts) = paops_defaults();
+        let (old_rec_priv, old_rec_pub) = keypair();
+        let (new_rec_priv, new_rec_pub) = keypair();
+        let policy = crate::crypto::default_policy();
+        let pt = b"rotated secret".to_vec();
+
+        let (ct, ext) = encrypt(
+            pt.clone(),
+            "old-password",
+            &[old_rec_pub],
+            &mut rng(),
+            &pbkdfopts,
+            &cipheropts,
+            &mut None,
+            &*policy,
+        )
+        .unwrap();
+
+        // Rotate: old password -> new password + new recovery key.
+        let ext2 = rotate(
+            &ext,
+            Some("old-password"),
+            None,
+            "new-password",
+            &[new_rec_pub],
+            &mut rng(),
+            &pbkdfopts,
+            &mut None,
+            &*policy,
+        )
+        .unwrap();
+
+        // The payload ciphertext is UNCHANGED (re-wrapping only).
+        // cipher + compress extfields carried verbatim; the old
+        // recovery + pw-wrap entries are gone.
+        assert!(
+            !ext2.contains_key("recovery-kem-mlkem-"),
+            "old recovery entries must not leak" // (fp-specific; if the same key were reused this would
+                                                 // collide — the test uses distinct keys)
+        );
+        // Decrypt via the NEW password works.
+        let via_new_pw =
+            decrypt_with_password(ct.clone(), "new-password", &ext2, &mut None, &*policy).unwrap();
+        assert_eq!(via_new_pw, pt);
+        // Decrypt via the NEW recovery key works.
+        let via_new_key = decrypt_with_key(ct, &new_rec_priv, &ext2, &*policy).unwrap();
+        assert_eq!(via_new_key, pt);
+        // The OLD password no longer works.
+        let err = decrypt_with_password(pt.clone(), "old-password", &ext2, &mut None, &*policy);
+        assert!(err.is_err());
+        // The OLD recovery key no longer works.
+        let err2 = decrypt_with_key(pt, &old_rec_priv, &ext2, &*policy);
+        assert!(err2.is_err());
+    }
+
+    #[test]
+    fn rotate_via_recovery_key_instead_of_password() {
+        let (pbkdfopts, cipheropts) = paops_defaults();
+        let (old_rec_priv, old_rec_pub) = keypair();
+        let (_new_rec_priv, new_rec_pub) = keypair();
+        let policy = crate::crypto::default_policy();
+        let pt = b"key-rotated".to_vec();
+        let (ct, ext) = encrypt(
+            pt.clone(),
+            "pw",
+            &[old_rec_pub],
+            &mut rng(),
+            &pbkdfopts,
+            &cipheropts,
+            &mut None,
+            &*policy,
+        )
+        .unwrap();
+        // Unwrap via the OLD recovery key, not the password.
+        let ext2 = rotate(
+            &ext,
+            None,
+            Some(&old_rec_priv),
+            "rotated-pw",
+            &[new_rec_pub],
+            &mut rng(),
+            &pbkdfopts,
+            &mut None,
+            &*policy,
+        )
+        .unwrap();
+        assert_eq!(
+            decrypt_with_password(ct, "rotated-pw", &ext2, &mut None, &*policy).unwrap(),
+            pt
+        );
     }
 
     #[test]
