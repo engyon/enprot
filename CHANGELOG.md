@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.68](https://github.com/engyon/enprot/compare/enprot-v0.5.67...enprot-v0.5.68) - 2026-08-26
+
+### Other
+
+- verification + mobile scaffolding (TODOs 64 + 47)
+
 ## [0.5.67](https://github.com/engyon/enprot/compare/enprot-v0.5.66...enprot-v0.5.67) - 2026-08-26
 
 ### Added
