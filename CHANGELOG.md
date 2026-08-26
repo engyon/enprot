@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.66](https://github.com/engyon/enprot/compare/enprot-v0.5.65...enprot-v0.5.66) - 2026-08-26
+
+### Added
+
+- *(async)* async pipeline twins behind async-pipeline (TODO 54)
+- *(i18n)* localized diagnostics, five locales (TODO 71)
+
 ## [0.5.65](https://github.com/engyon/enprot/compare/enprot-v0.5.64...enprot-v0.5.65) - 2026-08-26
 
 ### Added
