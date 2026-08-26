@@ -1,0 +1,42 @@
+# Verus formal verification is out of reach in this environment
+# (the tool itself isn't installable here, and the spec surface is
+# narrow enough that a single dedicated engineer-month could
+# finish it). This workflow runs the **next best thing** on a
+# weekly schedule: a 10× intensification of the property-test
+# round-trips that already exist for the same critical paths
+# (cas save/load, encrypt/decrypt, parse/tree_write, hex round-trip,
+# pbkdf PHC round-trip, ledger anchor hash round-trip). A genuine
+# bug-class — e.g., a non-deterministic break in the round-trip — is
+# unlikely to slip through 10× cases per run; a real regression that
+# survives proptest at the default count rarely survives 10× either.
+#
+# Schedule: weekly Monday 04:00 UTC + workflow_dispatch. Treat
+# failures as P0.
+
+name: Property-test intensification (TODO 64 verification layer)
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+jobs:
+  property:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Round-trip proptests at 10× case count
+        env:
+          # 256 (default) * 10 = 2560 per property; the round-trips
+          # are O(microseconds) so 2560 cases finish in seconds.
+          PROPTEST_CASES: "2560"
+        run: cargo test --release --test proptest_roundtrip --test proptest_invariants -- --nocapture
+      - name: Cryptographic KATs (known-answer tests)
+        run: cargo test --release --lib cipher
+      - name: Stream-vs-memory byte-identity (CAS round-trip, parse round-trip)
+        run: cargo test --release --test integration parse_round_trip streaming_byte_identity
