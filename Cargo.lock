@@ -930,6 +930,7 @@ version = "0.5.65"
 dependencies = [
  "aes-gcm-siv",
  "assert_cmd",
+ "async-trait",
  "botan",
  "cid",
  "clap",
