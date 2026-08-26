@@ -166,6 +166,24 @@ jobs:
       - name: Test (unit + e2e)
         run: cargo test -p enprot-mcp --verbose
 
+  async-pipeline:
+    # async-pipeline (TODO.complete/54) is feature-gated and never
+    # compiled by the default gates — this leg is its rot-guard:
+    # build + full lib suite + the async round-trip tests.
+    name: Async pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: ./ci/install.sh
+      - name: Clippy
+        run: cargo clippy --features async-pipeline --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --features async-pipeline --lib
+
   cas-s3:
     # Live round-trip of the S3 CAS backend (TODO.complete/27)
     # against MinIO — SigV4 signing, PUT/GET/HEAD/LIST/DELETE, hash

@@ -77,6 +77,112 @@ pub mod rekor;
 ///
 /// All hashes are SHA3-256 hex strings of length 64. Backends that
 /// use other hash algorithms internally must map to/from SHA3-256.
+#[cfg(feature = "async-pipeline")]
+#[async_trait::async_trait]
+pub trait AsyncCasStore: Send + Sync {
+    async fn save_async(
+        &self,
+        blob: &[u8],
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<String>;
+    async fn load_async(
+        &self,
+        hash: &str,
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<Vec<u8>>;
+    async fn contains_async(
+        &self,
+        hash: &str,
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<bool>;
+}
+
+#[cfg(feature = "async-pipeline")]
+#[async_trait::async_trait]
+impl AsyncCasStore for LocalCas {
+    async fn save_async(
+        &self,
+        blob: &[u8],
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<String> {
+        let blob = blob.to_vec();
+        let root = self.root.clone();
+        let verbose = self.verbose;
+        let policy = std::sync::Arc::clone(policy);
+        tokio::task::spawn_blocking(move || LocalCas { root, verbose }.save(&blob, &*policy))
+            .await
+            .map_err(|e| Error::CasBackend {
+                backend: "local",
+                op: "join",
+                detail: e.to_string(),
+            })?
+    }
+
+    async fn load_async(
+        &self,
+        hash: &str,
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<Vec<u8>> {
+        let hash = hash.to_string();
+        let root = self.root.clone();
+        let verbose = self.verbose;
+        let policy = std::sync::Arc::clone(policy);
+        tokio::task::spawn_blocking(move || LocalCas { root, verbose }.load(&hash, &*policy))
+            .await
+            .map_err(|e| Error::CasBackend {
+                backend: "local",
+                op: "join",
+                detail: e.to_string(),
+            })?
+    }
+
+    async fn contains_async(
+        &self,
+        hash: &str,
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<bool> {
+        let hash = hash.to_string();
+        let root = self.root.clone();
+        let verbose = self.verbose;
+        let policy = std::sync::Arc::clone(policy);
+        tokio::task::spawn_blocking(move || LocalCas { root, verbose }.contains(&hash, &*policy))
+            .await
+            .map_err(|e| Error::CasBackend {
+                backend: "local",
+                op: "join",
+                detail: e.to_string(),
+            })?
+    }
+}
+
+#[cfg(feature = "async-pipeline")]
+#[async_trait::async_trait]
+impl AsyncCasStore for MemoryCas {
+    async fn save_async(
+        &self,
+        blob: &[u8],
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<String> {
+        self.save(blob, &**policy)
+    }
+
+    async fn load_async(
+        &self,
+        hash: &str,
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<Vec<u8>> {
+        self.load(hash, &**policy)
+    }
+
+    async fn contains_async(
+        &self,
+        hash: &str,
+        policy: &std::sync::Arc<dyn crypto::CryptoPolicy>,
+    ) -> Result<bool> {
+        self.contains(hash, &**policy)
+    }
+}
+
 pub trait CasStore: Send + Sync {
     /// Backend identifier for diagnostics and the
     /// `enprot_cas_operations_total{backend}` metric label
@@ -522,6 +628,24 @@ pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
 
 #[cfg(test)]
 mod backend_tests {
+
+    #[cfg(feature = "async-pipeline")]
+    #[tokio::test]
+    async fn async_local_cas_round_trip() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        let cas = LocalCas::new(dir.path().to_path_buf());
+        let policy: std::sync::Arc<dyn crypto::CryptoPolicy> =
+            std::sync::Arc::from(crate::crypto::default_policy());
+        let h = cas.save_async(b"async blob", &policy).await.unwrap();
+        assert_eq!(h.len(), 64);
+        assert!(cas.contains_async(&h, &policy).await.unwrap());
+        assert_eq!(
+            cas.load_async(&h, &policy).await.unwrap(),
+            b"async blob".to_vec()
+        );
+    }
+
     use super::*;
 
     #[test]

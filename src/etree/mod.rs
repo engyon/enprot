@@ -53,6 +53,11 @@ mod write;
 /// available for callers that need bounded-memory processing.
 pub mod streaming;
 
+/// Async pipeline twins (TODO.complete/54), behind the
+/// `async-pipeline` feature: thin adapters over the sync cores.
+#[cfg(feature = "async-pipeline")]
+pub mod async_pipeline;
+
 mod blob;
 
 pub use blob::{blob_to_tree, tree_to_blob};

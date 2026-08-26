@@ -71,6 +71,11 @@ cas-s3 = ["dep:object_store", "dep:tokio", "dep:futures", "dep:reqwest"]
 # path) and appends a hashedrekord entry per save (ENPROT_REKOR_SIGNER
 # = Ed25519 privkey). Reuses the reqwest + runtime deps from cas-s3.
 cas-rekor = ["dep:reqwest", "dep:tokio"]
+# Async pipeline twins (TODO.complete/54): parse/transform/write
+# over async I/O plus AsyncCasStore. Thin adapters over the sync
+# cores (Cursor / Vec<u8>), CPU work on spawn_blocking — the win is
+# I/O multiplexing for networked-CAS workloads.
+async-pipeline = ["dep:tokio", "dep:async-trait", "dep:futures", "tokio/io-util", "tokio/macros"]
 
 # WASM build (TODO.complete/14). When enabled, Botan is replaced
 # with RustCrypto-only crypto (aes-siv, aes-gcm, sha3). Currently
@@ -140,6 +145,7 @@ tokio = { version = "1", optional = true, default-features = false, features = [
 # Stream driver for object_store::list (already in-tree via object_store
 # itself; declared so the backend can name it).
 futures = { version = "0.3", optional = true, default-features = false }
+async-trait = { version = "0.1", optional = true }
 # Direct dep only to flip reqwest's TLS backend for object_store's
 # transport (its plain `reqwest` feature enables no TLS flavor).
 #  (ring provider) — never native-tls/openssl (deny.toml);
