@@ -21,6 +21,12 @@ Recipes here are grouped by use case:
 - [Migrating from SOPS](#migrating-from-sops)
 - [Locking secrets in a Docker image](#locking-secrets-in-a-docker-image)
 - [Encrypt-on-commit hook](#encrypt-on-commit-hook)
+- [Key lifecycle: escrow, rotation, migration](#key-lifecycle-escrow-rotation-migration)
+- [Recovery decryption without the password](#recovery-decryption-without-the-password)
+- [Rotating the password or recovery keys](#rotating-the-password-or-recovery-keys)
+- [Post-quantum migration](#post-quantum-migration)
+- [Diagnosing the environment](#diagnosing-the-environment)
+- [AI agents: MCP server](#ai-agents-mcp-server)
 - [From Python](#from-python)
 - [From Node.js](#from-nodejs)
 
@@ -305,6 +311,103 @@ plaintext that hasn't been encrypted or CAS-stored yet. Catches the
 "committed the raw password" footgun.
 
 ---
+
+## Key lifecycle: escrow, rotation, migration
+
+The complete enterprise key story: encrypt with a recovery path,
+rotate credentials without re-encrypting, and migrate anchor
+signatures to post-quantum algorithms — all without losing access.
+
+### Escrow encryption (password + recovery key)
+
+```sh
+# Generate an ML-KEM recovery keypair (via the library or your
+# organization's provisioning):
+cargo test --lib -- escrow keygen  # or see bindings/python
+
+# Encrypt so BOTH the password and the recovery key can decrypt:
+enprot encrypt -w SECRET -k SECRET=password \
+    --cipher aes-256-siv \
+    --recovery-key recovery.pub.pem \
+    config.ept
+```
+
+The block now carries `recovery:mlkem:<fp>` + `pw-wrap:` extfields.
+The password path is unchanged; the recovery path is the
+organization's break-glass access.
+
+### Recovery decryption without the password
+
+```sh
+# HR needs access to a departed employee's file:
+enprot decrypt -w SECRET --key-file recovery.priv.pem config.ept
+```
+
+### Rotating the password or recovery keys
+
+```sh
+# Rotate the password (payload ciphertext is BYTE-IDENTICAL —
+# CAS pointers stay valid, no re-encryption cost):
+enprot -k SECRET=old-password rotate \
+    --new-password new-password \
+    --recovery-key new-recovery.pub.pem \
+    config.ept
+
+# Or rotate when the password isn't available (unwrap via the
+# current recovery key):
+enprot rotate --key-file old-recovery.priv.pem \
+    --new-password rotated-pw \
+    --recovery-key new-recovery.pub.pem \
+    config.ept
+```
+
+### Post-quantum migration
+
+```sh
+# Migrate chain anchors from Ed25519 to composite (verifies every
+# old signature first; parents + payload hashes preserved):
+enprot keygen composite-ed25519-mldsa \
+    --out-priv new_priv.pem --out-pub new_pub.pem
+enprot migrate-keys \
+    --from ed25519 --to composite-ed25519-mldsa \
+    --old-key old_pub.pem --new-key new_priv.pem \
+    document.ept
+
+# Verify under the new key:
+enprot verify-chain --trust-root new_pub.pem document.ept
+```
+
+See [`../docs/pq-migration.md`](../docs/pq-migration.md) for the
+full hybrid-period + rotation-checklist walkthrough.
+
+## Diagnosing the environment
+
+```sh
+# One command: versions, linked libraries, resolved policy,
+# CAS writability, locale, git filter wiring:
+enprot doctor
+```
+
+Paste the output in bug reports; use the resolved-policy +
+FIPS lines for compliance attestation; run it after install as
+an onboarding sanity check.
+
+## AI agents: MCP server
+
+```sh
+# Install the server (ships with the release):
+enprot-mcp &  # stdio JSON-RPC; agents spawn it as a subprocess
+
+# Or drive it from any MCP-aware agent (Claude Code, Cursor,
+# Continue) — add to .mcp.json:
+#   { "mcpServers": { "enprot": { "command": "enprot-mcp" } } }
+```
+
+Agents get 8 typed tools (`enprot_inspect`, `enprot_encrypt`,
+`enprot_decrypt`, `enprot_verify`, `enprot_verify_chain`,
+`enprot_snapshot`, `enprot_pin`, `enprot_cap_check`) behind a
+filesystem policy gate (`.enprot/mcp-policy.toml`). See
+[`../docs/mcp.md`](../docs/mcp.md).
 
 ## From Python
 
