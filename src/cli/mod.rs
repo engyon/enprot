@@ -699,6 +699,14 @@ pub struct CommonArgs {
     #[arg(long, global = true, value_parser = PossibleValuesParser::new(consts::LANG_SEPARATORS.iter().map(|(n, _, _)| *n).collect::<Vec<_>>()))]
     pub lang: Option<String>,
 
+    /// Signer backend (TODO.complete/56). v1: only `software`. The
+    /// flag exists so downstream code can be written against the
+    /// enum, and CI can assert it round-trips; selecting anything
+    /// other than `software` returns an actionable error today.
+    #[arg(long, global = true, value_name = "BACKEND",
+          value_parser = clap::builder::PossibleValuesParser::new(["software"]))]
+    pub signer_backend: Option<String>,
+
     /// Disable the PBKDF cache mechanism. Affects both encrypt (key
     /// derivation) and decrypt (same derivation, repeated per file).
     #[arg(long = "pbkdf-disable-cache", global = true)]
@@ -804,6 +812,7 @@ impl CommonArgs {
             verbose: false,
             quiet: false,
             max_depth: consts::DEFAULT_MAX_DEPTH,
+            signer_backend: None,
             left_separator: consts::DEFAULT_LEFT_SEP.to_string(),
             right_separator: consts::DEFAULT_RIGHT_SEP.to_string(),
             password: Vec::new(),
