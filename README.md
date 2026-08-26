@@ -47,6 +47,10 @@ hardware key custody.
 | Threshold signing | via Confium | no | no | no | no |
 | Hardware key custody | via Confium | partial (GPG) | partial | no | yes (KMS) |
 | Audit transparency log | via Confium | no | no | no | yes (Rekor) |
+| AI agent integration (MCP) | yes — 8 typed tools + policy gate | no | no | no | no |
+| Key escrow / recovery | yes — password OR recovery key | no | partial (KMS) | no | no |
+| Language bindings | Python, Node.js, Go, Ruby + C FFI | no | no | CLI only | CLI only |
+| Environment diagnostics (`doctor`) | yes | no | no | no | no |
 
 ### Buyer ladder
 
