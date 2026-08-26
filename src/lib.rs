@@ -68,6 +68,9 @@ pub mod sigstore;
 pub mod telemetry;
 pub mod utils;
 
+#[cfg(feature = "pure-rust-crypto")]
+pub mod pure_rust_crypto;
+
 pub use error::{Error, Result};
 
 /// CLI dispatch layer — all clap-dependent types and the
