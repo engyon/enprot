@@ -56,20 +56,25 @@ CW
 chmod +x "$ctx/tools/cmakew"
 
 for t in cc c++; do
-  real="x86_64-w64-mingw32-gcc-posix"
-  [ "$t" = c++ ] && real="x86_64-w64-mingw32-g++-posix"
-  cat > "$ctx/tools/mingw-$t" <<MW
+  # Quoted heredoc: the body is pure static shell text (no $-escapes,
+  # no generation-time expansion) — the only reliable form when the
+  # enclosing script is sourced inside nested $( ) contexts.
+  cat > "$ctx/tools/mingw-$t" <<'MW'
 #!/bin/sh
+case "$(basename "$0")" in
+  mingw-c++) real=x86_64-w64-mingw32-g++-posix ;;
+  *) real=x86_64-w64-mingw32-gcc-posix ;;
+esac
 args=
 out=
 prev=
-for a in "\$@"; do
-  case "\$a" in
+for a in "$@"; do
+  case "$a" in
     -rdynamic) ;;              # ELF-only; cmake injects it assuming Linux
-    *) args="\$args \$a" ;;
+    *) args="$args $a" ;;
   esac
-  [ "\$prev" = "-o" ] && out="\$a"
-  prev="\$a"
+  [ "$prev" = "-o" ] && out="$a"
+  prev="$a"
 done
 # Link mode (an -o target and no -c/-S/-E): Botan's winsock and
 # Windows cert-store code (OS-integrated, not a disableable module)
@@ -77,22 +82,22 @@ done
 # the final enprot.exe link alike. Import libs are inert when
 # unused, so append them on every mingw link.
 linking=
-for a in "\$@"; do
-  case "\$a" in
+for a in "$@"; do
+  case "$a" in
     -c|-S|-E) linking=; break ;;
     -o) linking=1 ;;
   esac
 done
-[ -n "\$out" ] && [ -n "\$linking" ] && args="\$args -lws2_32 -lcrypt32"
-eval "$real" "\$args"
-st=\$?
+[ -n "$out" ] && [ -n "$linking" ] && args="$args -lws2_32 -lcrypt32"
+eval "$real" "$args"
+st=$?
 # mingw appends .exe to -o targets; cmake (believing it builds for
 # Linux) looks for the extensionless name — CheckTypeSize dies with
 # "Cannot copy output executable". Emit both names.
-if [ -n "\$out" ] && [ \$st -eq 0 ] && [ ! -e "\$out" ] && [ -e "\$out.exe" ]; then
-  cp -f "\$out.exe" "\$out" 2>/dev/null || true
+if [ -n "$out" ] && [ $st -eq 0 ] && [ ! -e "$out" ] && [ -e "$out.exe" ]; then
+  cp -f "$out.exe" "$out" 2>/dev/null || true
 fi
-exit \$st
+exit $st
 MW
   chmod +x "$ctx/tools/mingw-$t"
 done
@@ -114,24 +119,24 @@ make_wrappers "$ctx" "$TARGET" \
 # conditional — the script runs on Linux, so it looks for the
 # unix name). Replace tool-ar with a version that also emits the
 # unix name whenever it archives botan-3.lib.
-cat > "$ctx/wrappers/tool-ar" <<WAR
+cat > "$ctx/wrappers/tool-ar" <<'WAR'
 #!/bin/sh
-case "\$OUT_DIR" in
+case "$OUT_DIR" in
   */x86_64-pc-windows-gnu/*)
-    x86_64-w64-mingw32-gcc-ar-posix "\$@"
-    st=\$?
-    # `ar crs <lib> <obj>...` puts the ARCHIVE first, objects after —
-    # the previous last-arg match never fired (last = the .obj), so
-    # libbotan-3.a was never produced and rnp-src's lib-name check
-    # panicked. Scan every argument instead.
-    for a in "\$@"; do
-      case \$a in
-        */botan-3.lib) cp -f "\$a" "\${a%botan-3.lib}libbotan-3.a" 2>/dev/null || true ;;
+    x86_64-w64-mingw32-gcc-ar-posix "$@"
+    st=$?
+    # ar crs puts the ARCHIVE first, objects after — the previous
+    # last-arg match never fired (last = the .obj), so libbotan-3.a
+    # was never produced and rnp-src's lib-name check panicked. Scan
+    # every argument instead.
+    for a in "$@"; do
+      case $a in
+        */botan-3.lib) cp -f "$a" "${a%botan-3.lib}libbotan-3.a" 2>/dev/null || true ;;
       esac
     done
-    exit \$st
+    exit $st
     ;;
-  *) exec /usr/bin/ar "\$@" ;;
+  *) exec /usr/bin/ar "$@" ;;
 esac
 WAR
 chmod +x "$ctx/wrappers/tool-ar"
