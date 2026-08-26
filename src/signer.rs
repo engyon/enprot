@@ -41,7 +41,7 @@
 //! written against the enum, and CI can assert the flag round-trips
 //! without erroring.
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::pki::{self, SigAlgKind};
 use botan::RandomNumberGenerator;
 

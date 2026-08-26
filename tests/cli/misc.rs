@@ -4,6 +4,29 @@ use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
 
+// doctor (2026-08 audit): one-command environment diagnostics —
+// exit 0 when Botan resolves and the CAS probe succeeds, and the
+// output carries the version + policy lines bug reports need.
+#[test]
+fn doctor_reports_environment_and_exits_zero() {
+    let dir = tempfile::tempdir().unwrap();
+    let cas = dir.path().join("cas");
+    std::fs::create_dir(&cas).unwrap();
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .current_dir(dir.path())
+        .arg("--casdir")
+        .arg(&cas)
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("enprot: "))
+        .stdout(predicates::str::contains("Botan: "))
+        .stdout(predicates::str::contains("librnp: "))
+        .stdout(predicates::str::contains("policy: "))
+        .stdout(predicates::str::contains("writability: ok"));
+}
+
 #[test]
 fn help_produces_usage() {
     Command::cargo_bin("enprot")
