@@ -99,42 +99,34 @@ impl ConfigIssue {
         )
     }
 
-    /// Human-readable description. The prefix (`warning:` or
-    /// `error:`) matches the existing CLI diagnostics style.
+    /// Human-readable description, localized (TODO.complete/71):
+    /// English default, `$ENPROT_LOCALE` / config `locale` selects
+    /// ja / zh-CN / de / fr.
     pub fn describe(&self) -> String {
+        crate::i18n::tr(&self.msg_key())
+    }
+
+    fn msg_key(&self) -> crate::i18n::MsgKey {
+        use crate::i18n::MsgKey;
         match self {
-            ConfigIssue::FipsPolicyConflict { explicit } => {
-                format!("error: --fips forces --policy=nist but --policy={explicit} was set")
-            }
-            ConfigIssue::SignerWithoutAnchor => {
-                "warning: --signer is set but neither --anchor nor --audit-log is; the signer key will not be used"
-                    .to_string()
-            }
-            ConfigIssue::JobsZero => "error: --jobs must be at least 1".to_string(),
+            ConfigIssue::FipsPolicyConflict { explicit } => MsgKey::FipsPolicyConflict {
+                explicit: explicit.clone(),
+            },
+            ConfigIssue::SignerWithoutAnchor => MsgKey::SignerWithoutAnchor,
+            ConfigIssue::JobsZero => MsgKey::JobsZero,
             ConfigIssue::JobsExceedsCpus {
                 requested,
                 available,
-            } => {
-                format!(
-                    "warning: --jobs {requested} exceeds available CPUs ({available}); scheduling overhead may dominate"
-                )
-            }
-            ConfigIssue::OutputDirWithStdin => {
-                "warning: --output-dir has no effect when input is stdin ('-'); stdin always writes to stdout"
-                    .to_string()
-            }
-            ConfigIssue::PbkdfMsecBelowFloor { requested, floor } => {
-                format!(
-                    "error: --pbkdf-msec {requested} is below the policy minimum of {floor} ms"
-                )
-            }
-            ConfigIssue::RecoveryWithDet { alg } => {
-                format!(
-                    "error: --recovery-key is incompatible with {alg}: escrow mode uses a fresh \
-                     random key per encryption, so the deterministic (same-input → same-output) \
-                     contract cannot hold; use a non-det cipher such as aes-256-siv"
-                )
-            }
+            } => MsgKey::JobsExceedsCpus {
+                requested: *requested,
+                available: *available,
+            },
+            ConfigIssue::OutputDirWithStdin => MsgKey::OutputDirWithStdin,
+            ConfigIssue::PbkdfMsecBelowFloor { requested, floor } => MsgKey::PbkdfMsecBelowFloor {
+                requested: *requested,
+                floor: *floor,
+            },
+            ConfigIssue::RecoveryWithDet { alg } => MsgKey::RecoveryWithDet { alg: alg.clone() },
         }
     }
 

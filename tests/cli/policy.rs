@@ -282,6 +282,63 @@ fn fips_rejects_pbkdf_msec_below_floor() {
         .success();
 }
 
+// Localized diagnostics (TODO.complete/71): $ENPROT_LOCALE selects
+// the message locale; unknown locales fall back to English.
+#[test]
+fn validation_messages_localize_via_env() {
+    let ept = Fixture::copy("sample/simple.ept");
+
+    // German
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .env("ENPROT_LOCALE", "de")
+        .arg("--jobs")
+        .arg("0")
+        .arg("encrypt")
+        .arg("-w")
+        .arg("Agent_007")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("--jobs muss mindestens 1 sein"));
+
+    // Japanese
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .env("ENPROT_LOCALE", "ja_JP")
+        .arg("--jobs")
+        .arg("0")
+        .arg("encrypt")
+        .arg("-w")
+        .arg("Agent_007")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "--jobs は 1 以上である必要があります",
+        ));
+
+    // Unknown locale: English fallback.
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .env("ENPROT_LOCALE", "klingon")
+        .arg("--jobs")
+        .arg("0")
+        .arg("encrypt")
+        .arg("-w")
+        .arg("Agent_007")
+        .arg("-k")
+        .arg("Agent_007=password")
+        .arg(&ept.path)
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("--jobs must be at least 1"));
+}
+
 #[test]
 fn defaults_policy_conflict() {
     let ept = Fixture::copy("sample/simple.ept");

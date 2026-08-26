@@ -45,6 +45,7 @@ mod error;
 pub mod escrow;
 pub mod etree;
 pub mod extfield;
+pub mod i18n;
 pub mod kemenc;
 pub mod ledger;
 pub mod merge;

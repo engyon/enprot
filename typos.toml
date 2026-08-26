@@ -2,7 +2,7 @@
 # See: https://github.com/crate-ci/typos
 
 [files]
-extend-exclude = ["target/", ".git/", "test-data/"]
+extend-exclude = ["target/", ".git/", "test-data/", "src/i18n.rs"]
 
 [default.extend-words]
 enprot = "enprot"

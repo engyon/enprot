@@ -1199,6 +1199,10 @@ fn apply_config(mut common: CommonArgs) -> Result<CommonArgs> {
     if common.lang.is_none() {
         common.lang = cfg.lang.clone();
     }
+    // Locale resolution (TODO.complete/71): $ENPROT_LOCALE wins over
+    // the config field; English otherwise. Resolved once, lazily, on
+    // first message render.
+    let _ = crate::i18n::resolve_locale(cfg.locale.as_deref());
     if common.signer.is_none() {
         common.signer = cfg.chain.signer.as_ref().map(PathBuf::from);
     }
