@@ -52,6 +52,10 @@ use crate::error::{Error, Result};
 pub(crate) struct Config {
     pub casdir: Option<PathBuf>,
     pub lang: Option<String>,
+    /// UI locale for localized messages (TODO.complete/71):
+    /// en (default), ja, zh-CN, de, fr. Distinct from `lang`, which
+    /// selects the host separator preset (a programming language).
+    pub locale: Option<String>,
     pub policy: Option<String>,
     pub defaults: Option<String>,
     pub fips: Option<bool>,
