@@ -21,7 +21,7 @@ name = "enprot"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-enprot = { path = "..", version = "0.5.67", default-features = false }
+enprot = { path = "..", version = "0.5.68", default-features = false }
 serde_json = "1"
 
 [features]
