@@ -45,6 +45,7 @@ mod cas_cmd;
 /// point that `app_main`'s match dispatches to.
 mod chain_head_cmd;
 mod color;
+mod doctor;
 mod init;
 mod inspect;
 mod list;
@@ -195,6 +196,11 @@ pub enum Command {
     /// in one pass (TODO.finalize/42). Useful for debugging
     /// "what is this file and what can I do with it?".
     Inspect(InspectSubcmd),
+    /// Diagnose the environment: versions, linked libraries,
+    /// resolved policy, CAS writability, locale, git filter wiring.
+    /// One command for bug reports, compliance attestation, and
+    /// onboarding sanity checks. Exit 1 on any critical failure.
+    Doctor,
     /// Capability policy queries: list declared WORDs, check access,
     /// explain decisions (TODO.complete/25).
     Cap(cap::CapArgs),
@@ -1041,6 +1047,7 @@ where
         Command::Resolve(a) => merge_cmd::run_resolve(a),
         Command::Conflicts(a) => merge_cmd::run_conflicts(a),
         Command::Inspect(a) => inspect::run(a, cli.common),
+        Command::Doctor => with_config(cli.common, |common| doctor::run(&common, common.format)),
         Command::Cap(args) => cap::run(args, &cli.common),
         Command::Cas(args) => cas_cmd::run(args, &cli.common),
         Command::Clean(a) => smudge::run(smudge::Mode::Clean, a, cli.common),
