@@ -58,6 +58,8 @@ fn main() {
 
     for mb in sizes_mb {
         let input = synthetic_ept(mb * 1_000_000);
+
+        // --- in-memory pipeline (parse → transform → write) ---
         let peak_before = dhat::HeapStats::get().max_bytes;
         let mut paops =
             enprot::etree::ParseOps::new(Box::new(enprot::crypto::CryptoPolicyDefault {}))
@@ -77,9 +79,40 @@ fn main() {
         let stats = dhat::HeapStats::get();
         let peak = stats.max_bytes - peak_before;
         println!(
-            "input {:>4} MB → output {:>4} MB | peak heap this phase: {:>6.1} MB | process high-water: {:>6.1} MB",
+            "in-memory  input {:>4} MB → output {:>4} MB | peak heap this phase: {:>6.1} MB | process high-water: {:>6.1} MB",
             mb,
             out.len() as f64 / 1_000_000.0,
+            peak as f64 / 1_000_000.0,
+            stats.max_bytes as f64 / 1_000_000.0,
+        );
+
+        // --- streaming pipeline (TODO.complete/55 measurement):
+        // transform_stream processes one top-level block at a time;
+        // memory is O(largest block), independent of input size. ---
+        let peak_before = dhat::HeapStats::get().max_bytes;
+        let mut paops =
+            enprot::etree::ParseOps::new(Box::new(enprot::crypto::CryptoPolicyDefault {}))
+                .expect("ParseOps");
+        paops.transforms.encrypt.insert("WORD".to_string());
+        paops
+            .passwords
+            .insert("WORD".to_string(), "bench-password".to_string());
+        paops.crypto.pbkdfopts.msec = Some(1);
+        let mut sout = Vec::new();
+        enprot::etree::streaming::transform_stream(
+            Cursor::new(input.as_bytes()),
+            &mut sout,
+            &mut paops,
+        )
+        .expect("transform_stream");
+        black_box(&sout);
+
+        let stats = dhat::HeapStats::get();
+        let peak = stats.max_bytes - peak_before;
+        println!(
+            "streaming  input {:>4} MB → output {:>4} MB | peak heap this phase: {:>6.1} MB | process high-water: {:>6.1} MB",
+            mb,
+            sout.len() as f64 / 1_000_000.0,
             peak as f64 / 1_000_000.0,
             stats.max_bytes as f64 / 1_000_000.0,
         );
