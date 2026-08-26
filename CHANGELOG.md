@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.65](https://github.com/engyon/enprot/compare/enprot-v0.5.64...enprot-v0.5.65) - 2026-08-26
+
+### Added
+
+- *(cas)* Rekor transparency-log layer, cas-rekor feature (TODO 27)
+
+### Fixed
+
+- *(ci)* quote the mingw wrapper heredocs — v0.5.64 windows-gnu died generating tool-ar
+
 ## [0.5.64](https://github.com/engyon/enprot/compare/enprot-v0.5.63...enprot-v0.5.64) - 2026-08-25
 
 ### Added
