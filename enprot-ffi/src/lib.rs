@@ -188,7 +188,7 @@ fn json_to_argv(config: &serde_json::Value) -> Result<Vec<String>, String> {
 /// | `Io`, `CasHash*`, `CasNotFound`, `CasUnsupported` | `ENPROT_ERR_IO` |
 /// | `Botan`, `CipherUnknown`, `AeadFailed`, `Policy`, `PolicyViolation`, `SignatureVerify` | `ENPROT_ERR_CRYPTO` |
 /// | `Parse`, `Phc`, `Hex`, `Base64`, `Extfield`, `BlockShape` | `ENPROT_ERR_PARSE` |
-/// | `Json`, `InvalidArg`, `ConflictResolve` | `ENPROT_ERR_INVALID` |
+/// | `Json`, `InvalidArg`, `ConflictResolve`, `PluginCrash`, `PluginAbiMismatch` | `ENPROT_ERR_INVALID` |
 fn classify_error(err: &enprot::Error) -> c_int {
     use enprot::Error;
     match err {
@@ -211,9 +211,11 @@ fn classify_error(err: &enprot::Error) -> c_int {
         | Error::Extfield { .. }
         | Error::BlockShape { .. }
         | Error::VerifyFailed { .. } => ENPROT_ERR_PARSE,
-        Error::Json(_) | Error::InvalidArg { .. } | Error::ConflictResolve { .. } => {
-            ENPROT_ERR_INVALID
-        }
+        Error::Json(_)
+        | Error::InvalidArg { .. }
+        | Error::ConflictResolve { .. }
+        | Error::PluginCrash(_)
+        | Error::PluginAbiMismatch { .. } => ENPROT_ERR_INVALID,
     }
 }
 

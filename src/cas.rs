@@ -619,6 +619,12 @@ pub fn open_cas(spec: &str) -> Result<Box<dyn CasStore>> {
                 .to_string(),
         });
     }
+    // Plugin-registered schemes (TODO.complete/37) — consulted
+    // before the local-path fallback so plugins can claim any URI
+    // scheme the built-ins don't.
+    if let Some(result) = crate::plugin::open_plugin_cas(spec) {
+        return result;
+    }
     // Default: treat as local filesystem path.
     Ok(Box::new(LocalCas {
         root: PathBuf::from(spec),

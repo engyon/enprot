@@ -148,6 +148,21 @@ pub enum Error {
     /// conflict; `reason` is why resolution didn't succeed.
     #[error("conflict resolution failed for {word}: {reason}")]
     ConflictResolve { word: String, reason: String },
+
+    /// A plugin panicked inside a boundary call. The panic is
+    /// caught (`catch_unwind` at every plugin-facing edge); enprot
+    /// continues.
+    #[error("plugin {0} panicked: operation aborted, enprot continues")]
+    PluginCrash(String),
+
+    /// A plugin declared an ABI version that does not match this
+    /// build's. Refused at load.
+    #[error("plugin {plugin} targets ABI {plugin_version} but enprot speaks {enprot_version}")]
+    PluginAbiMismatch {
+        plugin: String,
+        plugin_version: u32,
+        enprot_version: u32,
+    },
 }
 
 impl Error {

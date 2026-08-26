@@ -55,6 +55,7 @@ pub mod output;
 mod password;
 mod pbkdf;
 pub mod pki;
+pub mod plugin;
 mod policy;
 pub mod prot;
 pub mod provenance;
