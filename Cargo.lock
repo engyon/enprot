@@ -1004,7 +1004,7 @@ checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "enprot"
-version = "0.5.66"
+version = "0.5.67"
 dependencies = [
  "aes-gcm-siv",
  "aes-siv",
@@ -1051,7 +1051,7 @@ dependencies = [
 
 [[package]]
 name = "enprot-ffi"
-version = "0.5.64"
+version = "0.5.65"
 dependencies = [
  "enprot",
  "serde_json",
