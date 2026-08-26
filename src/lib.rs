@@ -63,6 +63,7 @@ pub mod provider;
 pub mod resolve;
 pub mod sbom;
 pub mod scm;
+pub mod signer;
 pub mod sigstore;
 pub mod telemetry;
 pub mod utils;
