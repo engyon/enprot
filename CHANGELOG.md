@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.71](https://github.com/engyon/enprot/compare/enprot-v0.5.70...enprot-v0.5.71) - 2026-08-27
+
+### Other
+
+- *(migrate)* retire the last hand-rolled descent + ADR-0001 (arch review round 3)
+
 ## [0.5.70](https://github.com/engyon/enprot/compare/enprot-v0.5.69...enprot-v0.5.70) - 2026-08-27
 
 ### Added
