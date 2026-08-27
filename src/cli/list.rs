@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps};
+use crate::extfield::AnchorExtFields;
 use crate::output;
 
 use super::pipeline::pair_inputs_to_outputs;
@@ -108,8 +109,9 @@ pub(super) fn list_tree<W: Write>(tree: &etree::TextTree, depth: usize, out: &mu
             }
             etree::TextNode::Plain(_) | etree::TextNode::Data(_) => {}
             etree::TextNode::Chain { extfields } => {
-                let signer = extfields.get("signer").map(|s| s.as_str()).unwrap_or("?");
-                let payload = extfields.get("payload").map(|s| s.as_str()).unwrap_or("?");
+                let view = AnchorExtFields::from_map(extfields);
+                let signer = view.signer().unwrap_or("?");
+                let payload = view.payload().unwrap_or("?");
                 let short_payload = &payload[..payload.len().min(16)];
                 writeln!(
                     out,
@@ -211,8 +213,12 @@ fn list_tree_to_nodes(tree: &etree::TextTree, depth: usize, out: &mut Vec<output
                     cipher: None,
                     pbkdf: None,
                     cas: None,
-                    signer: extfields.get("signer").cloned(),
-                    payload: extfields.get("payload").cloned(),
+                    signer: AnchorExtFields::from_map(extfields)
+                        .signer()
+                        .map(str::to_string),
+                    payload: AnchorExtFields::from_map(extfields)
+                        .payload()
+                        .map(str::to_string),
                     children: Vec::new(),
                 });
             }

@@ -88,13 +88,14 @@ fn verify_node(node: &etree::TextNode, paops: &mut ParseOps) -> usize {
             for child in txt {
                 n += verify_node(child, paops);
             }
-            if let Some(cipher_str) = extfields.get("cipher")
+            if let Some(cipher_str) =
+                crate::extfield::EncryptedExtFields::from_map(extfields).cipher()
                 && let Err(e) = cipher::parse_cipher_extfield(cipher_str)
             {
                 eprintln!("FAIL: cipher extfield '{}': {}", cipher_str, e);
                 n += 1;
             }
-            if let Some(phc_str) = extfields.get("pbkdf")
+            if let Some(phc_str) = crate::extfield::EncryptedExtFields::from_map(extfields).pbkdf()
                 && let Err(e) = pbkdf::parse_phc(phc_str)
             {
                 eprintln!("FAIL: pbkdf extfield '{}': {}", phc_str, e);
