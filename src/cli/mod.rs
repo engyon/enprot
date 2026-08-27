@@ -1286,20 +1286,15 @@ pub(super) fn walk_for_chains(
     tree: &etree::TextTree,
     out: &mut Vec<crate::ledger::AnchorHash>,
 ) -> Result<()> {
-    for node in tree {
-        match node {
-            etree::TextNode::Chain { extfields } => {
-                let signed = crate::ledger::SignedAnchor::from_extfields(extfields)?;
-                if let Ok(h) = signed.id() {
-                    out.push(h);
-                }
-            }
-            etree::TextNode::BeginEnd { txt, .. } | etree::TextNode::Encrypted { txt, .. } => {
-                walk_for_chains(txt, out)?;
-            }
-            _ => {}
+    etree::visitor::visit(tree, &mut |node| {
+        if let etree::TextNode::Chain { extfields } = node
+            && let Ok(signed) = crate::ledger::SignedAnchor::from_extfields(extfields)
+            && let Ok(h) = signed.id()
+        {
+            out.push(h);
         }
-    }
+        etree::visitor::Control::Continue
+    });
     Ok(())
 }
 
