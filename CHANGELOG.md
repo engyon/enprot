@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.70](https://github.com/engyon/enprot/compare/enprot-v0.5.69...enprot-v0.5.70) - 2026-08-27
+
+### Added
+
+- *(cli)* enprot rotate — re-wrap escrow CEK without re-encrypting (TODO 59 gap)
+
+### Other
+
+- CONTEXT.md — the domain vocabulary (arch review round 2, candidate 2)
+- *(cli)* extract CommonArgs resolution into cli/common.rs (arch review round 2, candidate 1 phase A)
+- *(etree)* one deep tree walker — eleven hand-rolled walks retire (arch review candidates 2+3)
+
 ## [0.5.69](https://github.com/engyon/enprot/compare/enprot-v0.5.68...enprot-v0.5.69) - 2026-08-26
 
 ### Added
