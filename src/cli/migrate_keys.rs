@@ -65,7 +65,7 @@ use crate::etree::{self, ParseOps, TextNode, TextTree};
 use crate::ledger::{AnchorHash, SignedAnchor, SignerId};
 use crate::pki::{self, SigAlgKind};
 
-use super::{CommonArgs, MigrateKeysSubcmd, apply_common, resolve_policy};
+use super::{CommonArgs, MigrateKeysSubcmd, common::apply_common, common::resolve_policy};
 
 /// Fully-resolved migration parameters: the keys, algorithms, and
 /// the new signer identity every migrated anchor will carry.

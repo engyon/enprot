@@ -29,7 +29,7 @@
 //! parser can express (`--fips` + `--policy default`, `--signer`
 //! without `--anchor`, etc.).
 //!
-//! Runs once after [`super::apply_config`] so TOML-supplied values
+//! Runs once after [`super::common::apply_config`] so TOML-supplied values
 //! (`auto_anchor`, `fips = true`, …) participate in the check.
 //!
 //! Design (MECE + OCP):

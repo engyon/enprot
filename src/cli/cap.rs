@@ -180,7 +180,7 @@ fn run_check(args: CapCheckArgs, common: &CommonArgs) -> Result<()> {
     // Build the caller's capability set from the current flags.
     let policy_engine = crate::crypto::default_policy();
     let mut paops = crate::etree::ParseOps::new(policy_engine)?;
-    super::apply_common(common, &mut paops);
+    super::common::apply_common(common, &mut paops);
     let caps = CapabilitySet::from_paops(&paops);
 
     // Determine the required capability for the requested operation.

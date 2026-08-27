@@ -15,8 +15,9 @@ use crate::etree::{self, ParseOps};
 use crate::{capability, cappolicy};
 
 use super::{
-    CommonArgs, EncryptOpts, Operation, OutputArgs, build_anchor_config, make_policy,
-    resolve_policy_name, resolve_separators, validate, walk_for_chains,
+    CommonArgs, EncryptOpts, Operation, OutputArgs, common::build_anchor_config,
+    common::make_policy, common::resolve_policy_name, common::resolve_separators,
+    common::walk_for_chains, validate,
 };
 
 /// Typed configuration for the four core transform operations

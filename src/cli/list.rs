@@ -8,7 +8,7 @@ use crate::etree::{self, ParseOps};
 use crate::output;
 
 use super::pipeline::pair_inputs_to_outputs;
-use super::{CommonArgs, OutputArgs, apply_common, resolve_policy};
+use super::{CommonArgs, OutputArgs, common::apply_common, common::resolve_policy};
 
 /// `list` entry point: parse each input file and dump its block
 /// structure (BeginEnd/Encrypted/Stored/Chain/Conflict/etc.) to text
