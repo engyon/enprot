@@ -13,7 +13,9 @@ use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps};
 use crate::ledger;
 
-use super::{AuditLogSubcmd, CommonArgs, PinSubcmd, SnapshotSubcmd, common::walk_for_chains};
+use super::{CommonArgs, common::walk_for_chains};
+use clap::Args;
+use std::path::PathBuf;
 
 /// Compute the chain head hash of a file: SHA3-256 over the
 /// canonical serialized tree. This detects ANY byte-level change —
@@ -178,4 +180,40 @@ fn build_chain_anchor_node_with_parent(
     let signed = anchor.sign(priv_pem, &pub_pem, SigAlgKind::Ed25519)?;
     let extfields: BTreeMap<String, String> = signed.to_extfields();
     Ok(etree::TextNode::Chain { extfields })
+}
+
+/// `audit-log` subcommand: stream lines from stdin into FILE as
+/// signed chain anchors. Each line becomes one Plain node + one
+/// CHAIN node appended to the file. Produces a linear, tamper-evident
+/// log with O(1) verification per anchor.
+#[derive(Args)]
+pub struct AuditLogSubcmd {
+    /// Private key (PEM) to sign each anchor. The pubkey is derived
+    /// automatically; pass it to `verify-chain --trust-root` later.
+    #[arg(long = "signer", value_name = "PRIV.pem")]
+    pub signer: PathBuf,
+
+    /// Log file. Appended to if it exists; created if not. Each
+    /// invocation reads the existing content into memory, appends
+    /// new anchors, and writes the result back atomically.
+    #[arg(value_name = "FILE")]
+    pub file: String,
+}
+
+/// `snapshot` subcommand: print the chain head hash.
+#[derive(Args)]
+pub struct SnapshotSubcmd {
+    #[arg(value_name = "FILE")]
+    pub file: String,
+}
+
+/// `pin` subcommand: verify the chain head hash matches EXPECTED.
+#[derive(Args)]
+pub struct PinSubcmd {
+    /// Expected chain head hash (64 hex chars).
+    #[arg(value_name = "EXPECTED-HASH")]
+    pub expected: String,
+
+    #[arg(value_name = "FILE")]
+    pub file: String,
 }

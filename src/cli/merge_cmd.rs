@@ -12,7 +12,8 @@ use crate::etree::{self, ParseOps};
 use crate::output;
 use crate::resolve;
 
-use super::{ConflictsSubcmd, MergeDriverSubcmd, ResolveSubcmd};
+use clap::Args;
+use std::path::PathBuf;
 
 /// `merge-driver` entry point. Performs a three-way WORD-aware
 /// merge and writes the result back into the "ours" path.
@@ -101,4 +102,63 @@ pub fn run_conflicts(a: ConflictsSubcmd) -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// `merge-driver` subcommand: invoked by git with four positional
+/// arguments — the ancestor version, our version, their version,
+/// and the path of the file in the working tree. Output goes back
+/// into the "ours" path (the second argument). Exits non-zero on
+/// parse errors; exits zero even when conflicts are emitted (the
+/// presence of CONFLICT markers in the output is the merge's signal).
+#[derive(Args)]
+pub struct MergeDriverSubcmd {
+    /// Common ancestor version (`%O` in git's contract).
+    pub base: PathBuf,
+    /// Our version (`%A`); the merge result is written here.
+    pub ours: PathBuf,
+    /// Their version (`%B`).
+    pub theirs: PathBuf,
+    /// Working-tree path (`%P`); informational.
+    #[arg(value_name = "PATH")]
+    pub path: Option<PathBuf>,
+}
+
+/// `resolve` subcommand: clear CONFLICT markers by replacing each one
+/// with the chosen side. Modes: `--ours`, `--theirs`, `--both`,
+/// `--skip`, or `--interactive` (default). Per-WORD overrides via
+/// `--word WORD:MODE` (TODO.roadmap/56).
+#[derive(Args)]
+pub struct ResolveSubcmd {
+    /// Resolution mode. One of: ours, theirs, both, skip, interactive.
+    /// Default: interactive. Used for any CONFLICT not covered by an
+    /// explicit `--word` override.
+    #[arg(long, short = 'm', value_name = "MODE", default_value = "interactive")]
+    pub mode: String,
+
+    /// Per-WORD resolution override. Repeatable. Format: `WORD:MODE`
+    /// where MODE is one of ours/theirs/both/skip. Takes precedence
+    /// over `--mode` for the named WORD. Unknown WORDs are silently
+    /// skipped (the file may have changed between listing conflicts
+    /// and resolving them).
+    #[arg(long = "word", value_name = "WORD:MODE", value_delimiter = ',')]
+    pub word: Vec<String>,
+
+    /// Input file. Resolved output is written back here in-place.
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+}
+
+/// `conflicts` subcommand (TODO.roadmap/49): walk CONFLICT blocks
+/// in FILE and print one summary per conflict. Exits non-zero if
+/// any conflicts remain.
+#[derive(Args)]
+pub struct ConflictsSubcmd {
+    /// Output format: text (default) or json (enveloped versioned
+    /// schema, same shape as `capabilities --format json`).
+    #[arg(long, value_enum, default_value_t = output::OutputFormat::Text)]
+    pub format: output::OutputFormat,
+
+    /// Input file.
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
 }

@@ -5,9 +5,9 @@
 
 use std::path::PathBuf;
 
-use crate::cli::InitSubcmd;
 use crate::config;
 use crate::error::{Error, Result};
+use clap::Args;
 
 /// Entry point for `enprot init`.
 ///
@@ -84,4 +84,28 @@ fn init_gitattributes() -> Result<()> {
                \x20   driver = enprot merge-driver %O %A %B %P\n"
     );
     Ok(())
+}
+
+/// `init` subcommand: scaffold a commented TOML config the user can
+/// edit in place. With `--git`, also writes a `.gitattributes` file
+/// that wires `enprot` into git's `clean` / `smudge` / `textconv`
+/// filter chain.
+#[derive(Args)]
+pub struct InitSubcmd {
+    /// Write to `~/.config/enprot/config.toml` instead of `./.enprot.toml`.
+    #[arg(long)]
+    pub global: bool,
+
+    /// Overwrite an existing file. Off by default to prevent stomping
+    /// hand-edited config.
+    #[arg(long)]
+    pub force: bool,
+
+    /// Also write `.gitattributes` and print the `.git/config` snippet
+    /// for the enprot filter (TODO.roadmap/45). The config snippet
+    /// goes to stdout so the user can review before pasting — enprot
+    /// doesn't write to `.git/config` directly to avoid stomping
+    /// unrelated entries.
+    #[arg(long)]
+    pub git: bool,
 }

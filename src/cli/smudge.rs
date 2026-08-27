@@ -6,7 +6,8 @@ use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps};
 use crate::{crypto, prot};
 
-use super::{CommonArgs, SmudgeCleanSubcmd};
+use super::CommonArgs;
+use clap::Args;
 
 /// Direction of the smudge/clean filter. Clean encrypts (plaintext
 /// in, ciphertext out); Smudge decrypts (ciphertext in, plaintext
@@ -150,4 +151,26 @@ fn lookup_word_password(common: &CommonArgs, word: &str) -> Result<String> {
         arg: "password",
         reason: format!("no password supplied for WORD {word}"),
     })
+}
+
+/// Shared args for the git `clean` / `smudge` / `textconv` filters
+/// (TODO.roadmap/45). All three operate as stdin → stdout pipes; the
+/// WORD password comes from the global `-k WORD=password` flag or
+/// `ENPROPT_KEY=WORD=password` env var.
+#[derive(Args)]
+pub struct SmudgeCleanSubcmd {
+    /// WORD whose password unlocks the file. Required.
+    #[arg(short = 'w', long = "word", value_name = "WORD")]
+    pub word: String,
+
+    /// Override the cipher algorithm (clean only). Default:
+    /// `aes-256-gcm-siv-det` for diff-stable ciphertext.
+    #[arg(long, value_name = "ALG")]
+    pub cipher: Option<String>,
+
+    /// Override the PBKDF algorithm (clean only). For diff-stable
+    /// output across runs, pair `aes-256-gcm-siv-det` with `legacy`
+    /// (no random salt). Default: argon2 with auto-tuned params.
+    #[arg(long, value_name = "ALG")]
+    pub pbkdf: Option<String>,
 }

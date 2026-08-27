@@ -36,7 +36,7 @@ use clap::builder::PossibleValuesParser;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 
 use crate::etree::ParseOps;
-use crate::{Error, Result, capability, config, consts, output, pki};
+use crate::{Error, Result, capability, config, consts, output};
 
 mod audit_cmd;
 mod cap;
@@ -71,9 +71,16 @@ pub(super) mod common;
 // struct lives beside its handler; re-exported here so the enum +
 // dispatch (which stay in this file) and any cross-module importer
 // resolve unchanged.
+pub(crate) use chain_head_cmd::{AuditLogSubcmd, PinSubcmd, SnapshotSubcmd};
 use common::{apply_common, resolve_policy, with_config};
+pub(crate) use init::InitSubcmd;
+pub(crate) use inspect::InspectSubcmd;
+pub(crate) use merge_cmd::{ConflictsSubcmd, MergeDriverSubcmd, ResolveSubcmd};
 pub(crate) use migrate_keys::MigrateKeysSubcmd;
+pub(crate) use pki_cmd::{FingerprintSubcmd, KeygenSubcmd, SignSubcmd, VerifySigSubcmd};
+pub(crate) use provenance_cmd::{AttestSubcmd, ManifestSubcmd, ScmSubcmd};
 pub(crate) use rotate::RotateSubcmd;
+pub(crate) use smudge::SmudgeCleanSubcmd;
 pub(crate) use verify_chain::VerifyChainSubcmd;
 
 /// Top-level CLI. Every invocation picks one subcommand.
@@ -241,171 +248,6 @@ pub enum Command {
     Cas(cas_cmd::CasArgs),
 }
 
-/// `init` subcommand: scaffold a commented TOML config the user can
-/// edit in place. With `--git`, also writes a `.gitattributes` file
-/// that wires `enprot` into git's `clean` / `smudge` / `textconv`
-/// filter chain.
-#[derive(Args)]
-pub struct InitSubcmd {
-    /// Write to `~/.config/enprot/config.toml` instead of `./.enprot.toml`.
-    #[arg(long)]
-    pub global: bool,
-
-    /// Overwrite an existing file. Off by default to prevent stomping
-    /// hand-edited config.
-    #[arg(long)]
-    pub force: bool,
-
-    /// Also write `.gitattributes` and print the `.git/config` snippet
-    /// for the enprot filter (TODO.roadmap/45). The config snippet
-    /// goes to stdout so the user can review before pasting — enprot
-    /// doesn't write to `.git/config` directly to avoid stomping
-    /// unrelated entries.
-    #[arg(long)]
-    pub git: bool,
-}
-
-/// `merge-driver` subcommand: invoked by git with four positional
-/// arguments — the ancestor version, our version, their version,
-/// and the path of the file in the working tree. Output goes back
-/// into the "ours" path (the second argument). Exits non-zero on
-/// parse errors; exits zero even when conflicts are emitted (the
-/// presence of CONFLICT markers in the output is the merge's signal).
-#[derive(Args)]
-pub struct MergeDriverSubcmd {
-    /// Common ancestor version (`%O` in git's contract).
-    pub base: PathBuf,
-    /// Our version (`%A`); the merge result is written here.
-    pub ours: PathBuf,
-    /// Their version (`%B`).
-    pub theirs: PathBuf,
-    /// Working-tree path (`%P`); informational.
-    #[arg(value_name = "PATH")]
-    pub path: Option<PathBuf>,
-}
-
-/// `resolve` subcommand: clear CONFLICT markers by replacing each one
-/// with the chosen side. Modes: `--ours`, `--theirs`, `--both`,
-/// `--skip`, or `--interactive` (default). Per-WORD overrides via
-/// `--word WORD:MODE` (TODO.roadmap/56).
-#[derive(Args)]
-pub struct ResolveSubcmd {
-    /// Resolution mode. One of: ours, theirs, both, skip, interactive.
-    /// Default: interactive. Used for any CONFLICT not covered by an
-    /// explicit `--word` override.
-    #[arg(long, short = 'm', value_name = "MODE", default_value = "interactive")]
-    pub mode: String,
-
-    /// Per-WORD resolution override. Repeatable. Format: `WORD:MODE`
-    /// where MODE is one of ours/theirs/both/skip. Takes precedence
-    /// over `--mode` for the named WORD. Unknown WORDs are silently
-    /// skipped (the file may have changed between listing conflicts
-    /// and resolving them).
-    #[arg(long = "word", value_name = "WORD:MODE", value_delimiter = ',')]
-    pub word: Vec<String>,
-
-    /// Input file. Resolved output is written back here in-place.
-    #[arg(value_name = "FILE")]
-    pub file: PathBuf,
-}
-
-/// `conflicts` subcommand (TODO.roadmap/49): walk CONFLICT blocks
-/// in FILE and print one summary per conflict. Exits non-zero if
-/// any conflicts remain.
-#[derive(Args)]
-pub struct ConflictsSubcmd {
-    /// Output format: text (default) or json (enveloped versioned
-    /// schema, same shape as `capabilities --format json`).
-    #[arg(long, value_enum, default_value_t = output::OutputFormat::Text)]
-    pub format: output::OutputFormat,
-
-    /// Input file.
-    #[arg(value_name = "FILE")]
-    pub file: PathBuf,
-}
-
-/// `inspect` subcommand (TODO.finalize/42): combined diagnostic.
-/// Shows file structure, chain anchor integrity, and the
-/// capabilities the current call context has over the file.
-/// Exits non-zero if the file fails integrity checks.
-#[derive(Args)]
-pub struct InspectSubcmd {
-    /// Output format: text (default) or json.
-    #[arg(long, value_enum, default_value_t = output::OutputFormat::Text)]
-    pub format: output::OutputFormat,
-
-    /// Input file (use stdin if omitted).
-    #[arg(value_name = "FILE")]
-    pub file: Option<PathBuf>,
-}
-
-/// Shared args for the git `clean` / `smudge` / `textconv` filters
-/// (TODO.roadmap/45). All three operate as stdin → stdout pipes; the
-/// WORD password comes from the global `-k WORD=password` flag or
-/// `ENPROPT_KEY=WORD=password` env var.
-#[derive(Args)]
-pub struct SmudgeCleanSubcmd {
-    /// WORD whose password unlocks the file. Required.
-    #[arg(short = 'w', long = "word", value_name = "WORD")]
-    pub word: String,
-
-    /// Override the cipher algorithm (clean only). Default:
-    /// `aes-256-gcm-siv-det` for diff-stable ciphertext.
-    #[arg(long, value_name = "ALG")]
-    pub cipher: Option<String>,
-
-    /// Override the PBKDF algorithm (clean only). For diff-stable
-    /// output across runs, pair `aes-256-gcm-siv-det` with `legacy`
-    /// (no random salt). Default: argon2 with auto-tuned params.
-    #[arg(long, value_name = "ALG")]
-    pub pbkdf: Option<String>,
-}
-
-/// `manifest` subcommand (TODO.roadmap/51): build a provenance
-/// manifest for a project tree. Walks the directory, stores each
-/// file in CAS, emits an EPT file with one INCLUDE per source file.
-#[derive(Args)]
-pub struct ManifestSubcmd {
-    /// Project root to walk.
-    #[arg(value_name = "DIR")]
-    pub dir: PathBuf,
-
-    /// CAS directory (default: `./cas` if it exists, else `.`).
-    #[arg(short = 'c', long, value_name = "DIR")]
-    pub casdir: Option<PathBuf>,
-
-    /// Output manifest path (default: stdout).
-    #[arg(short = 'o', long, value_name = "FILE")]
-    pub output: Option<PathBuf>,
-}
-
-/// `attest` subcommand (TODO.roadmap/51): append a signed chain
-/// anchor to a manifest, signing the file's current state.
-#[derive(Args)]
-pub struct AttestSubcmd {
-    /// Builder's private key (PEM).
-    #[arg(long, value_name = "PRIV.pem")]
-    pub signer: PathBuf,
-
-    /// Manifest file. Modified in-place.
-    #[arg(value_name = "FILE")]
-    pub file: PathBuf,
-}
-
-/// `scm` subcommand (TODO.roadmap/52). The subcommand selects the
-/// operation; common args (CAS dir, signer, etc.) are flat fields.
-/// Re-uses `provenance::attest` and the existing `verify-chain` so
-/// the wire format is identical to TODO.roadmap/51.
-#[derive(Args)]
-pub struct ScmSubcmd {
-    #[command(subcommand)]
-    pub command: ScmCommand,
-
-    /// CAS directory. Default: `./cas` if it exists, else `.`.
-    #[arg(short = 'c', long, global = true)]
-    pub casdir: Option<PathBuf>,
-}
-
 #[derive(Subcommand)]
 pub enum ScmCommand {
     /// Create an empty manifest at MANIFEST.
@@ -481,126 +323,6 @@ pub struct OperationSubcmd {
     /// password-mode blocks.
     #[arg(long = "key-file", value_name = "PRIV.pem")]
     pub key_files: Vec<PathBuf>,
-}
-
-/// `keygen` subcommand: emit a fresh keypair.
-#[derive(Args)]
-pub struct KeygenSubcmd {
-    /// Signature algorithm.
-    #[arg(value_parser = clap::builder::PossibleValuesParser::new(
-        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
-    ))]
-    pub alg: String,
-
-    /// Write private key to PATH (PEM). Default: stdout.
-    #[arg(long = "out-priv", value_name = "PATH")]
-    pub out_priv: Option<PathBuf>,
-
-    /// Write public key to PATH (PEM). Default: stdout.
-    #[arg(long = "out-pub", value_name = "PATH")]
-    pub out_pub: Option<PathBuf>,
-}
-
-/// `sign` subcommand: produce a detached signature. When
-/// `--key-file` is supplied multiple times (TODO.roadmap/59),
-/// produces a multi-signature bundle file; single `--key-file`
-/// produces raw signature bytes (backwards compat).
-#[derive(Args)]
-pub struct SignSubcmd {
-    /// Signature algorithm (must match the key type).
-    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
-        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
-    ))]
-    pub alg: String,
-
-    /// Private key (PEM) to sign with. Repeatable for multi-sig
-    /// bundles. Named `--key-file` because the global `-k/--key`
-    /// already means a symmetric WORD=PASSWORD pair.
-    #[arg(long = "key-file", value_name = "PRIV.pem")]
-    pub key: Vec<PathBuf>,
-
-    /// Input file (omit to read stdin).
-    #[arg(value_name = "FILE")]
-    pub input: Option<PathBuf>,
-
-    /// Write signature to PATH. Default: `<FILE>.sig`, or stdout when
-    /// reading from stdin.
-    #[arg(short = 'o', long = "out", value_name = "PATH")]
-    pub out: Option<PathBuf>,
-}
-
-/// `verify-sig` subcommand: verify a detached signature. When
-/// `--key-file` is supplied multiple times (TODO.roadmap/59), the
-/// signature file is treated as a multi-sig bundle and every entry
-/// must verify against its corresponding pubkey.
-#[derive(Args)]
-pub struct VerifySigSubcmd {
-    /// Signature algorithm (must match the key type).
-    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
-        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
-    ))]
-    pub alg: String,
-
-    /// Public key (PEM) to verify against. Repeatable for multi-sig
-    /// bundles.
-    #[arg(long = "key-file", value_name = "PUB.pem")]
-    pub key: Vec<PathBuf>,
-
-    /// Signature file. Default: `<FILE>.sig`. Required when reading
-    /// the message from stdin.
-    #[arg(long = "sig-file", value_name = "SIG")]
-    pub sig: Option<PathBuf>,
-
-    /// Input file (omit to read stdin).
-    #[arg(value_name = "FILE")]
-    pub input: Option<PathBuf>,
-}
-
-/// `fingerprint` subcommand: print the SHA3-256 fingerprint of a
-/// PEM-encoded pubkey. Used to populate `trust_roots` lists in
-/// policy files (TODO.finalize/26) and to compare two keys for
-/// equality without parsing the full PEM.
-#[derive(Args)]
-pub struct FingerprintSubcmd {
-    /// Public key (PEM) to fingerprint.
-    #[arg(value_name = "PUB.pem")]
-    pub key: PathBuf,
-}
-
-/// `audit-log` subcommand: stream lines from stdin into FILE as
-/// signed chain anchors. Each line becomes one Plain node + one
-/// CHAIN node appended to the file. Produces a linear, tamper-evident
-/// log with O(1) verification per anchor.
-#[derive(Args)]
-pub struct AuditLogSubcmd {
-    /// Private key (PEM) to sign each anchor. The pubkey is derived
-    /// automatically; pass it to `verify-chain --trust-root` later.
-    #[arg(long = "signer", value_name = "PRIV.pem")]
-    pub signer: PathBuf,
-
-    /// Log file. Appended to if it exists; created if not. Each
-    /// invocation reads the existing content into memory, appends
-    /// new anchors, and writes the result back atomically.
-    #[arg(value_name = "FILE")]
-    pub file: String,
-}
-
-/// `snapshot` subcommand: print the chain head hash.
-#[derive(Args)]
-pub struct SnapshotSubcmd {
-    #[arg(value_name = "FILE")]
-    pub file: String,
-}
-
-/// `pin` subcommand: verify the chain head hash matches EXPECTED.
-#[derive(Args)]
-pub struct PinSubcmd {
-    /// Expected chain head hash (64 hex chars).
-    #[arg(value_name = "EXPECTED-HASH")]
-    pub expected: String,
-
-    #[arg(value_name = "FILE")]
-    pub file: String,
 }
 
 /// Crypto-policy, separators, RNG source, password store. Defined at
