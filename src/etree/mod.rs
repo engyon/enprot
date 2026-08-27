@@ -58,6 +58,10 @@ pub mod streaming;
 #[cfg(feature = "async-pipeline")]
 pub mod async_pipeline;
 
+/// The single deep traversal over [`TextTree`] (architecture
+/// review 2026-08-27): one walker, many visitors.
+pub mod visitor;
+
 mod blob;
 
 pub use blob::{blob_to_tree, tree_to_blob};

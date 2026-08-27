@@ -271,18 +271,27 @@ fn plan_tree(tree: &TextTree, m: &Migration, paops: &mut ParseOps) -> Result<Pla
 }
 
 fn collect(tree: &TextTree, out: &mut Vec<SignedAnchor>) -> Result<()> {
-    for node in tree {
-        match node {
-            TextNode::Chain { extfields } => {
-                out.push(SignedAnchor::from_extfields(extfields)?);
+    // Collect in one pass, THEN propagate errors — the visitor
+    // callback can't return Result, so failures surface after the
+    // walk (identical semantics: any bad anchor fails the plan).
+    let mut bad: Option<crate::error::Error> = None;
+    etree::visitor::visit(tree, &mut |node| {
+        if let TextNode::Chain { extfields } = node {
+            match SignedAnchor::from_extfields(extfields) {
+                Ok(signed) => out.push(signed),
+                Err(e) => {
+                    if bad.is_none() {
+                        bad = Some(e);
+                    }
+                }
             }
-            TextNode::BeginEnd { txt, .. } | TextNode::Encrypted { txt, .. } => {
-                collect(txt, out)?;
-            }
-            _ => {}
         }
+        etree::visitor::Control::Continue
+    });
+    match bad {
+        Some(e) => Err(e),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 /// Pass 2: rewrite the migratable anchors in document order

@@ -323,17 +323,13 @@ pub(super) fn collect_chain_anchors(
     tree: &etree::TextTree,
     dag: &mut ledger::AnchorDag,
 ) -> Result<()> {
-    for node in tree {
-        match node {
-            etree::TextNode::Chain { extfields } => {
-                let signed = ledger::SignedAnchor::from_extfields(extfields)?;
-                dag.push(signed).map_err(Error::from)?;
-            }
-            etree::TextNode::BeginEnd { txt, .. } | etree::TextNode::Encrypted { txt, .. } => {
-                collect_chain_anchors(txt, dag)?;
-            }
-            _ => {}
+    etree::visitor::visit(tree, &mut |node| {
+        if let etree::TextNode::Chain { extfields } = node
+            && let Ok(signed) = ledger::SignedAnchor::from_extfields(extfields)
+        {
+            let _ = dag.push(signed);
         }
-    }
+        etree::visitor::Control::Continue
+    });
     Ok(())
 }

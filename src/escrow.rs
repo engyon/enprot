@@ -195,6 +195,14 @@ pub fn encrypt(
     Ok((ct, extfields))
 }
 
+/// Is this Encrypted block's extfield map escrow-mode? The public
+/// predicate so consumers never read the `recovery:` wire key as a
+/// raw string — the key name stays private to this module and
+/// `extfield`'s view.
+pub fn is_escrow_block(extfields: &std::collections::BTreeMap<String, String>) -> bool {
+    crate::extfield::EncryptedExtFields::from_map(extfields).is_recovery_mode()
+}
+
 /// Decrypt an escrow-mode block via the password path.
 pub fn decrypt_with_password(
     ct: Vec<u8>,
@@ -372,6 +380,31 @@ mod tests {
         let via_key = decrypt_with_key(ct, &rec_priv, &ext, &*policy).unwrap();
         assert_eq!(via_pw, pt);
         assert_eq!(via_key, pt);
+    }
+
+    #[test]
+    fn is_escrow_block_detects_mode() {
+        let policy = crate::crypto::default_policy();
+        let (pbkdfopts, cipheropts) = paops_defaults();
+        let (_, rec_pub) = keypair();
+        let (_ct, ext) = encrypt(
+            b"x".to_vec(),
+            "pw",
+            &[rec_pub],
+            &mut rng(),
+            &pbkdfopts,
+            &cipheropts,
+            &mut None,
+            &*policy,
+        )
+        .unwrap();
+        assert!(is_escrow_block(&ext));
+        // A legacy (non-escrow) map is not.
+        let legacy = std::collections::BTreeMap::from([(
+            "pbkdf".to_string(),
+            "$argon2$m=1,p=1,t=1$AAAA".to_string(),
+        )]);
+        assert!(!is_escrow_block(&legacy));
     }
 
     #[test]
