@@ -14,7 +14,7 @@ use crate::etree::{self, ParseOps};
 use crate::{cas, cipher, crypto, pbkdf};
 
 use super::pipeline::pair_inputs_to_outputs;
-use super::{CommonArgs, OutputArgs, apply_common, resolve_policy};
+use super::{CommonArgs, OutputArgs, common::apply_common, common::resolve_policy};
 
 /// `verify` entry point: parse each input file, walk the tree, and
 /// report any structural issue (missing CAS blob, malformed extfield,

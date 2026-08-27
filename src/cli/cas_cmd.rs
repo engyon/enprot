@@ -53,7 +53,7 @@ use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps, TextNode};
 use crate::output;
 
-use super::{CommonArgs, apply_common, resolve_policy};
+use super::{CommonArgs, common::apply_common, common::resolve_policy};
 
 /// `enprot cas` subcommand wrapper.
 #[derive(Args, Debug, Clone)]

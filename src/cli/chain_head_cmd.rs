@@ -13,7 +13,7 @@ use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps};
 use crate::ledger;
 
-use super::{AuditLogSubcmd, CommonArgs, PinSubcmd, SnapshotSubcmd, walk_for_chains};
+use super::{AuditLogSubcmd, CommonArgs, PinSubcmd, SnapshotSubcmd, common::walk_for_chains};
 
 /// Compute the chain head hash of a file: SHA3-256 over the
 /// canonical serialized tree. This detects ANY byte-level change —

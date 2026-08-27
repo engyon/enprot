@@ -15,7 +15,7 @@ use crate::etree::{self, ParseOps};
 use crate::ledger;
 use crate::{capability, cappolicy, output};
 
-use super::{CommonArgs, VerifyChainSubcmd, apply_common, resolve_policy};
+use super::{CommonArgs, VerifyChainSubcmd, common::apply_common, common::resolve_policy};
 
 /// `verify-chain` entry point: for each input file, walk the CHAIN
 /// anchor DAG and validate every signature against the named signer's
