@@ -105,6 +105,7 @@ fn extract_first_encrypted(tree: &etree::TextTree, word: &str) -> Option<Encrypt
                 txt,
                 extfields,
             } if keyw == word => {
+                let view = crate::extfield::EncryptedExtFields::from_map(extfields);
                 if let Some(first) = txt.first() {
                     let payload = match first {
                         etree::TextNode::Data(d) => Some(d.clone()),
@@ -113,9 +114,9 @@ fn extract_first_encrypted(tree: &etree::TextTree, word: &str) -> Option<Encrypt
                     if let Some(ct) = payload {
                         return Some(EncryptedFields {
                             ct,
-                            pbkdf: extfields.get("pbkdf").cloned(),
-                            cipher: extfields.get("cipher").cloned(),
-                            compress: extfields.get("compress").cloned(),
+                            pbkdf: view.pbkdf().map(str::to_string),
+                            cipher: view.cipher().map(str::to_string),
+                            compress: view.compress().map(str::to_string),
                         });
                     }
                 }

@@ -292,7 +292,8 @@ fn verify_payload_hashes(tree: &etree::TextTree, paops: &mut ParseOps) -> Result
             let blob = etree::tree_to_blob(&prefix, paops)?;
             let recomputed = crate::crypto::hexdigest("sha3-256", &blob, &policy)?;
 
-            let recorded = extfields.get("payload").map(|s| s.as_str()).unwrap_or("");
+            let recorded_view = crate::extfield::AnchorExtFields::from_map(extfields);
+            let recorded = recorded_view.payload().unwrap_or("");
             if recomputed != recorded {
                 errors.push(format!(
                     "payload mismatch: anchor payload={} but file content hashes to {}",

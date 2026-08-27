@@ -96,22 +96,26 @@ pub fn run(a: InspectSubcmd, common: CommonArgs) -> Result<()> {
                     },
                     etree::TextNode::Encrypted {
                         keyw, extfields, ..
-                    } => output::InspectBlock::Encrypted {
-                        word: keyw.clone(),
-                        cipher: extfields.get("cipher").cloned(),
-                        pbkdf: extfields.get("pbkdf").cloned(),
-                    },
+                    } => {
+                        let view = crate::extfield::EncryptedExtFields::from_map(extfields);
+                        output::InspectBlock::Encrypted {
+                            word: keyw.clone(),
+                            cipher: view.cipher().map(str::to_string),
+                            pbkdf: view.pbkdf().map(str::to_string),
+                        }
+                    }
                     etree::TextNode::BeginEnd { keyw, .. } => {
                         output::InspectBlock::Begin { word: keyw.clone() }
                     }
                     etree::TextNode::Chain { extfields } => {
-                        let index = extfields
-                            .get("index")
+                        let view = crate::extfield::AnchorExtFields::from_map(extfields);
+                        let index = view
+                            .index()
                             .and_then(|s| s.parse::<u64>().ok())
                             .unwrap_or(0);
                         output::InspectBlock::Chain {
                             index,
-                            signer: extfields.get("signer").cloned().unwrap_or_default(),
+                            signer: view.signer().unwrap_or_default().to_string(),
                         }
                     }
                     etree::TextNode::Immutable { name, .. } => {

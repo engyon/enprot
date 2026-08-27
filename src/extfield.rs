@@ -135,6 +135,12 @@ impl<'a> AnchorExtFields<'a> {
         self.map.get("payload").map(|s| s.as_str())
     }
 
+    /// Sequence number on audit-log anchors (single-line CHAIN
+    /// records produced by `enprot audit-log`).
+    pub fn index(&self) -> Option<&str> {
+        self.map.get("index").map(|s| s.as_str())
+    }
+
     pub fn sig(&self) -> Option<&str> {
         self.map.get("sig").map(|s| s.as_str())
     }
