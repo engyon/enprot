@@ -380,41 +380,61 @@ fn rewrite_nested(
     id_map: &mut HashMap<AnchorHash, AnchorHash>,
 ) -> Result<usize> {
     let mut count = 0;
-    for node in tree.iter_mut() {
-        match node {
-            TextNode::Chain { extfields } => {
-                let signed = SignedAnchor::from_extfields(extfields)?;
-                let old_id = signed.id()?;
-                if !migrate.contains(&old_id) {
-                    continue;
+    let mut bad: Option<crate::error::Error> = None;
+    // The last hand-rolled descent in the codebase, retired over the
+    // walker (architecture review round 3): sequential state (id_map,
+    // count) is exactly what the closure captures; errors surface
+    // after the walk, matching the original's fail-the-whole-file
+    // semantics.
+    etree::visitor::visit_mut(tree, &mut |node| {
+        if let TextNode::Chain { extfields } = node {
+            let Ok(signed) = SignedAnchor::from_extfields(extfields) else {
+                if bad.is_none() {
+                    bad = SignedAnchor::from_extfields(extfields).err();
                 }
-                let parents = signed
-                    .anchor
-                    .parents
-                    .iter()
-                    .map(|p| id_map.get(p).copied().unwrap_or(*p))
-                    .collect();
-                let mut builder = crate::ledger::Anchor::builder(
-                    m.new_signer.clone(),
-                    signed.anchor.payload_hash,
-                )
-                .with_parents(parents)
-                .with_mutations(signed.anchor.mutations.clone());
-                if let Some(ref ts) = signed.anchor.timestamp {
-                    builder = builder.with_timestamp(ts.clone());
+                return etree::visitor::Control::Continue;
+            };
+            let Ok(old_id) = signed.id() else {
+                if bad.is_none() {
+                    bad = signed.id().err();
                 }
-                let new_signed = builder
-                    .build()
-                    .sign(&m.new_priv_pem, &m.new_pub_pem, m.to)?;
-                *extfields = new_signed.to_extfields();
-                id_map.insert(old_id, new_signed.id()?);
-                count += 1;
+                return etree::visitor::Control::Continue;
+            };
+            if !migrate.contains(&old_id) {
+                return etree::visitor::Control::Continue;
             }
-            TextNode::BeginEnd { txt, .. } | TextNode::Encrypted { txt, .. } => {
-                count += rewrite_nested(txt, m, migrate, id_map)?;
+            let parents = signed
+                .anchor
+                .parents
+                .iter()
+                .map(|p| id_map.get(p).copied().unwrap_or(*p))
+                .collect();
+            let mut builder =
+                crate::ledger::Anchor::builder(m.new_signer.clone(), signed.anchor.payload_hash)
+                    .with_parents(parents)
+                    .with_mutations(signed.anchor.mutations.clone());
+            if let Some(ref ts) = signed.anchor.timestamp {
+                builder = builder.with_timestamp(ts.clone());
             }
-            _ => {}
+            match builder.build().sign(&m.new_priv_pem, &m.new_pub_pem, m.to) {
+                Ok(new_signed) => {
+                    *extfields = new_signed.to_extfields();
+                    if let Ok(new_id) = new_signed.id() {
+                        id_map.insert(old_id, new_id);
+                    }
+                    count += 1;
+                }
+                Err(e) => {
+                    if bad.is_none() {
+                        bad = Some(e);
+                    }
+                }
+            }
         }
+        etree::visitor::Control::Continue
+    });
+    match bad {
+        Some(e) => Err(e),
+        None => Ok(count),
     }
-    Ok(count)
 }
