@@ -5,17 +5,37 @@
 //! hashes (tamper detection), and enforces monotonic timestamps.
 //! Also used by `provenance_cmd::run_scm` (ScmCommand::Verify path).
 
+use clap::Args;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 
 use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps};
 use crate::ledger;
 use crate::{capability, cappolicy, output};
 
-use super::{CommonArgs, VerifyChainSubcmd, common::apply_common, common::resolve_policy};
+use super::{CommonArgs, common::apply_common, common::resolve_policy};
+
+/// `verify-chain` subcommand: walk a file's CHAIN anchors and verify
+/// signatures + DAG structure. Repeatable `--trust-root` flags form
+/// a whitelist; if non-empty, anchors signed by anything else fail.
+#[derive(Args)]
+pub struct VerifyChainSubcmd {
+    /// Public key (PEM) whose fingerprint must match a CHAIN's
+    /// `signer:` field. Repeatable; if non-empty, forms a trust
+    /// whitelist. If empty, every anchor is checked against the
+    /// pubkey whose fingerprint matches — and fails if no key
+    /// matches.
+    #[arg(long = "trust-root", value_name = "PUB.pem")]
+    pub trust_roots: Vec<PathBuf>,
+
+    /// Input file(s). Each is verified independently.
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
+}
 
 /// `verify-chain` entry point: for each input file, walk the CHAIN
 /// anchor DAG and validate every signature against the named signer's

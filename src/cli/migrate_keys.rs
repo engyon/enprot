@@ -54,10 +54,12 @@
 //!    re-signing can never launder tampered content into a fresh
 //!    commitment.
 
+use clap::Args;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
+use std::path::PathBuf;
 
 use crate::capability::KeyFp;
 use crate::error::{Error, Result};
@@ -65,7 +67,7 @@ use crate::etree::{self, ParseOps, TextNode, TextTree};
 use crate::ledger::{AnchorHash, SignedAnchor, SignerId};
 use crate::pki::{self, SigAlgKind};
 
-use super::{CommonArgs, MigrateKeysSubcmd, common::apply_common, common::resolve_policy};
+use super::{CommonArgs, common::apply_common, common::resolve_policy};
 
 /// Fully-resolved migration parameters: the keys, algorithms, and
 /// the new signer identity every migrated anchor will carry.
@@ -77,6 +79,41 @@ struct Migration {
     new_priv_pem: String,
     new_pub_pem: String,
     new_signer: SignerId,
+}
+
+/// `migrate-keys` subcommand (TODO.complete/58): re-sign every CHAIN
+/// anchor in FILE(s) whose signer matches `--from` + `--old-key`,
+/// using `--new-key` under `--to`. Per-anchor migration — each anchor
+/// is self-describing (`signer:<alg>:<fp>`), so hybrid files with
+/// classical and post-quantum anchors verify fine.
+#[derive(Args)]
+pub struct MigrateKeysSubcmd {
+    /// Algorithm the anchors to migrate are signed with
+    /// (ed25519 | mldsa | composite-ed25519-mldsa).
+    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub from: String,
+
+    /// Algorithm to re-sign with. Must differ from `--from`.
+    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub to: String,
+
+    /// The old signer's PUBLIC key. Every anchor must verify against
+    /// it before anything is rewritten (fail closed).
+    #[arg(long = "old-key", value_name = "PUB.pem")]
+    pub old_key: PathBuf,
+
+    /// The new signer's PRIVATE key, used to re-sign.
+    #[arg(long = "new-key", value_name = "PRIV.pem")]
+    pub new_key: PathBuf,
+
+    /// Input file(s), each migrated in place. Stdin is not
+    /// supported — the rewrite must land somewhere durable.
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
 }
 
 pub(super) fn run(common: CommonArgs, a: MigrateKeysSubcmd) -> Result<()> {

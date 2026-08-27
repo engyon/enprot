@@ -66,7 +66,15 @@ mod verify_chain;
 /// construction, the tree walk. Re-exported so sibling modules'
 /// `super::{…}` imports continue to resolve.
 pub(super) mod common;
+
+// Phase-B relocations (arch review round 4): each subcommand's Args
+// struct lives beside its handler; re-exported here so the enum +
+// dispatch (which stay in this file) and any cross-module importer
+// resolve unchanged.
 use common::{apply_common, resolve_policy, with_config};
+pub(crate) use migrate_keys::MigrateKeysSubcmd;
+pub(crate) use rotate::RotateSubcmd;
+pub(crate) use verify_chain::VerifyChainSubcmd;
 
 /// Top-level CLI. Every invocation picks one subcommand.
 #[derive(Parser)]
@@ -557,82 +565,6 @@ pub struct FingerprintSubcmd {
     /// Public key (PEM) to fingerprint.
     #[arg(value_name = "PUB.pem")]
     pub key: PathBuf,
-}
-
-/// `verify-chain` subcommand: walk a file's CHAIN anchors and verify
-/// signatures + DAG structure. Repeatable `--trust-root` flags form
-/// a whitelist; if non-empty, anchors signed by anything else fail.
-#[derive(Args)]
-pub struct VerifyChainSubcmd {
-    /// Public key (PEM) whose fingerprint must match a CHAIN's
-    /// `signer:` field. Repeatable; if non-empty, forms a trust
-    /// whitelist. If empty, every anchor is checked against the
-    /// pubkey whose fingerprint matches — and fails if no key
-    /// matches.
-    #[arg(long = "trust-root", value_name = "PUB.pem")]
-    pub trust_roots: Vec<PathBuf>,
-
-    /// Input file(s). Each is verified independently.
-    #[arg(value_name = "FILE")]
-    pub files: Vec<String>,
-}
-
-/// `migrate-keys` subcommand (TODO.complete/58): re-sign every CHAIN
-/// anchor in FILE(s) whose signer matches `--from` + `--old-key`,
-/// using `--new-key` under `--to`. Per-anchor migration — each anchor
-/// is self-describing (`signer:<alg>:<fp>`), so hybrid files with
-/// classical and post-quantum anchors verify fine.
-#[derive(Args)]
-pub struct MigrateKeysSubcmd {
-    /// Algorithm the anchors to migrate are signed with
-    /// (ed25519 | mldsa | composite-ed25519-mldsa).
-    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
-        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
-    ))]
-    pub from: String,
-
-    /// Algorithm to re-sign with. Must differ from `--from`.
-    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
-        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
-    ))]
-    pub to: String,
-
-    /// The old signer's PUBLIC key. Every anchor must verify against
-    /// it before anything is rewritten (fail closed).
-    #[arg(long = "old-key", value_name = "PUB.pem")]
-    pub old_key: PathBuf,
-
-    /// The new signer's PRIVATE key, used to re-sign.
-    #[arg(long = "new-key", value_name = "PRIV.pem")]
-    pub new_key: PathBuf,
-
-    /// Input file(s), each migrated in place. Stdin is not
-    /// supported — the rewrite must land somewhere durable.
-    #[arg(value_name = "FILE")]
-    pub files: Vec<String>,
-}
-
-/// `rotate` subcommand (TODO 59's rotation gap): re-wrap escrow
-/// blocks' CEK under new key material. Payload unchanged.
-#[derive(Args)]
-pub struct RotateSubcmd {
-    /// Current recovery privkey (PEM) — the alternative unwrap
-    /// credential when the password isn't available.
-    #[arg(long = "key-file", value_name = "PRIV.pem")]
-    pub key_file: Option<PathBuf>,
-
-    /// The NEW password to wrap under.
-    #[arg(long, value_name = "PASSWORD")]
-    pub new_password: String,
-
-    /// Recovery pubkey (PEM) for the new wrap. Repeatable; at
-    /// least one required.
-    #[arg(long = "recovery-key", value_name = "PUB.pem")]
-    pub recovery_key: Vec<PathBuf>,
-
-    /// Input file(s), each rotated in place.
-    #[arg(value_name = "FILE")]
-    pub files: Vec<String>,
 }
 
 /// `audit-log` subcommand: stream lines from stdin into FILE as

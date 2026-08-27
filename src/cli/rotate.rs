@@ -32,15 +32,40 @@
 //! `recovery:` extfield is rotated; blocks without one are left
 //! untouched (they're not escrow-mode).
 
+use clap::Args;
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
+use std::path::PathBuf;
 
 use crate::error::{Error, Result};
 use crate::etree::{self, ParseOps, TextNode, TextTree};
 
-use super::{CommonArgs, RotateSubcmd, apply_common, resolve_policy};
+use super::{CommonArgs, apply_common, resolve_policy};
+
+/// `rotate` subcommand (TODO 59's rotation gap): re-wrap escrow
+/// blocks' CEK under new key material. Payload unchanged.
+#[derive(Args)]
+pub struct RotateSubcmd {
+    /// Current recovery privkey (PEM) — the alternative unwrap
+    /// credential when the password isn't available.
+    #[arg(long = "key-file", value_name = "PRIV.pem")]
+    pub key_file: Option<PathBuf>,
+
+    /// The NEW password to wrap under.
+    #[arg(long, value_name = "PASSWORD")]
+    pub new_password: String,
+
+    /// Recovery pubkey (PEM) for the new wrap. Repeatable; at
+    /// least one required.
+    #[arg(long = "recovery-key", value_name = "PUB.pem")]
+    pub recovery_key: Vec<PathBuf>,
+
+    /// Input file(s), each rotated in place.
+    #[arg(value_name = "FILE")]
+    pub files: Vec<String>,
+}
 
 pub(super) fn run(common: CommonArgs, a: RotateSubcmd) -> Result<()> {
     if a.files.is_empty() {
@@ -151,7 +176,7 @@ fn rotate_tree(
                 keyw, extfields, ..
             } => {
                 // Only escrow-mode blocks carry a recovery: field.
-                if !extfields.contains_key("recovery") {
+                if !crate::escrow::is_escrow_block(extfields) {
                     continue;
                 }
                 let old_pw = old_passwords.get(keyw).map(|s| s.as_str());
