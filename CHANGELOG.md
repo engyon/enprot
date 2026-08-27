@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.72](https://github.com/engyon/enprot/compare/enprot-v0.5.71...enprot-v0.5.72) - 2026-08-27
+
+### Other
+
+- *(cli)* complete Phase B — all 16 subcommand Args structs beside their handlers (arch review round 5)
+- *(cli)* Phase B exemplars + rotate consumes the escrow predicate (arch review round 4)
+
 ## [0.5.71](https://github.com/engyon/enprot/compare/enprot-v0.5.70...enprot-v0.5.71) - 2026-08-27
 
 ### Other
