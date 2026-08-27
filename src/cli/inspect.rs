@@ -1,5 +1,6 @@
 //! `enprot inspect` subcommand — combined diagnostic.
 
+use clap::Args;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -12,9 +13,7 @@ use crate::output;
 
 use super::list::list_tree;
 use super::verify_chain::collect_chain_anchors;
-use super::{
-    CommonArgs, InspectSubcmd, capability_to_dto, common::apply_common, common::resolve_policy,
-};
+use super::{CommonArgs, capability_to_dto, common::apply_common, common::resolve_policy};
 
 /// `inspect` entry point (TODO.finalize/42): combined diagnostic.
 /// Parses the file, lists structure, checks chain anchors, and
@@ -159,4 +158,19 @@ pub fn run(a: InspectSubcmd, common: CommonArgs) -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// `inspect` subcommand (TODO.finalize/42): combined diagnostic.
+/// Shows file structure, chain anchor integrity, and the
+/// capabilities the current call context has over the file.
+/// Exits non-zero if the file fails integrity checks.
+#[derive(Args)]
+pub struct InspectSubcmd {
+    /// Output format: text (default) or json.
+    #[arg(long, value_enum, default_value_t = output::OutputFormat::Text)]
+    pub format: output::OutputFormat,
+
+    /// Input file (use stdin if omitted).
+    #[arg(value_name = "FILE")]
+    pub file: Option<PathBuf>,
 }

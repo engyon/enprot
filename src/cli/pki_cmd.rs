@@ -14,7 +14,8 @@ use crate::capability;
 use crate::error::{Error, Result};
 use crate::pki;
 
-use super::{CommonArgs, FingerprintSubcmd, KeygenSubcmd, SignSubcmd, VerifySigSubcmd};
+use super::CommonArgs;
+use clap::Args;
 
 pub fn keygen(_common: CommonArgs, a: KeygenSubcmd) -> Result<()> {
     let kind: pki::SigAlgKind = a.alg.parse()?;
@@ -211,4 +212,88 @@ fn write_key_or_stdout(path: Option<&Path>, data: &[u8]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// `keygen` subcommand: emit a fresh keypair.
+#[derive(Args)]
+pub struct KeygenSubcmd {
+    /// Signature algorithm.
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub alg: String,
+
+    /// Write private key to PATH (PEM). Default: stdout.
+    #[arg(long = "out-priv", value_name = "PATH")]
+    pub out_priv: Option<PathBuf>,
+
+    /// Write public key to PATH (PEM). Default: stdout.
+    #[arg(long = "out-pub", value_name = "PATH")]
+    pub out_pub: Option<PathBuf>,
+}
+
+/// `sign` subcommand: produce a detached signature. When
+/// `--key-file` is supplied multiple times (TODO.roadmap/59),
+/// produces a multi-signature bundle file; single `--key-file`
+/// produces raw signature bytes (backwards compat).
+#[derive(Args)]
+pub struct SignSubcmd {
+    /// Signature algorithm (must match the key type).
+    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub alg: String,
+
+    /// Private key (PEM) to sign with. Repeatable for multi-sig
+    /// bundles. Named `--key-file` because the global `-k/--key`
+    /// already means a symmetric WORD=PASSWORD pair.
+    #[arg(long = "key-file", value_name = "PRIV.pem")]
+    pub key: Vec<PathBuf>,
+
+    /// Input file (omit to read stdin).
+    #[arg(value_name = "FILE")]
+    pub input: Option<PathBuf>,
+
+    /// Write signature to PATH. Default: `<FILE>.sig`, or stdout when
+    /// reading from stdin.
+    #[arg(short = 'o', long = "out", value_name = "PATH")]
+    pub out: Option<PathBuf>,
+}
+
+/// `verify-sig` subcommand: verify a detached signature. When
+/// `--key-file` is supplied multiple times (TODO.roadmap/59), the
+/// signature file is treated as a multi-sig bundle and every entry
+/// must verify against its corresponding pubkey.
+#[derive(Args)]
+pub struct VerifySigSubcmd {
+    /// Signature algorithm (must match the key type).
+    #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+        pki::SigAlgKind::ALL.iter().map(|k| k.name()).collect::<Vec<_>>()
+    ))]
+    pub alg: String,
+
+    /// Public key (PEM) to verify against. Repeatable for multi-sig
+    /// bundles.
+    #[arg(long = "key-file", value_name = "PUB.pem")]
+    pub key: Vec<PathBuf>,
+
+    /// Signature file. Default: `<FILE>.sig`. Required when reading
+    /// the message from stdin.
+    #[arg(long = "sig-file", value_name = "SIG")]
+    pub sig: Option<PathBuf>,
+
+    /// Input file (omit to read stdin).
+    #[arg(value_name = "FILE")]
+    pub input: Option<PathBuf>,
+}
+
+/// `fingerprint` subcommand: print the SHA3-256 fingerprint of a
+/// PEM-encoded pubkey. Used to populate `trust_roots` lists in
+/// policy files (TODO.finalize/26) and to compare two keys for
+/// equality without parsing the full PEM.
+#[derive(Args)]
+pub struct FingerprintSubcmd {
+    /// Public key (PEM) to fingerprint.
+    #[arg(value_name = "PUB.pem")]
+    pub key: PathBuf,
 }

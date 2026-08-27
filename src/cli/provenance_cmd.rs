@@ -17,7 +17,8 @@ use crate::etree::{self, ParseOps};
 use crate::{crypto, provenance, scm};
 
 use super::verify_chain;
-use super::{AttestSubcmd, CommonArgs, ManifestSubcmd, ScmCommand, ScmSubcmd, VerifyChainSubcmd};
+use super::{CommonArgs, ScmCommand, VerifyChainSubcmd};
+use clap::Args;
 
 /// `manifest` entry point: walk a directory tree and emit an EPT
 /// manifest referencing each file via STORED directives. Defaults
@@ -155,4 +156,49 @@ pub fn run_scm(a: ScmSubcmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+/// `manifest` subcommand (TODO.roadmap/51): build a provenance
+/// manifest for a project tree. Walks the directory, stores each
+/// file in CAS, emits an EPT file with one INCLUDE per source file.
+#[derive(Args)]
+pub struct ManifestSubcmd {
+    /// Project root to walk.
+    #[arg(value_name = "DIR")]
+    pub dir: PathBuf,
+
+    /// CAS directory (default: `./cas` if it exists, else `.`).
+    #[arg(short = 'c', long, value_name = "DIR")]
+    pub casdir: Option<PathBuf>,
+
+    /// Output manifest path (default: stdout).
+    #[arg(short = 'o', long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+}
+
+/// `attest` subcommand (TODO.roadmap/51): append a signed chain
+/// anchor to a manifest, signing the file's current state.
+#[derive(Args)]
+pub struct AttestSubcmd {
+    /// Builder's private key (PEM).
+    #[arg(long, value_name = "PRIV.pem")]
+    pub signer: PathBuf,
+
+    /// Manifest file. Modified in-place.
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+}
+
+/// `scm` subcommand (TODO.roadmap/52). The subcommand selects the
+/// operation; common args (CAS dir, signer, etc.) are flat fields.
+/// Re-uses `provenance::attest` and the existing `verify-chain` so
+/// the wire format is identical to TODO.roadmap/51.
+#[derive(Args)]
+pub struct ScmSubcmd {
+    #[command(subcommand)]
+    pub command: ScmCommand,
+
+    /// CAS directory. Default: `./cas` if it exists, else `.`.
+    #[arg(short = 'c', long, global = true)]
+    pub casdir: Option<PathBuf>,
 }
