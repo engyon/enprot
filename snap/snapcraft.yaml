@@ -54,8 +54,12 @@ parts:
         exit 1
       fi
 
+      # The release tarball carries a versioned top directory
+      # (enprot-<ver>-<target>/enprot) — older releases were flat.
+      # Locate the binary from the listing so both layouts work.
+      BIN_PATH="$(tar -tzf /tmp/enprot.tar.gz | grep -E '(^|/)enprot$' | head -n1)"
       tar -xzf /tmp/enprot.tar.gz -C /tmp
-      cp /tmp/enprot "$CRAFT_PART_INSTALL/bin/enprot"
+      cp "/tmp/${BIN_PATH}" "$CRAFT_PART_INSTALL/bin/enprot"
       chmod +x "$CRAFT_PART_INSTALL/bin/enprot"
 
 apps:
