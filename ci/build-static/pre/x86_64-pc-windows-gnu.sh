@@ -22,8 +22,20 @@ FROM ghcr.io/cross-rs/$TARGET:main
 
 RUN apt-get -y update && \
     apt-get -y install --no-install-recommends \
-      python3 cmake git ca-certificates make gcc g++ && \
+      python3 cmake git ca-certificates make gcc g++ \
+      clang-18 libclang-common-18-dev && \
     rm -rf /var/lib/apt/lists/*
+
+# clang-18 + libclang-common-18-dev: the base image ships only the
+# libclang runtime (libclang1-18), whose parse sessions cannot resolve
+# ANY system header natively — rnp-rs's bindgen died on the first
+# <stdbool.h> even with the isystems exported via BINDGEN_EXTRA_CLANG_
+# ARGS (delivered intact, per the debug-dump runs; builder-level
+# .clang_arg isystems DID resolve — E2 — but that route needs a
+# patched rnp-rs). Installing the full clang toolchain gives libclang
+# its driver environment + resource dir, the same shape the mac/linux
+# legs have on bare runners, where the same bindgen call works with
+# no extra args at all (2026-08-29).
 
 COPY tools/ /usr/local/bin/
 COPY wrappers/ /usr/local/bin/
