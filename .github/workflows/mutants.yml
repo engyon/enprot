@@ -40,7 +40,7 @@ jobs:
       - name: Install dependencies
         run: ./ci/install.sh
       - name: Install cargo-mutants
-        uses: taiki-e/install-action@v2.86.3
+        uses: taiki-e/install-action@v2.86.7
         with:
           tool: cargo-mutants
       - name: Run cargo mutants
