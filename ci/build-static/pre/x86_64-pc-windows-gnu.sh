@@ -223,10 +223,13 @@ cat <<EOF >> .cargo/config.toml
 #   identical isystems passed WITHOUT --target generate bindings and
 #   the whole leg links (host x86_64-linux-gnu parse; both triples
 #   are LP64, rnp-rs sets layout_tests(false)). So: isystems only.
-# - CPATH is clang's own env include channel — independent of
-#   bindgen's arg plumbing — as belt-and-braces.
+# NO CPATH here: gcc itself reads CPATH, so exporting it from the
+# cargo [env] table poisons EVERY C/C++ compile in the container —
+# mingw g++ then resolves <immintrin.h> to clang's resource-dir
+# headers and dies on clang-only builtins
+# (__builtin_ia32_pslldqi128_byteshift, 2026-08-29). BINDGEN_*
+# vars reach only bindgen; gcc never sees them.
 BINDGEN_EXTRA_CLANG_ARGS = "-isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
-CPATH = "/usr/lib/llvm-18/lib/clang/18/include:/usr/lib/gcc/x86_64-w64-mingw32/13-posix/include:/usr/x86_64-w64-mingw32/include"
 EOF
 fi
 
