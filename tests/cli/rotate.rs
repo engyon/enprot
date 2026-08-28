@@ -179,6 +179,66 @@ fn rotate_via_old_recovery_key_without_password() {
 }
 
 #[test]
+fn rotate_finds_escrow_block_nested_in_begin_end() {
+    let rec = Keys::mlkem("nested");
+    let new_rec = Keys::mlkem("nested-new");
+    let doc = tempfile::tempdir().unwrap();
+    let file = doc.path().join("nested.ept");
+    // The escrow block sits INSIDE an outer BEGIN/END segment, so
+    // the ENCRYPTED node is a child of a BeginEnd node: rotation
+    // only finds it if the walk descends.
+    fs::write(
+        &file,
+        "// <( BEGIN outer )>\n// <( BEGIN inner )>\nsecret nested business\n// <( END inner )>\n// <( END outer )>\n",
+    )
+    .unwrap();
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("encrypt")
+        .arg("-w")
+        .arg("inner")
+        .arg("-k")
+        .arg("inner=old-password")
+        .arg("--cipher")
+        .arg("aes-256-siv")
+        .arg("--recovery-key")
+        .arg(rec.pub_path())
+        .arg(&file)
+        .assert()
+        .success();
+
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("-k")
+        .arg("inner=old-password")
+        .arg("rotate")
+        .arg("--new-password")
+        .arg("new-password")
+        .arg("--recovery-key")
+        .arg(new_rec.pub_path())
+        .arg(&file)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("rotated 1 escrow block"));
+
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .arg("decrypt")
+        .arg("-w")
+        .arg("inner")
+        .arg("-k")
+        .arg("inner=new-password")
+        .arg(&file)
+        .assert()
+        .success();
+    assert!(
+        fs::read_to_string(&file)
+            .unwrap()
+            .contains("secret nested business")
+    );
+}
+
+#[test]
 fn rotate_without_credentials_fails_with_actionable_error() {
     let rec = Keys::mlkem("rec");
     let doc = tempfile::tempdir().unwrap();
