@@ -171,11 +171,15 @@ sed -i "s|^install_root .*|install_root /c/Botan|" \
   "$pt/$botan_dir/src/build-data/os/windows.txt"
 tar -cJf botan-windows-posix-install-root.tar.xz -C "$pt" "$botan_dir"
 
-# cross 0.2.5 mounts the project at its HOST-absolute path (see the
-# docker -v line: host path == container path), not at /project — the
-# /project spelling only ever worked while warm C-stack caches made
-# botan-src a no-op; the first cold-cache build panicked on it.
-export BOTAN_SRC_TARBALL="$PWD/botan-windows-posix-install-root.tar.xz"
+# cross 0.2.5 mounts the project at /project (docker -v ...:/project
+# -w /project) UNLESS the workspace carries path dependencies, in
+# which case it mounts at the host-absolute path instead (observed
+# with a [patch.crates-io] vendored crate on a debug branch — that is
+# where the '/project tarball missing' panic actually came from; PR
+# #458's $PWD re-spelling fixed the debug shape and broke this one,
+# the no-path-deps production shape). Deploy builds have no path
+# deps: /project it is.
+export BOTAN_SRC_TARBALL=/project/botan-windows-posix-install-root.tar.xz
 
 cat <<EOF > Cross.toml
 [target.$TARGET]
