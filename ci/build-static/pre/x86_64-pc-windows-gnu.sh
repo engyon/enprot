@@ -171,8 +171,11 @@ sed -i "s|^install_root .*|install_root /c/Botan|" \
   "$pt/$botan_dir/src/build-data/os/windows.txt"
 tar -cJf botan-windows-posix-install-root.tar.xz -C "$pt" "$botan_dir"
 
-# cross mounts the project root at /project in the container.
-export BOTAN_SRC_TARBALL=/project/botan-windows-posix-install-root.tar.xz
+# cross 0.2.5 mounts the project at its HOST-absolute path (see the
+# docker -v line: host path == container path), not at /project — the
+# /project spelling only ever worked while warm C-stack caches made
+# botan-src a no-op; the first cold-cache build panicked on it.
+export BOTAN_SRC_TARBALL="$PWD/botan-windows-posix-install-root.tar.xz"
 
 cat <<EOF > Cross.toml
 [target.$TARGET]
@@ -213,9 +216,17 @@ mkdir -p .cargo
 if ! grep -qF "[env]" .cargo/config.toml 2>/dev/null; then
 cat <<EOF >> .cargo/config.toml
 [env]
-# -v makes clang print its header search dirs into the diagnostic —
-# shows exactly why stdbool.h resolves or not.
-BINDGEN_EXTRA_CLANG_ARGS = "--target=x86_64-w64-mingw32 -isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
+# rnp-rs's bindgen parses rnp.h inside this container; it needs the
+# mingw/clang header dirs. Debug dispatches (issue #368) proved:
+# - env args carrying --target=x86_64-w64-mingw32 fail with
+#   'stdbool.h file not found' inside the build script, while the
+#   identical isystems passed WITHOUT --target generate bindings and
+#   the whole leg links (host x86_64-linux-gnu parse; both triples
+#   are LP64, rnp-rs sets layout_tests(false)). So: isystems only.
+# - CPATH is clang's own env include channel — independent of
+#   bindgen's arg plumbing — as belt-and-braces.
+BINDGEN_EXTRA_CLANG_ARGS = "-isystem /usr/lib/llvm-18/lib/clang/18/include -isystem /usr/lib/gcc/x86_64-w64-mingw32/13-posix/include -isystem /usr/x86_64-w64-mingw32/include"
+CPATH = "/usr/lib/llvm-18/lib/clang/18/include:/usr/lib/gcc/x86_64-w64-mingw32/13-posix/include:/usr/x86_64-w64-mingw32/include"
 EOF
 fi
 
