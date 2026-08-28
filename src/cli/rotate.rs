@@ -170,35 +170,48 @@ fn rotate_tree(
     paops: &mut ParseOps,
 ) -> Result<usize> {
     let mut count = 0;
-    for node in tree.iter_mut() {
-        match node {
-            TextNode::Encrypted {
-                keyw, extfields, ..
-            } => {
-                // Only escrow-mode blocks carry a recovery: field.
-                if !crate::escrow::is_escrow_block(extfields) {
-                    continue;
-                }
-                let old_pw = old_passwords.get(keyw).map(|s| s.as_str());
-                let new_ext = crate::escrow::rotate(
-                    extfields,
-                    old_pw,
-                    old_priv,
-                    new_password,
-                    new_pubs,
-                    &mut paops.crypto.rng,
-                    &paops.crypto.pbkdfopts,
-                    &mut paops.crypto.pbkdf_cache,
-                    &*paops.crypto.policy,
-                )?;
+    let mut bad: Option<Error> = None;
+    // Per-kind logic only — the descent contract lives in the
+    // visitor (architecture review round 7). The Prune on every
+    // Encrypted records that its Data/Stored child is payload
+    // transport, never rotated; errors surface after the walk,
+    // matching the original's fail-the-whole-file semantics
+    // (rewrite_nested precedent).
+    etree::visitor::visit_mut(tree, &mut |node| {
+        let TextNode::Encrypted {
+            keyw, extfields, ..
+        } = node
+        else {
+            return etree::visitor::Control::Continue;
+        };
+        // Only escrow-mode blocks carry a recovery: field.
+        if !crate::escrow::is_escrow_block(extfields) {
+            return etree::visitor::Control::Prune;
+        }
+        let old_pw = old_passwords.get(keyw).map(|s| s.as_str());
+        match crate::escrow::rotate(
+            extfields,
+            old_pw,
+            old_priv,
+            new_password,
+            new_pubs,
+            &mut paops.crypto.rng,
+            &paops.crypto.pbkdfopts,
+            &mut paops.crypto.pbkdf_cache,
+            &*paops.crypto.policy,
+        ) {
+            Ok(new_ext) => {
                 *extfields = new_ext;
                 count += 1;
             }
-            TextNode::BeginEnd { txt, .. } => {
-                count += rotate_tree(txt, old_passwords, old_priv, new_password, new_pubs, paops)?;
+            Err(e) => {
+                bad.get_or_insert(e);
             }
-            _ => {}
         }
+        etree::visitor::Control::Prune
+    });
+    if let Some(e) = bad {
+        return Err(e);
     }
     Ok(count)
 }
