@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.73](https://github.com/engyon/enprot/compare/enprot-v0.5.72...enprot-v0.5.73) - 2026-08-28
+
+### Other
+
+- *(cli)* retire the last hand-rolled descent — rotate_tree over the walker (arch review round 7)
+
 ## [0.5.72](https://github.com/engyon/enprot/compare/enprot-v0.5.71...enprot-v0.5.72) - 2026-08-27
 
 ### Other
