@@ -247,7 +247,16 @@ jobs:
               # Botan's getentropy entropy source does not exist on
               # mingw ('::getentropy' has not been declared); Windows
               # uses the system_rng/bcrypt path instead.
-              BOTAN_CONFIGURE_DISABLE_MODULES: getentropy
+              # simd_avx512: botan-sys's vendored Botan 3.7 (botan-src
+              # 0.30701.2) lacks the function-level ISA attributes on
+              # the AVX-512 rotl path that make --amalgamation work
+              # (fixed upstream in 3.9+ via pragma/attribute rework;
+              # rnp-src's 3.12 copy is unaffected) — under the single
+              # amalgamated TU the per-module -mavx512 flags vanish
+              # and the mingw gcc build dies on _mm512_rol_epi32.
+              # Scalar/AVX2 SIMD covers this leg (2026-08-28, first
+              # true cold build of the dual-Botan combo).
+              BOTAN_CONFIGURE_DISABLE_MODULES: getentropy,simd_avx512
               # Single-TU Botan: the mingw build was also hitting the
               # archive job timeout.
               BOTAN_CONFIGURE_AMALGAMATION: "1"
