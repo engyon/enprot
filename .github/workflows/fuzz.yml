@@ -57,7 +57,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache cargo-fuzz
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo-fuzz
           key: cargo-fuzz-${{ env.CARGO_FUZZ_VERSION }}-ubuntu
@@ -73,7 +73,7 @@ jobs:
         run: ./ci/install.sh
 
       - name: Restore fuzz corpora
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: fuzz/corpus
           key: fuzz-corpus-${{ github.run_id }}
