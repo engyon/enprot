@@ -28,24 +28,20 @@ parts:
 
       ASSET_NAME="enprot-${VER}-x86_64-unknown-linux-musl.tar.gz"
 
-      # Resolve the asset URL via the GitHub Releases API rather than
-      # guessing URL prefixes. The API returns the canonical
-      # browser_download_url for the matching asset, and tells us
-      # authoritatively whether a given release exists.
-      #
-      # We try the post-split tag (`enprot-vX.Y.Z`) first, then the
-      # legacy tag (`vX.Y.Z`) for releases older than the FFI split.
+      # Download the release asset DIRECTLY, not via the API: the
+      # API is unauthenticated from the snapcraft VM (shared runner
+      # IPs exhaust the 60/hr limit — the 2026-08-29 snap run resolved
+      # an empty ASSET_URL with the asset sitting on the release), and
+      # release downloads are served off the API host entirely.
+      # Deterministic URL, try the post-split tag (`enprot-vX.Y.Z`)
+      # first, then the legacy tag (`vX.Y.Z`) for releases older than
+      # the FFI split; a 404 on both fails loudly below.
       URL=""
       for prefix in "enprot-v" "v"; do
         TAG="${prefix}${VER}"
-        API_URL="https://api.github.com/repos/engyon/enprot/releases/tags/${TAG}"
-        echo "Querying GitHub API: $API_URL"
-        # jq is in core24's default repos; snapcraft installs it.
-        ASSET_URL="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$API_URL" \
-          | jq -r --arg name "$ASSET_NAME" \
-              '.assets[]? | select(.name == $name) | .browser_download_url' \
-          | head -n1)"
-        if [ -n "$ASSET_URL" ] && [ "$ASSET_URL" != "null" ]; then
+        ASSET_URL="https://github.com/engyon/enprot/releases/download/${TAG}/${ASSET_NAME}"
+        echo "Trying release download: $ASSET_URL"
+        if curl -fsSL --retry 3 -o /tmp/enprot.tar.gz "$ASSET_URL"; then
           URL="$ASSET_URL"
           echo "Found asset on tag $TAG"
           break
@@ -58,8 +54,6 @@ parts:
         exit 1
       fi
 
-      echo "Downloading $URL"
-      curl -fsSL "$URL" -o /tmp/enprot.tar.gz
       tar -xzf /tmp/enprot.tar.gz -C /tmp
       cp /tmp/enprot "$CRAFT_PART_INSTALL/bin/enprot"
       chmod +x "$CRAFT_PART_INSTALL/bin/enprot"
