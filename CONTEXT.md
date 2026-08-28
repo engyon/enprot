@@ -23,7 +23,8 @@ here is sharpened, update this file in the same change.
   `Include`, `Conflict` nodes. Parse produces it; `tree_write`
   inverts it.
 - **visitor / Control** — the single deep traversal over a
-  TextTree (`etree::visitor::visit` / `visit_mut`). A visitor sees
+  TextTree (`etree::visitor::visit` / `visit_mut` / `visit_depth`).
+  A visitor sees
   nodes pre-order (parents before children) and returns
   `Control::Continue` or `Control::Prune` (skip children, keep
   walking siblings).

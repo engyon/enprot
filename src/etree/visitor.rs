@@ -35,6 +35,9 @@
 //! - [`visit`] — read-only walk, pre-order (parents before
 //!   children), depth-first. The visitor returns `Control` to
 //!   continue or prune a subtree.
+//! - [`visit_depth`] — same walk carrying the node's nesting depth
+//!   (0 at top level), for the renderer/projection family (round 8:
+//!   the second depth-tracking consumer made this seam real).
 //! - [`visit_mut`] — same shape for rewriting walks (the
 //!   migrate-keys/rotate family): the visitor may replace a node's
 //!   payload; children are descended after the parent is visited.
@@ -58,11 +61,23 @@ pub enum Control {
 /// Read-only pre-order visit. `f` sees every node in the tree,
 /// parents before children.
 pub fn visit(tree: &TextTree, f: &mut dyn FnMut(&TextNode) -> Control) {
+    visit_depth(tree, &mut |node, _| f(node));
+}
+
+/// Depth-aware pre-order visit: like [`visit`], but `f` also receives
+/// the node's nesting depth (0 at the top level, one more per
+/// descended level). Renderers key indentation and DTO `depth` fields
+/// off this argument instead of hand-rolling recursion.
+pub fn visit_depth(tree: &TextTree, f: &mut dyn FnMut(&TextNode, usize) -> Control) {
+    visit_depth_at(tree, 0, f);
+}
+
+fn visit_depth_at(tree: &TextTree, depth: usize, f: &mut dyn FnMut(&TextNode, usize) -> Control) {
     for node in tree {
-        match f(node) {
+        match f(node, depth) {
             Control::Continue => match node {
                 TextNode::BeginEnd { txt, .. } | TextNode::Encrypted { txt, .. } => {
-                    visit(txt, f);
+                    visit_depth_at(txt, depth + 1, f);
                 }
                 _ => {}
             },
@@ -197,6 +212,56 @@ mod tests {
             Control::Continue
         });
         assert!(!saw_inner, "cleared children must not reappear");
+    }
+
+    #[test]
+    fn visit_depth_numbers_nesting() {
+        let tree = flat();
+        let mut seen: Vec<(&str, usize)> = Vec::new();
+        visit_depth(&tree, &mut |node, d| {
+            match node {
+                TextNode::Plain(_) => seen.push(("plain", d)),
+                TextNode::BeginEnd { .. } => seen.push(("begin-end", d)),
+                _ => seen.push(("other", d)),
+            }
+            Control::Continue
+        });
+        // Top level is depth 0; the inner Plain sits at depth 1.
+        assert_eq!(
+            seen,
+            vec![("plain", 0), ("begin-end", 0), ("plain", 1), ("plain", 0)]
+        );
+    }
+
+    #[test]
+    fn visit_depth_prune_hides_child_depths() {
+        let tree = flat();
+        let mut depths = Vec::new();
+        visit_depth(&tree, &mut |node, d| {
+            depths.push(d);
+            match node {
+                TextNode::BeginEnd { .. } => Control::Prune,
+                _ => Control::Continue,
+            }
+        });
+        // No depth-1 row survives the pruned region; the trailing
+        // sibling is back at depth 0.
+        assert_eq!(depths, vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn visit_depth_descends_into_encrypted() {
+        let tree = parse(
+            "// <( ENCRYPTED W pbkdf:$argon2$m=1,p=1,t=1$AAAA )>\n// <( DATA AAAA )>\n// <( END W )>\n",
+        );
+        let mut saw = Vec::new();
+        visit_depth(&tree, &mut |node, d| {
+            if let TextNode::Data(_) = node {
+                saw.push(d);
+            }
+            Control::Continue
+        });
+        assert_eq!(saw, vec![1], "Data child must arrive at depth 1");
     }
 
     #[test]
