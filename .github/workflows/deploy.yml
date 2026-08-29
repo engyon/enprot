@@ -139,14 +139,37 @@ jobs:
             enprot-*.spdx.json
             enprot-*.cdx.json
 
+  # Emits the archive matrix as JSON — all six legs normally, or
+  # just the -f target=<triple> one for single-leg debug dispatches.
+  # The static dynamic-array + include shape cannot express this:
+  # include entries union all six targets back in regardless of the
+  # dynamic array (verified live, twice), and GHA rejects
+  # matrix-context job-level ifs at parse time. So the whole matrix,
+  # per-leg os+env included, is data in ci/deploy-legs.json.
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.emit.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+      - id: emit
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.target }}" ]; then
+            echo "single-leg dispatch: ${{ inputs.target }}" >&2
+            sel=$(jq -c --arg t '${{ inputs.target }}' '{include: map(select(.target == $t))}' ci/deploy-legs.json)
+            if [ "$(printf '%s' "$sel" | jq '.include | length')" != "1" ]; then
+              echo "unknown target '${{ inputs.target }}'" >&2; exit 1
+            fi
+            echo "matrix=$sel" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix={\"include\":$(jq -c . ci/deploy-legs.json)}" >> "$GITHUB_OUTPUT"
+          fi
+
   release-archive:
-    needs: [checks, generate-extras]
-    # Single-leg debug dispatches (-f target=<triple>, no tag): skip
-    # every leg except the named one. The matrix `include:` entries
-    # union all six targets in regardless of the dynamic array, so a
-    # job-level gate is the only enforcement point. Tag dispatches
-    # (inputs.tag set) and tag-push events always build everything.
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.tag == '' && inputs.target != '' && inputs.target != matrix.env.TARGET) }}
+    needs: [checks, generate-extras, matrix]
     name: archive
     # Docker cross builds compile Botan up to THREE times per leg
     # (botan-sys's own vendored copy, rnp-src's copy for librnp,
@@ -159,139 +182,13 @@ jobs:
       # Don't cancel native builds (macOS, Windows MSVC) when Docker
       # cross-compile targets fail (blocked on upstream librnp).
       fail-fast: false
-      matrix:
-        # workflow_dispatch `target` narrows the matrix to one leg
-        # (test builds / surgical per-tag rebuilds). Push events and
-        # dispatch without `target` build the full matrix.
-        # NOTE: this dynamic array CANNOT scope single-leg dispatches —
-        # the `include:` entries below each carry a `target`, and GHA
-        # UNIONS include entries onto the array, so all six legs exist
-        # no matter what this evaluates to (verified live, twice).
-        # Scoping happens in the job-level `if:` gate below.
-        target: ${{ github.event_name == 'workflow_dispatch' && inputs.target != '' && fromJSON(format('["{0}"]', inputs.target)) || fromJSON('["x86_64-unknown-linux-musl","aarch64-unknown-linux-musl","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-pc-windows-gnu","x86_64-pc-windows-msvc"]') }}
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            env:
-              TARGET: x86_64-unknown-linux-musl
-              PREFIX: /usr/local/x86_64-linux-musl
-              BOTAN_CONFIGURE_CC: clang
-              # zig toolchain via the image-baked OUT_DIR-branching
-              # tool-* wrappers (musl-common.sh + wrappers.sh): target
-              # build gets zig, host build (bindgen) gets native cc.
-              # The cargo linker must be zig too: the C objects are
-              # libc++ (std::__1), which cross's default musl gcc 9.2
-              # linker does not link against.
-              CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: tool-cxx
-              TARGET_CC: tool-cc
-              TARGET_CXX: tool-cxx
-              TARGET_AR: tool-ar
-              BOTAN_CONFIGURE_CC_BIN: tool-ccbin
-              BOTAN_CONFIGURE_AR_COMMAND: tool-ar
-              # zig 0.13 (LLVM 18) gates AVX-512 intrinsics behind the
-              # separate 'evex512' target feature; Botan's makefiles
-              # only pass -mavx512*, so simd_avx512.h fails to build.
-              BOTAN_CONFIGURE_CC_ABI_FLAGS: -mevex512
-              # One amalgamated TU: zig's per-file process overhead
-              # across ~400 Botan sources costs ~40 min per leg on
-              # 2-core runners (the 45- and 90-min timeouts both hit).
-              BOTAN_CONFIGURE_AMALGAMATION: "1"
-              # Plain CC drives rnp-src's CMake deps (cmake reads env
-              # CC, not TARGET_CC); the tool-* wrappers keep the host
-              # librnp copy on native gcc. HOST_* outranks plain CC in
-              # the cc crate, shielding host-side ring builds.
-              CC: tool-cc
-              CXX: tool-cxx
-              AR: tool-ar
-              HOST_CC: gcc
-              HOST_CXX: g++
-              HOST_AR: ar
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            env:
-              TARGET: aarch64-unknown-linux-musl
-              PREFIX: /usr/local/aarch64-linux-musl
-              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: tool-cxx
-              TARGET_CC: tool-cc
-              TARGET_CXX: tool-cxx
-              TARGET_AR: tool-ar
-              BOTAN_CONFIGURE_CC: clang
-              BOTAN_CONFIGURE_CC_BIN: tool-ccbin
-              BOTAN_CONFIGURE_AR_COMMAND: tool-ar
-              CC: tool-cc
-              CXX: tool-cxx
-              AR: tool-ar
-              HOST_CC: gcc
-              HOST_CXX: g++
-              HOST_AR: ar
-              # zig 0.13's LLVM cannot lower llvm.aarch64.crypto.sha512h2
-              # ("Cannot select" backend error in sha2_64_armv8.cpp);
-              # use Botan's portable SHA-2 instead.
-              BOTAN_CONFIGURE_DISABLE_MODULES: sha2_64_armv8
-              BOTAN_CONFIGURE_AMALGAMATION: "1"
-          # macos-15-intel is the x86_64 runner (macos-13 is deprecated).
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            env:
-              TARGET: x86_64-apple-darwin
-              PREFIX: /usr/local
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            env:
-              TARGET: aarch64-apple-darwin
-              PREFIX: /usr/local
-          - os: ubuntu-latest
-            target: x86_64-pc-windows-gnu
-            env:
-              TARGET: x86_64-pc-windows-gnu
-              # tool-* are the image-baked OUT_DIR-branching wrappers
-              # (ci/build-static/pre/wrappers.sh): the target librnp
-              # build gets mingw, the host librnp build (rnp-rs bindgen)
-              # gets native gcc. Plain CC/CXX would poison the host side
-              # (issue #368).
-              TARGET_CC: tool-cc
-              TARGET_CXX: tool-cxx
-              TARGET_AR: tool-ar
-              BOTAN_CONFIGURE_CC: gcc
-              BOTAN_CONFIGURE_CC_BIN: tool-ccbin
-              BOTAN_CONFIGURE_AR_COMMAND: tool-ar
-              # Botan's getentropy entropy source does not exist on
-              # mingw ('::getentropy' has not been declared); Windows
-              # uses the system_rng/bcrypt path instead.
-              # simd_avx512+simd_avx2: botan-sys's vendored Botan 3.7
-              # (botan-src 0.30701.2) predates the function-level ISA
-              # attribute rework that makes --amalgamation viable
-              # (rnp-src's 3.12 copy has it and is unaffected). In the
-              # single amalgamated TU the per-module -mavx* flags
-              # vanish, so mingw gcc dies on _mm512_rol_epi32 and then
-              # _mm256_* alike. Scalar SIMD only for this copy — the
-              # alternative (global -mavx2/-mavx512f via CC_ABI_FLAGS)
-              # would hard-require AVX CPUs for enprot.exe, the wrong
-              # trade for the compatibility leg. 2026-08-28/29, the
-              # first true cold builds of the dual-Botan combo.
-              BOTAN_CONFIGURE_DISABLE_MODULES: getentropy,simd_avx512,simd_avx2
-              # Single-TU Botan: the mingw build was also hitting the
-              # archive job timeout.
-              BOTAN_CONFIGURE_AMALGAMATION: "1"
-              CC: tool-cc
-              CXX: tool-cxx
-              AR: tool-ar
-              HOST_CC: gcc
-              HOST_CXX: g++
-              HOST_AR: ar
-              EXE_NAME: enprot.exe
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            env:
-              TARGET: x86_64-pc-windows-msvc
-              EXE_NAME: enprot.exe
-              GIT_REDIRECT_STDERR: '2>&1'
-              # install.ps1 builds Botan from this tag; the Rust side
-              # links botan-src 0.31200 (Botan 3.12) via the vendored
-              # feature, so the C side must match or newer FFI symbols
-              # (botan_nist_kw_enc, ...) are missing at link (LNK2019).
-              BOTAN_VERSION: 3.12.0
-
+      # Whole matrix emitted by the `matrix` prepare job: all six legs
+      # normally, or just the -f target=<triple> one for single-leg
+      # debug dispatches. The previous dynamic-array + include shape
+      # could not scope — include entries union all six targets back
+      # in regardless of the array (verified live, twice), and GHA
+      # rejects matrix-context job-level ifs at parse time.
+      matrix: ${{ fromJSON(needs.matrix.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
