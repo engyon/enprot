@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.74](https://github.com/engyon/enprot/compare/enprot-v0.5.73...enprot-v0.5.74) - 2026-08-29
+
+### Added
+
+- *(ci)* preflight probe in the windows-gnu image — the pipeline's failures print their own diagnosis
+
+### Fixed
+
+- *(ci)* snap publish directly via snapcraft upload — action-publish@v1's login --with is removed in snapcraft 8+
+- *(ci)* snap publish — the credential input is store_login (the action lists its inputs; both earlier spellings drew 'unexpected input' warnings)
+- *(ci)* single-leg deploy dispatches — matrix emitted from ci/deploy-legs.json
+- *(ci)* single-leg dispatches gate at the job — include unions all six targets past any matrix expression
+- *(ci)* parenthesize the deploy target-input matrix — single-leg dispatches ran all six legs
+- *(ci)* snap publish — action-publish's credential input is snapcraft_token, not store_token
+- *(snap)* the release tarball has a versioned top dir — locate the binary from the listing, not a flat /tmp/enprot
+- *(snap)* download the release asset directly — the unauthenticated API from the snapcraft VM loses the rate-limit lottery
+- *(ci)* full clang-18 in the windows-gnu image — bare libclang1 cannot resolve system headers for bindgen
+- *(ci)* BOTAN_SRC_TARBALL back to /project — cross's mount point depends on path deps
+- *(ci)* drop CPATH from the windows-gnu [env] — gcc reads it, so it poisoned every compile in the container
+- *(ci)* windows-gnu — scalar SIMD for botan-sys's Botan 3.7; AVX-2 was the next amalgamation casualty
+- *(ci)* windows-gnu cold build — disable simd_avx512 for botan-sys's Botan 3.7 under amalgamation
+- *(ci)* windows-gnu cold builds — tarball at $PWD, bindgen isystems without --target (issue #368)
+
+### Other
+
+- CLAUDE.md architecture refresh — visitor, cli/ layout, ledger/merge/escrow, fourteen node kinds
+- *(cli)* one walk, two projections — visit_depth retires the duplicated renderer recursions (arch review round 8)
+
 ## [0.5.73](https://github.com/engyon/enprot/compare/enprot-v0.5.72...enprot-v0.5.73) - 2026-08-28
 
 ### Other
