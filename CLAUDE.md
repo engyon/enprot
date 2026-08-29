@@ -66,12 +66,17 @@ The data flow is strictly: **parse → transform → write**, repeated once per 
 
 ### `TextTree` / `TextNode` (etree/mod.rs)
 
-The intermediate representation. Five node kinds:
-- `Plain(String)` — host-language text, preserved verbatim.
-- `Data(Vec<u8>)` — raw ciphertext bytes (serialized as base64 across multiple `DATA` lines, 48 bytes per line).
-- `Stored { keyw, cas }` — a CAS pointer; `keyw` is `"ct"` when the stored blob is ciphertext rather than plaintext.
-- `BeginEnd { keyw, txt }` — a BEGIN/END segment; transformation decisions key off `keyw`.
-- `Encrypted { keyw, txt, extfields }` — must contain exactly one `Data` or `Stored` child. `extfields` carries PHC-encoded `pbkdf:` and `cipher:` metadata so encrypted blobs are self-describing.
+The intermediate representation. Fourteen node kinds, grouped by role:
+- Transport: `Plain(String)` (host-language text, preserved verbatim) and `Data(Vec<u8>)` (raw ciphertext bytes, serialized as base64 across multiple `DATA` lines, 48 bytes per line).
+- Regions (the only kinds with children): `BeginEnd { keyw, txt }` — a BEGIN/END segment; transformation decisions key off `keyw` — and `Encrypted { keyw, txt, extfields }` — must contain exactly one `Data` or `Stored` child; `extfields` carries PHC-encoded `pbkdf:` and `cipher:` metadata so encrypted blobs are self-describing.
+- Pointers: `Stored { keyw, cas }` — a CAS pointer; `keyw` is `"ct"` when the stored blob is ciphertext — and `Include { hash }`.
+- Chain anchor: `Chain { extfields }` — a signed DAG node (see `src/ledger/`).
+- Merge residue: `Conflict { keyw, .. }`.
+- Integrity/key-binding directives: `Immutable`, `Muted`, `Key`, `Unkey`, `Cert`, `Uncert` — passed through unchanged by the confidentiality transforms.
+
+### `etree::visitor` (etree/visitor.rs)
+
+The single deep traversal — the only place that knows which node kinds descend. `visit` (read-only pre-order), `visit_depth` (same walk carrying nesting depth, for the list/inspect renderers), and `visit_mut` (rewriting walks: migrate-keys, rotate). Visitors return `Control::Continue`/`Prune`. Flat top-level iteration is deliberately NOT routed through it, and `transform()` owns its recursion because it is a reconstruction fold — both decisions are recorded in `docs/adr/0001-flat-iteration-is-not-traversal.md`. Domain vocabulary lives in `CONTEXT.md`.
 
 `parse()` (in `etree/parse.rs`) is line-oriented: lines not starting (after whitespace) with the left separator are folded into the preceding `Plain`; matching lines are dispatched via the `Command` enum (`Begin`/`End`/`Data`/`Stored`/`Encrypted`). `tree_write()` (in `etree/write.rs`) is the inverse unparser (returns `Result<()>`; IO errors propagate). `transform()` (in `etree/transform.rs`) is where store/fetch/encrypt/decrypt actually mutate the tree; it dispatches per node kind to `transform_begin_end` / `transform_encrypted` / `transform_stored` and recurses.
 
@@ -108,9 +113,17 @@ pub struct ParseOps {
 
 Field access is through the nested paths: `paops.separators.left`, `paops.transforms.store`, `paops.crypto.rng`, `paops.crypto.policy`, etc. Pass `&*paops.crypto.policy` to get `&dyn CryptoPolicy`.
 
+### CLI layout (src/cli/)
+
+Each subcommand is a handler module with its `clap` `Args` struct beside it (`rotate.rs`, `doctor.rs`, `migrate_keys.rs`, `list.rs`, `inspect.rs`, `smudge.rs`, `verify.rs`, `verify_chain.rs`, `cas_cmd.rs`, `sbom_cmd.rs`, …); `mod.rs` holds only the top-level `Cli`/`CommonArgs` structs and dispatch, and `common.rs` is the `CommonArgs` → `ParseOps` resolution seam (`resolve_policy`, `apply_common`, `apply_config`). `pipeline.rs` pairs input files to outputs.
+
+### Beyond the core pipeline
+
+`src/ledger/` (chain anchors: `anchor.rs` sign/verify, `dag.rs` the parent-checked DAG), `src/merge/` (the region-based merge driver behind `enprot merge`/git merge-file), `src/escrow.rs` (CEK wrapping with password + ML-KEM recovery paths; powers `enprot rotate`), `src/kemenc.rs` (ML-KEM encryption to recipient pubkeys), `src/capability.rs`/`cappolicy.rs` (capability ledger policy), `src/extfield.rs` (typed extfield views — raw string keys are nameable only there), `src/cas/` (LocalCas plus s3/ipfs/rekor backends behind the `CasStore` trait), `src/policy/` (the `CryptoPolicy` trait + NIST profile), `src/sbom.rs`, `src/i18n.rs`, `src/signer.rs`, `src/pure_rust_crypto.rs`, `src/plugin.rs`.
+
 ### Error handling (src/error.rs)
 
-`Result<T>` is `std::result::Result<T, Error>` where `Error` is a `thiserror::Error` enum with 22 variants. Every public function returns `Result<T>`; no `Result<T, &'static str>` anywhere. `From<std::io::Error>`, `From<botan::Error>`, and `From<hex::FromHexError>` are implemented so `?` works at IO/FFI boundaries.
+`Result<T>` is `std::result::Result<T, Error>` where `Error` is a `thiserror::Error` enum with 24 variants. Every public function returns `Result<T>`; no `Result<T, &'static str>` anywhere. `From<std::io::Error>`, `From<botan::Error>`, and `From<hex::FromHexError>` are implemented so `?` works at IO/FFI boundaries.
 
 Structured variants include `CasHashInvalid`, `CasHashMismatch`, `CasNotFound`, `CasUnsupported`, `CipherUnknown`, `AeadFailed`, `InvalidArg`, `Extfield`, `SignatureVerify`, `BlockShape`, `ConflictResolve`. The remaining `String`-carrying variants (`Botan`, `Hex`, `Base64`, `Policy`, `Phc`, `Json`, `Cas`, `Msg`) wrap external library errors or aggregate messages. The FFI classifier (`enprot-ffi/src/lib.rs`) maps each variant to one of `ENPROT_ERR_{PARSE,CRYPTO,IO,INVALID}`.
 
@@ -146,7 +159,9 @@ Same `(password, plaintext)` → same ciphertext → CAS dedup works for encrypt
 
 - **Unit tests** (`#[cfg(test)] mod tests` inside `src/etree/mod.rs` and `src/cipher.rs`) cover crypto primitives with known-answer vectors.
 - **Integration tests** in `tests/cli/*.rs` drive the compiled binary end-to-end with `assert_cmd`. Test files: `cipher`, `deterministic`, `encrypt_decrypt`, `encrypt_store`, `issue_15`, `misc`, `multi_file`, `pbkdf`, `pipe`, `policy`, `store_fetch`.
-- **Property tests** in `tests/proptest_roundtrip.rs` — 256 random inputs per property; checks round-trip + determinism for the `-det` variants.
+- **Property tests** in `tests/proptest_roundtrip.rs` and `tests/proptest_invariants.rs` — 256 random inputs per property; round-trip + determinism for the `-det` variants plus store/fetch and CAS invariants.
+- **Conformance** — `tests/rsd-conformance/` (RSD format fixtures) and `tests/cross-version/` (wire-format compatibility across enprot versions).
+- The traversal contract (ordering, nesting, which kinds descend, depth numbering) is tested once in `src/etree/visitor.rs`; visitors test only their match logic.
 - **Golden files** in `test-data/` encode wire-format contracts.
 - Tests use real Botan, real `ParseOps`, real files. No mocks.
 
