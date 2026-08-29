@@ -518,6 +518,11 @@ jobs:
       - name: Publish
         uses: snapcore/action-publish@v1
         with:
-          store_token: ${{ secrets.SNAPCRAFT_RELEASE_LOGIN }}
+          # action-publish's input is snapcraft_token (store_token is
+          # not an input name — the action silently saw no credential
+          # and failed with 'login_data is empty'; the build step
+          # above uses the right name and logs in fine with the same
+          # secret).
+          snapcraft_token: ${{ secrets.SNAPCRAFT_RELEASE_LOGIN }}
           snap: ${{ steps.build.outputs.snap }}
           release: stable
