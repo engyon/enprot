@@ -424,16 +424,12 @@ jobs:
       - name: Install review-tools
         run: sudo snap install review-tools
       - name: Publish
-        uses: snapcore/action-publish@v1
-        with:
-          # This action's credential input is store_login (the action
-          # itself lists its inputs: ['store_login', 'snap',
-          # 'release'] — and warned on both earlier spellings,
-          # store_token and snapcraft_token, before failing with
-          # 'login_data is empty'). The org secret is a legacy
-          # login-data export, exactly what store_login expects. The
-          # build step uses a DIFFERENT action whose input IS
-          # snapcraft_token.
-          store_login: ${{ secrets.SNAPCRAFT_RELEASE_LOGIN }}
-          snap: ${{ steps.build.outputs.snap }}
-          release: stable
+        # Direct upload: snapcore/action-publish@v1 is obsolete against
+        # the snapcraft on current runners — it logs in via
+        # 'snapcraft login --with <file>', which snapcraft 8+ removed
+        # ("use SNAPCRAFT_STORE_CREDENTIALS instead", exit 64). The
+        # env var accepts the same export-login payload the org
+        # secret carries.
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_RELEASE_LOGIN }}
+        run: snapcraft upload --release=stable "${{ steps.build.outputs.snap }}"
