@@ -141,6 +141,12 @@ jobs:
 
   release-archive:
     needs: [checks, generate-extras]
+    # Single-leg debug dispatches (-f target=<triple>, no tag): skip
+    # every leg except the named one. The matrix `include:` entries
+    # union all six targets in regardless of the dynamic array, so a
+    # job-level gate is the only enforcement point. Tag dispatches
+    # (inputs.tag set) and tag-push events always build everything.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.tag == '' && inputs.target != '' && inputs.target != matrix.env.TARGET) }}
     name: archive
     # Docker cross builds compile Botan up to THREE times per leg
     # (botan-sys's own vendored copy, rnp-src's copy for librnp,
@@ -157,13 +163,12 @@ jobs:
         # workflow_dispatch `target` narrows the matrix to one leg
         # (test builds / surgical per-tag rebuilds). Push events and
         # dispatch without `target` build the full matrix.
-        # Single-leg debug dispatches (-f target=<triple>) MUST scope
-        # this matrix — the previous unparenthesized three-term chain
-        # silently fell through to the full list (observed: a target=
-        # dispatch ran all six legs), making every debug cycle 6x its
-        # real cost. Parenthesized canonical form; inputs.target is ''
-        # for tag-push events, which selects the full list.
-        target: ${{ (inputs.target != '') && fromJSON(format('["{0}"]', inputs.target)) || fromJSON('["x86_64-unknown-linux-musl","aarch64-unknown-linux-musl","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-pc-windows-gnu","x86_64-pc-windows-msvc"]') }}
+        # NOTE: this dynamic array CANNOT scope single-leg dispatches —
+        # the `include:` entries below each carry a `target`, and GHA
+        # UNIONS include entries onto the array, so all six legs exist
+        # no matter what this evaluates to (verified live, twice).
+        # Scoping happens in the job-level `if:` gate below.
+        target: ${{ github.event_name == 'workflow_dispatch' && inputs.target != '' && fromJSON(format('["{0}"]', inputs.target)) || fromJSON('["x86_64-unknown-linux-musl","aarch64-unknown-linux-musl","x86_64-apple-darwin","aarch64-apple-darwin","x86_64-pc-windows-gnu","x86_64-pc-windows-msvc"]') }}
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
