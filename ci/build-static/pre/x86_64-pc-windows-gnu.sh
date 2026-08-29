@@ -44,6 +44,9 @@ COPY wrappers/ /usr/local/bin/
 # librnp.a + headers install fine, then the CLI rule references an
 # executable rnp's CMakeLists never builds when cross-compiling.
 RUN chmod +x /usr/local/bin/cmakew && ln -sf /usr/local/bin/cmakew /usr/local/bin/cmake
+
+COPY preflight.sh /usr/local/bin/preflight.sh
+RUN chmod +x /usr/local/bin/preflight.sh
 EOF
 
 # mingw filter wrappers: cmake inside rnp-src assumes a Linux build
@@ -153,8 +156,25 @@ esac
 WAR
 chmod +x "$ctx/wrappers/tool-ar"
 
+cp ci/build-static/preflight.sh "$ctx/preflight.sh"
 docker build -t "$img" "$ctx"
 rm -rf "$ctx"
+
+# Preflight (arch review round 9): print the container's build
+# reality into the job log — mount shape, libclang identity + resource
+# headers, toolchain versions, critical header presence. A failing
+# leg then carries its own diagnosis; the block is diffable across
+# runs, so image drift (the base :main tag moves) surfaces before it
+# bites the build.
+docker run --rm \
+  -e TARGET_CC -e TARGET_CXX -e TARGET_AR \
+  -e CC -e CXX -e AR \
+  -e HOST_CC -e HOST_CXX -e HOST_AR \
+  -e BINDGEN_EXTRA_CLANG_ARGS \
+  -e BOTAN_CONFIGURE_CC -e BOTAN_CONFIGURE_CC_BIN \
+  -e BOTAN_CONFIGURE_AR_COMMAND -e BOTAN_CONFIGURE_DISABLE_MODULES \
+  -e BOTAN_CONFIGURE_AMALGAMATION -e BOTAN_SRC_TARBALL \
+  --entrypoint /bin/sh "$img" /usr/local/bin/preflight.sh || true
 
 # botan-src's configure.py aborts for --os=windows when the host
 # python is posix: the windows os-info file's install_root
