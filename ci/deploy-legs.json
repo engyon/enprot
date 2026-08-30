@@ -72,7 +72,7 @@
       "BOTAN_CONFIGURE_CC": "gcc",
       "BOTAN_CONFIGURE_CC_BIN": "tool-ccbin",
       "BOTAN_CONFIGURE_AR_COMMAND": "tool-ar",
-      "BOTAN_CONFIGURE_DISABLE_MODULES": "getentropy,simd_avx512,simd_avx2",
+      "BOTAN_CONFIGURE_DISABLE_MODULES": "getentropy,simd_avx512",
       "BOTAN_CONFIGURE_AMALGAMATION": "1",
       "CC": "tool-cc",
       "CXX": "tool-cxx",
