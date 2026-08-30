@@ -122,7 +122,7 @@ path = "tests/rsd-conformance/conformance.rs"
 [dependencies]
 hex            = "0.4"
 sha3           = { version = "0.10", optional = true, default-features = false }
-aes-siv        = { version = "0.7", optional = true, default-features = false, features = ["alloc"] }
+aes-siv        = { version = "0.8", optional = true, default-features = false, features = ["alloc"] }
 rpassword      = "7"
 clap           = { version = "4.5", features = ["derive", "wrap_help"], optional = true }
 clap_complete  = { version = "4", optional = true }
