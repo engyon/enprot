@@ -108,6 +108,7 @@ diffnoise() { # tool — ciphertext lines changed for a one-line plaintext edit
     TOOL=$1; d="$WORK/noise-$TOOL"
     rm -rf "$d"; mkdir -p "$d"
     TOOL=$TOOL make_corpus "$d" 8192 3 >/dev/null
+    "setup_$TOOL" "$d" 2>>"$OUT_DIR/errors.log"
     "encrypt_$TOOL" "$d" >/dev/null 2>&1
     cp "$d/file.txt" "$WORK/noise-before"
     sed -i 's/secret payload 2 /secret payload 2 X/' "$d-plain/file.txt" 2>/dev/null || true
@@ -123,6 +124,7 @@ diffnoise() { # tool — ciphertext lines changed for a one-line plaintext edit
 merge3() { # tool — two parties edit DIFFERENT secrets; clean merge?
     TOOL=$1; d="$WORK/merge-$TOOL"; rm -rf "$d"; mkdir -p "$d"
     TOOL=$TOOL make_corpus "$d" 8192 4 >/dev/null
+    "setup_$TOOL" "$d" 2>>"$OUT_DIR/errors.log"
     "encrypt_$TOOL" "$d" >/dev/null 2>&1 || true
     cp "$d/file.txt" "$WORK/base"
     sed 's/secret payload 1 /A edited 1 /' "$WORK/base" > "$WORK/ours"
