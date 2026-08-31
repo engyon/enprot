@@ -80,8 +80,8 @@ impl<'a> EncryptedExtFields<'a> {
         self.map.get("recovery").map(|s| s.as_str())
     }
 
-    /// The PGP-recipient wraps: `(fpr16, base64-pgp-message)` per
-    /// `pgp-<fpr16>-wrap` field. Sorted by key name, so stable.
+    /// The PGP-recipient wraps: `(fp16, base64-pgp-message)` per
+    /// `pgp-<fp16>-wrap` field. Sorted by key name, so stable.
     pub fn pgp_wraps(&self) -> Vec<(&str, &str)> {
         self.map
             .iter()

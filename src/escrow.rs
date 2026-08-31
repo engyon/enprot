@@ -198,8 +198,8 @@ pub fn encrypt(
     // wraps stay valid across `enprot rotate` and are carried
     // through untouched.
     if !pgp_pubs.is_empty() {
-        for (fpr16, b64) in crate::openpgp::wrap_cek_to_pubkeys(pgp_pubs, &cek)? {
-            extfields.insert(format!("pgp-{fpr16}-wrap"), b64);
+        for (fp16, b64) in crate::openpgp::wrap_cek_to_pubkeys(pgp_pubs, &cek)? {
+            extfields.insert(format!("pgp-{fp16}-wrap"), b64);
         }
     }
 
