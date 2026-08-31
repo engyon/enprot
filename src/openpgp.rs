@@ -78,6 +78,75 @@ fn rnp_err(e: rnp::Error) -> Error {
     Error::Botan(format!("OpenPGP (rnp): {e}"))
 }
 
+/// Wrap `cek` to every encryption-capable key in each armored pubkey
+/// block. Returns `(fpr16, base64-of-pgp-message)` per recipient.
+/// A fresh context per armor means every key found belongs to it.
+pub fn wrap_cek_to_pubkeys(pub_armors: &[String], cek: &[u8]) -> Result<Vec<(String, String)>> {
+    use rnp::key::LoadSaveFlags;
+    use rnp::{Encryptor, Output};
+
+    let mut out = Vec::new();
+    for armor in pub_armors {
+        let ctx = new_context()?;
+        ctx.load_keys(
+            rnp::KeyringFormat::Gpg,
+            armor.as_bytes(),
+            LoadSaveFlags::PUBLIC,
+        )
+        .map_err(rnp_err)?;
+        for id in ctx
+            .identifiers(rnp::IdentifierKind::Keyid)
+            .map_err(rnp_err)?
+        {
+            let key = match ctx.find_key(rnp::KeyIdentifier::Keyid(&id)) {
+                Ok(Some(k)) => k,
+                _ => continue,
+            };
+            let fpr = key.fingerprint().map_err(rnp_err)?;
+            let mut ct = Output::to_memory().map_err(rnp_err)?;
+            Encryptor::new(&ctx, cek)
+                .map_err(rnp_err)?
+                .add_recipient(&key)
+                .build(&mut ct)
+                .map_err(rnp_err)?;
+            let bytes = ct.into_bytes().map_err(rnp_err)?;
+            out.push((
+                fpr[fpr.len().saturating_sub(16)..].to_string(),
+                crate::utils::base64_encode(&bytes)?,
+            ));
+        }
+    }
+    if out.is_empty() {
+        return Err(Error::Botan(
+            "OpenPGP (rnp): no keys found in --pgp-pubkey armor".into(),
+        ));
+    }
+    Ok(out)
+}
+
+/// Recover the CEK from a base64-encoded PGP message using the
+/// armored (unprotected) secret key.
+pub fn unwrap_cek(msg_b64: &str, secret_armor: &str) -> Result<Vec<u8>> {
+    use rnp::Decryptor;
+    use rnp::key::LoadSaveFlags;
+
+    let msg = crate::utils::base64_decode(msg_b64)?;
+    let ctx = new_context()?;
+    ctx.load_keys(
+        rnp::KeyringFormat::Gpg,
+        secret_armor.as_bytes(),
+        LoadSaveFlags::SECRET,
+    )
+    .map_err(rnp_err)?;
+    let result = Decryptor::new(&ctx, &msg).build().map_err(rnp_err)?;
+    Ok(result.into_plaintext())
+}
+
+/// True when the text looks like an OpenPGP ASCII-armored key block.
+pub fn is_armored(text: &str) -> bool {
+    text.contains("-----BEGIN PGP")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -40,6 +40,8 @@ pub struct RunConfig {
     pub recipient_privs: Vec<String>,
     /// Recovery pubkeys (escrow mode, TODO.complete/59).
     pub recovery_pubs: Vec<String>,
+    /// OpenPGP armored pubkeys (--pgp-pubkey) for escrow PGP wraps.
+    pub pgp_pubs: Vec<String>,
 }
 
 impl RunConfig {
@@ -79,6 +81,7 @@ impl RunConfig {
         paops.passwords.extend(self.common.password.clone());
         paops.crypto.recipient_pubs = self.recipient_pubs.clone();
         paops.crypto.recovery_pubs = self.recovery_pubs.clone();
+        paops.crypto.pgp_pubs = self.pgp_pubs.clone();
         for (i, w) in self.output.word.iter().enumerate() {
             if let Some(priv_pem) = self
                 .recipient_privs
@@ -171,6 +174,7 @@ pub fn run(cfg: RunConfig) -> Result<()> {
         recipient_pubs,
         recipient_privs,
         recovery_pubs,
+        pgp_pubs,
     } = cfg;
     // Resolve policy via the shared `resolve_policy_name` helper —
     // single source of truth for the FIPS+policy conflict check
@@ -214,6 +218,7 @@ pub fn run(cfg: RunConfig) -> Result<()> {
     paops.passwords.extend(common.password);
     paops.crypto.recipient_pubs = recipient_pubs;
     paops.crypto.recovery_pubs = recovery_pubs;
+    paops.crypto.pgp_pubs = pgp_pubs;
     for (i, w) in output.word.iter().enumerate() {
         if let Some(priv_pem) = recipient_privs.get(i).or_else(|| recipient_privs.first()) {
             paops

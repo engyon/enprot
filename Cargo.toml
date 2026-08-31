@@ -200,6 +200,10 @@ botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
 botan          = { version = "0.11", default-features = false, features = ["botan3", "static"] }
 
 [dev-dependencies]
+# rnp-rs is a normal dependency; redeclared here so integration
+# tests can generate throwaway OpenPGP keypairs for the recipient
+# roundtrips (same version req as the lib).
+rnp-rs = "0.1.10"
 tempfile    = "3"
 assert_cmd  = "2"
 predicates  = "3"

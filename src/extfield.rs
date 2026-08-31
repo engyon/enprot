@@ -80,6 +80,23 @@ impl<'a> EncryptedExtFields<'a> {
         self.map.get("recovery").map(|s| s.as_str())
     }
 
+    /// The PGP-recipient wraps: `(fpr16, base64-pgp-message)` per
+    /// `pgp-<fpr16>-wrap` field. Sorted by key name, so stable.
+    pub fn pgp_wraps(&self) -> Vec<(&str, &str)> {
+        self.map
+            .iter()
+            .filter(|(k, _)| k.starts_with("pgp-") && k.ends_with("-wrap"))
+            .map(|(k, v)| {
+                (
+                    k.strip_prefix("pgp-")
+                        .and_then(|s| s.strip_suffix("-wrap"))
+                        .unwrap_or(k),
+                    v.as_str(),
+                )
+            })
+            .collect()
+    }
+
     /// The `pw-wrap:` blob (base64 `iv ‖ GCM-ct` of the CEK under
     /// the PBKDF key) — escrow mode, password path.
     pub fn pw_wrap(&self) -> Option<&str> {

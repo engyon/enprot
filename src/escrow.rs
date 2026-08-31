@@ -85,16 +85,17 @@ pub fn encrypt(
     pt: Vec<u8>,
     password: &str,
     recovery_pub_pems: &[String],
+    pgp_pubs: &[String],
     rng: &mut Option<botan::RandomNumberGenerator>,
     pbkdfopts: &etree::PBKDFOptions,
     cipheropts: &etree::CipherOptions,
     cache: &mut Option<PBKDFCache>,
     policy: &dyn CryptoPolicy,
 ) -> Result<(Vec<u8>, BTreeMap<String, String>)> {
-    if recovery_pub_pems.is_empty() {
+    if recovery_pub_pems.is_empty() && pgp_pubs.is_empty() {
         return Err(Error::InvalidArg {
             arg: "--recovery-key",
-            reason: "escrow encrypt: no recovery pubkeys supplied".to_string(),
+            reason: "escrow encrypt: supply --recovery-key and/or --pgp-pubkey".to_string(),
         });
     }
     if cipheropts.alg.ends_with("-det") {
@@ -192,6 +193,16 @@ pub fn encrypt(
     }
     EncryptedExtField::Recovery(fps.join(",")).insert_into(&mut extfields);
 
+    // PGP recipient path: each OpenPGP pubkey wraps the same CEK
+    // into a PGP message. Rotation never changes the CEK, so these
+    // wraps stay valid across `enprot rotate` and are carried
+    // through untouched.
+    if !pgp_pubs.is_empty() {
+        for (fpr16, b64) in crate::openpgp::wrap_cek_to_pubkeys(pgp_pubs, &cek)? {
+            extfields.insert(format!("pgp-{fpr16}-wrap"), b64);
+        }
+    }
+
     Ok((ct, extfields))
 }
 
@@ -235,6 +246,24 @@ pub fn decrypt_with_key(
     extfields: &BTreeMap<String, String>,
     policy: &dyn CryptoPolicy,
 ) -> Result<Vec<u8>> {
+    // PGP armor routes to the OpenPGP unwrap; PEM stays on the
+    // ML-KEM recovery path.
+    if crate::openpgp::is_armored(priv_pem) {
+        for (key, v) in extfields {
+            if key.starts_with("pgp-")
+                && key.ends_with("-wrap")
+                && let Ok(cek) = crate::openpgp::unwrap_cek(v, priv_pem)
+            {
+                return finish(ct, cek, extfields, policy);
+            }
+        }
+        return Err(Error::InvalidArg {
+            arg: "--key-file",
+            reason: "none of the pgp-*-wrap recipients matched the supplied                      OpenPGP secret key"
+                .to_string(),
+        });
+    }
+
     let botan_priv = botan::Privkey::load_pem(priv_pem).map_err(Error::botan)?;
     let pub_pem = botan_priv
         .pubkey()
@@ -376,6 +405,13 @@ pub fn rotate(
     for key in ["cipher", "compress"] {
         if let Some(v) = extfields.get(key) {
             out.insert(key.to_string(), v.clone());
+        }
+    }
+    // PGP recipient wraps ride along: they wrap the CEK, which
+    // rotation does not change.
+    for (key, v) in extfields {
+        if key.starts_with("pgp-") && key.ends_with("-wrap") {
+            out.insert(key.clone(), v.clone());
         }
     }
 
@@ -524,6 +560,7 @@ mod tests {
             pt.clone(),
             "pw",
             &[rec_pub],
+            &[],
             &mut rng(),
             &pbkdfopts,
             &cipheropts,
@@ -549,6 +586,7 @@ mod tests {
             b"x".to_vec(),
             "pw",
             &[rec_pub],
+            &[],
             &mut rng(),
             &pbkdfopts,
             &cipheropts,
@@ -574,6 +612,7 @@ mod tests {
             b"secret".to_vec(),
             "pw",
             &[rec_pub],
+            &[],
             &mut rng(),
             &pbkdfopts,
             &cipheropts,
@@ -595,6 +634,7 @@ mod tests {
             b"multi".to_vec(),
             "pw",
             &[k1_pub, k2_pub],
+            &[],
             &mut rng(),
             &pbkdfopts,
             &cipheropts,
@@ -618,6 +658,7 @@ mod tests {
             pt.clone(),
             "old-password",
             &[old_rec_pub],
+            &[],
             &mut rng(),
             &pbkdfopts,
             &cipheropts,
@@ -674,6 +715,7 @@ mod tests {
             pt.clone(),
             "pw",
             &[old_rec_pub],
+            &[],
             &mut rng(),
             &pbkdfopts,
             &cipheropts,
@@ -713,6 +755,7 @@ mod tests {
             b"x".to_vec(),
             "pw",
             &[rec_pub],
+            &[],
             &mut rng(),
             &pbkdfopts,
             &cipheropts,

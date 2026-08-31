@@ -562,6 +562,12 @@ pub struct EncryptOpts {
     /// privkey (`decrypt --key-file`). Repeatable.
     #[arg(long = "recovery-key", value_name = "PUB.pem")]
     pub recovery_key: Vec<PathBuf>,
+
+    /// OpenPGP armored public key to receive the CEK alongside the
+    /// password (SOPS-style recipients, via librnp). Decrypt with
+    /// `--key-file secret.asc`. Repeatable.
+    #[arg(long = "pgp-pubkey", value_name = "PUB.asc")]
+    pub pgp_pubkey: Vec<PathBuf>,
 }
 
 /// Input/output wiring: which WORDs to operate on, which files to read,
@@ -610,6 +616,21 @@ fn load_pems(paths: &[PathBuf]) -> Result<Vec<String>> {
 
 fn load_privkey_pems(paths: &[PathBuf]) -> Result<Vec<String>> {
     load_pems(paths)
+}
+
+fn load_armors(paths: &[PathBuf]) -> Result<Vec<String>> {
+    let mut out = Vec::with_capacity(paths.len());
+    for p in paths {
+        let text = fs::read_to_string(p).map_err(Error::from)?;
+        if !crate::openpgp::is_armored(&text) {
+            return Err(Error::InvalidArg {
+                arg: "--pgp-pubkey",
+                reason: format!("{} is not an ASCII-armored OpenPGP key block", p.display()),
+            });
+        }
+        out.push(text);
+    }
+    Ok(out)
 }
 
 fn parse_word_password(s: &str) -> std::result::Result<(String, String), String> {
@@ -736,6 +757,7 @@ where
                 common,
                 output: a.output,
                 recovery_pubs: load_pems(&a.encrypt.recovery_key)?,
+                pgp_pubs: load_armors(&a.encrypt.pgp_pubkey)?,
                 op: Some((a.encrypt, Operation::Encrypt)),
                 recipient_pubs: load_pems(&a.recipients)?,
                 recipient_privs: Vec::new(),
@@ -749,6 +771,7 @@ where
                 recipient_pubs: Vec::new(),
                 recipient_privs: load_privkey_pems(&a.key_files)?,
                 recovery_pubs: Vec::new(),
+                pgp_pubs: Vec::new(),
             })
         }),
         Command::Store(a) => with_config(cli.common, |common| {
@@ -759,6 +782,7 @@ where
                 recipient_pubs: Vec::new(),
                 recipient_privs: Vec::new(),
                 recovery_pubs: Vec::new(),
+                pgp_pubs: Vec::new(),
             })
         }),
         Command::Fetch(a) => with_config(cli.common, |common| {
@@ -769,6 +793,7 @@ where
                 recipient_pubs: Vec::new(),
                 recipient_privs: Vec::new(),
                 recovery_pubs: Vec::new(),
+                pgp_pubs: Vec::new(),
             })
         }),
         Command::EncryptStore(a) => with_config(cli.common, |common| {
@@ -776,6 +801,7 @@ where
                 common,
                 output: a.output,
                 recovery_pubs: load_pems(&a.encrypt.recovery_key)?,
+                pgp_pubs: load_armors(&a.encrypt.pgp_pubkey)?,
                 op: Some((a.encrypt, Operation::EncryptStore)),
                 recipient_pubs: load_pems(&a.recipients)?,
                 recipient_privs: Vec::new(),
@@ -789,6 +815,7 @@ where
                 recipient_pubs: Vec::new(),
                 recipient_privs: Vec::new(),
                 recovery_pubs: Vec::new(),
+                pgp_pubs: Vec::new(),
             })
         }),
         Command::Verify(a) => with_config(cli.common, |common| verify::run(common, a.output)),

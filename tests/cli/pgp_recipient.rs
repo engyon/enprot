@@ -47,3 +47,150 @@ fn rnp_encrypt_roundtrip() {
     let result = Decryptor::new(&ctx, &ciphertext).build().unwrap();
     assert_eq!(result.plaintext(), cek.as_slice());
 }
+
+// Full CLI roundtrip: --pgp-pubkey recipients receive the CEK;
+// decrypt works password-less via --key-file with the secret.
+#[test]
+fn encrypt_to_pgp_recipient_and_decrypt_with_secret() {
+    use rnp::key::ExportFlags;
+    use rnp::{Algorithm, Context, KeyBuilder, KeyUsage};
+    use std::fs;
+
+    let ctx = Context::new().unwrap();
+    let key = KeyBuilder::new(Algorithm::Rsa)
+        .bits(2048)
+        .userid("e2e <e2e@example.com>")
+        .add_usage(KeyUsage::EncryptComms)
+        .build(&ctx)
+        .unwrap();
+    let pub_arm = String::from_utf8(
+        key.export(ExportFlags::ARMORED | ExportFlags::PUBLIC)
+            .unwrap(),
+    )
+    .unwrap();
+    let sec_arm = String::from_utf8(
+        key.export(ExportFlags::ARMORED | ExportFlags::SECRET)
+            .unwrap(),
+    )
+    .unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let doc = dir.path().join("doc.ept");
+    fs::write(
+        &doc,
+        "// <( BEGIN W )>\npgp-secret payload\n// <( END W )>\n",
+    )
+    .unwrap();
+    let pub_path = dir.path().join("pub.asc");
+    let sec_path = dir.path().join("sec.asc");
+    fs::write(&pub_path, &pub_arm).unwrap();
+    fs::write(&sec_path, &sec_arm).unwrap();
+
+    use assert_cmd::Command;
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .args([
+            "encrypt",
+            "-w",
+            "W",
+            "-k",
+            "W=pw",
+            "--cipher",
+            "aes-256-siv",
+            "--pgp-pubkey",
+        ])
+        .arg(&pub_path)
+        .arg(&doc)
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&doc).unwrap();
+    let has_wrap = content
+        .lines()
+        .any(|l| l.contains("pgp-") && l.contains("-wrap"));
+    assert!(has_wrap, "pgp recipient wrap extfield missing:\n{content}");
+
+    // Passwordless decrypt via the PGP secret key.
+    let dec = dir.path().join("dec.ept");
+    fs::copy(&doc, &dec).unwrap();
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["decrypt", "-w", "W", "--key-file"])
+        .arg(&sec_path)
+        .arg(&dec)
+        .assert()
+        .success();
+    assert!(
+        fs::read_to_string(&dec)
+            .unwrap()
+            .contains("pgp-secret payload")
+    );
+}
+
+// A secret key that is NOT a recipient must not decrypt.
+#[test]
+fn wrong_pgp_secret_key_fails() {
+    use rnp::key::ExportFlags;
+    use rnp::{Algorithm, Context, KeyBuilder, KeyUsage};
+    use std::fs;
+
+    let mk = || {
+        let ctx = Context::new().unwrap();
+        let key = KeyBuilder::new(Algorithm::Rsa)
+            .bits(2048)
+            .userid("k <k@example.com>")
+            .add_usage(KeyUsage::EncryptComms)
+            .build(&ctx)
+            .unwrap();
+        (
+            String::from_utf8(
+                key.export(ExportFlags::ARMORED | ExportFlags::PUBLIC)
+                    .unwrap(),
+            )
+            .unwrap(),
+            String::from_utf8(
+                key.export(ExportFlags::ARMORED | ExportFlags::SECRET)
+                    .unwrap(),
+            )
+            .unwrap(),
+        )
+    };
+    let (pub1, _sec1) = mk();
+    let (_pub2, sec2) = mk();
+
+    let dir = tempfile::tempdir().unwrap();
+    let doc = dir.path().join("doc.ept");
+    fs::write(&doc, "// <( BEGIN W )>\nx\n// <( END W )>\n").unwrap();
+    let p1 = dir.path().join("p1.asc");
+    let s2 = dir.path().join("s2.asc");
+    fs::write(&p1, &pub1).unwrap();
+    fs::write(&s2, &sec2).unwrap();
+
+    use assert_cmd::Command;
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .args([
+            "encrypt",
+            "-w",
+            "W",
+            "-k",
+            "W=pw",
+            "--cipher",
+            "aes-256-siv",
+            "--pgp-pubkey",
+        ])
+        .arg(&p1)
+        .arg(&doc)
+        .assert()
+        .success();
+
+    let dec = dir.path().join("dec.ept");
+    fs::copy(&doc, &dec).unwrap();
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .args(["decrypt", "-w", "W", "--key-file"])
+        .arg(&s2)
+        .arg(&dec)
+        .assert()
+        .failure();
+}
