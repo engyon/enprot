@@ -1,60 +1,118 @@
-name: "enprot"
-description: >-
-  Encrypt or decrypt WORD segments in files, using the enprot release
-  binary — for CI pipelines that publish mixed-confidentiality
-  documents (e.g. Metanorma sources with encrypted annexes).
+name: "Engyon enprot"
+description: "Run enprot (Engyon Protected Text) against files in your workflow. Encrypt, decrypt, store, fetch, or verify EPT segments."
+author: "Engyon"
+branding:
+  icon: "lock"
+  color: "blue"
+
 inputs:
-  mode:
-    description: "decrypt or encrypt"
+  version:
+    description: "enprot release version to install (e.g. '0.5.11'). Defaults to 'latest'."
+    required: false
+    default: "latest"
+  operation:
+    description: "enprot subcommand: encrypt | decrypt | store | fetch | encrypt-store | passthrough | verify"
     required: true
   files:
-    description: "File(s) to process, space-separated"
+    description: "Space- or newline-separated list of files to process."
     required: true
-  word:
-    description: "WORD segment name"
-    required: true
-  password:
-    description: "WORD password (prefer a secret)"
-    required: false
-  cipher:
-    description: "Cipher for encrypt mode (default aes-256-gcm-det)"
-    required: false
-    default: "aes-256-gcm-det"
-  version:
-    description: "enprot release tag to download (default latest)"
+  words:
+    description: "Comma-separated WORD=password pairs (e.g. 'SECRET=hunter2,API=xyz'). Use ${{ secrets.* }} for passwords."
     required: false
     default: ""
+  cipher:
+    description: "Cipher for encrypt/encrypt-store (aes-256-siv | aes-256-gcm | aes-256-gcm-siv | aes-256-gcm-det | aes-256-gcm-siv-det)."
+    required: false
+    default: ""
+  casdir:
+    description: "CAS directory for store/fetch/encrypt-store operations."
+    required: false
+    default: ".cas"
+  policy:
+    description: "Crypto policy: 'default' or 'nist' (--fips)."
+    required: false
+    default: ""
+  extra-args:
+    description: "Additional CLI arguments appended verbatim to the enprot invocation."
+    required: false
+    default: ""
+
 runs:
   using: "composite"
   steps:
-    - id: download
+    - name: Detect platform
+      id: platform
       shell: bash
       run: |
-        set -euxo pipefail
-        tag="${{ inputs.version }}"
-        if [ -z "$tag" ]; then
-          tag="$(curl -fsSL https://api.github.com/repos/engyon/enprot/releases/latest | jq -r .tag_name | sed 's/^enprot-//')"
-        fi
-        case "$(uname -m)-$(uname -s)" in
-          x86_64-Linux)  asset="enprot-${tag#v}-x86_64-unknown-linux-musl.tar.gz" ;;
-          aarch64-Linux) asset="enprot-${tag#v}-aarch64-unknown-linux-musl.tar.gz" ;;
-          arm64-Darwin)  asset="enprot-${tag#v}-aarch64-apple-darwin.tar.gz" ;;
-          x86_64-Darwin) asset="enprot-${tag#v}-x86_64-apple-darwin.tar.gz" ;;
-          *) echo "unsupported runner" >&2; exit 1 ;;
+        set -euo pipefail
+        case "${{ runner.os }}" in
+          Linux)  suffix="x86_64-unknown-linux-musl.tar.gz"
+                  [ "$(uname -m)" = "aarch64" ] && suffix="aarch64-unknown-linux-musl.tar.gz" ;;
+          macOS)  suffix="x86_64-apple-darwin.tar.gz"
+                  [ "$(uname -m)" = "arm64" ] && suffix="aarch64-apple-darwin.tar.gz" ;;
+          Windows) suffix="x86_64-pc-windows-msvc.zip" ;;
+          *) echo "unsupported runner.os: ${{ runner.os }}" >&2; exit 1 ;;
         esac
-        curl -fsSL --retry 3 -o /tmp/enprot.tgz \
-          "https://github.com/engyon/enprot/releases/download/enprot-v${tag#v}/${asset}"
-        sudo tar -xzf /tmp/enprot.tgz -C /tmp
-        sudo find /tmp -maxdepth 2 -type f -name enprot -exec install -m755 {} /usr/local/bin/enprot \;
-    - shell: bash
+        echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
+
+    - name: Resolve version
+      id: ver
+      shell: bash
       run: |
-        set -euxo pipefail
-        pw_args=()
-        if [ -n "${{ inputs.password }}" ]; then
-          pw_args=(-k "${{ inputs.word }}=${{ inputs.password }}")
+        set -euo pipefail
+        v="${{ inputs.version }}"
+        if [ "$v" = "latest" ]; then
+          v="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
+                -H "Authorization: Bearer ${{ github.token }}" \
+                https://api.github.com/repos/${{ github.action_repository || 'engyon/enprot' }}/releases/latest \
+                | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"].lstrip("v"))')"
         fi
-        case "${{ inputs.mode }}" in
-          decrypt) enprot decrypt -w "${{ inputs.word }}" "${pw_args[@]}" ${{ inputs.files }} ;;
-          encrypt) enprot encrypt -w "${{ inputs.word }}" "${pw_args[@]}" --cipher "${{ inputs.cipher }}" ${{ inputs.files }} ;;
-          *) echo "mode must be decrypt or encrypt" >&2; exit 1 ;;
-        esac
+        echo "version=${v#v}" >> "$GITHUB_OUTPUT"
+
+    - name: Download enprot
+      shell: bash
+      run: |
+        set -euo pipefail
+        ver="${{ steps.ver.outputs.version }}"
+        suffix="${{ steps.platform.outputs.suffix }}"
+        repo="${{ github.action_repository || 'engyon/enprot' }}"
+        url="https://github.com/${repo}/releases/download/v${ver}/enprot-v${ver}-${suffix}"
+        echo "Fetching $url"
+        if [[ "$suffix" == *.zip ]]; then
+          curl -fsSL "$url" -o enprot.zip
+          unzip -o enprot.zip -d "$HOME/.enprot-bin"
+        else
+          curl -fsSL "$url" -o enprot.tar.gz
+          mkdir -p "$HOME/.enprot-bin"
+          tar -xzf enprot.tar.gz -C "$HOME/.enprot-bin"
+        fi
+        echo "$HOME/.enprot-bin" >> "$GITHUB_PATH"
+
+    - name: Run enprot
+      shell: bash
+      env:
+        ENPROT_OPERATION: ${{ inputs.operation }}
+        ENPROT_FILES: ${{ inputs.files }}
+        ENPROT_WORDS: ${{ inputs.words }}
+        ENPROT_CIPHER: ${{ inputs.cipher }}
+        ENPROT_CASDIR: ${{ inputs.casdir }}
+        ENPROT_POLICY: ${{ inputs.policy }}
+        ENPROT_EXTRA: ${{ inputs.extra-args }}
+      run: |
+        set -euo pipefail
+        args=("$ENPROT_OPERATION")
+        [ -n "$ENPROT_POLICY" ] && args+=("--policy" "$ENPROT_POLICY")
+        [ -n "$ENPROT_CASDIR" ] && args+=("-c" "$ENPROT_CASDIR")
+        if [ -n "$ENPROT_WORDS" ]; then
+          IFS=',' read -ra pairs <<< "$ENPROT_WORDS"
+          for pair in "${pairs[@]}"; do
+            args+=("-w" "$pair")
+          done
+        fi
+        [ -n "$ENPROT_CIPHER" ] && args+=("--cipher" "$ENPROT_CIPHER")
+        # shellcheck disable=SC2206
+        files=($ENPROT_FILES)
+        args+=("${files[@]}")
+        [ -n "$ENPROT_EXTRA" ] && args+=($ENPROT_EXTRA)
+        echo "+ enprot ${args[*]}"
+        enprot "${args[@]}"
