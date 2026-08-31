@@ -50,12 +50,11 @@ encrypt_enprot() { "$ENPROT" encrypt -w W1 -k W1=pw --cipher aes-256-gcm-det "$1
 decrypt_enprot() { "$ENPROT" decrypt -w W1 -k W1=pw "$1/file.txt"; }
 
 setup_sops() {
-    export SOPS_AGE_KEY_FILE="$WORK/age.key"
-    "$AGE_KEYGEN" > "$WORK/age.pub" 2>/dev/null
-    # age-keygen writes the pubkey on stderr (older) or stdout (newer)
-    pub=$(awk '/public key/ {print $NF}' "$WORK/age.pub" 2>/dev/null || true)
-    [ -n "$pub" ] || pub=$(cat "$WORK/age.pub")
-    echo "$pub" > "$WORK/recipients.txt"
+    # age-keygen: the SECRET key goes to -o; the matching public key
+    # prints with -y. (The first run conflated stdout with the key
+    # file and sops silently died — tee swallowed it.)
+    "$AGE_KEYGEN" -o "$WORK/age.key"
+    "$AGE_KEYGEN" -y "$WORK/age.key" > "$WORK/recipients.txt"
 }
 encrypt_sops() {
     (cd "$1" && "$SOPS" encrypt --age "$WORK/recipients.txt" \
