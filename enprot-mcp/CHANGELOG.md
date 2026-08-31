@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/engyon/enprot/compare/enprot-mcp-v0.1.1...enprot-mcp-v0.1.2) - 2026-08-31
+
+### Other
+
+- bump toml from 0.8.23 to 1.1.4+spec-1.1.0
+
 ## [0.1.1](https://github.com/engyon/enprot/compare/enprot-mcp-v0.1.0...enprot-mcp-v0.1.1) - 2026-08-26
 
 ### Other
