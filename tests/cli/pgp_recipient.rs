@@ -25,12 +25,8 @@ fn rnp_encrypt_roundtrip() {
 
     // Fresh context holding ONLY the public key: encrypt the CEK.
     let ctx = Context::new().unwrap();
-    ctx.load_keys(
-        rnp::KeyringFormat::Gpg,
-        &pub_arm,
-        LoadSaveFlags::PUBLIC,
-    )
-    .unwrap();
+    ctx.load_keys(rnp::KeyringFormat::Gpg, &pub_arm, LoadSaveFlags::PUBLIC)
+        .unwrap();
     let recipient = ctx
         .find_key(rnp::KeyIdentifier::Userid("spike <spike@example.com>"))
         .unwrap()
@@ -46,12 +42,8 @@ fn rnp_encrypt_roundtrip() {
     assert!(!ciphertext.is_empty() && ciphertext != cek);
 
     // Import the secret key; decrypt back to the CEK.
-    ctx.load_keys(
-        rnp::KeyringFormat::Gpg,
-        &sec_arm,
-        LoadSaveFlags::SECRET,
-    )
-    .unwrap();
+    ctx.load_keys(rnp::KeyringFormat::Gpg, &sec_arm, LoadSaveFlags::SECRET)
+        .unwrap();
     let result = Decryptor::new(&ctx, &ciphertext).build().unwrap();
     assert_eq!(result.plaintext(), cek.as_slice());
 }
