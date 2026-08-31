@@ -41,7 +41,17 @@ jobs:
             -exec mv {} /usr/local/bin/ \;
           sops --version && age-keygen --version && git-crypt version
 
+      - name: Install C dependencies
+        # The same path the tests matrix uses: Botan + librnp from
+        # source into /usr/local (bare runners ship neither).
+        env:
+          BOTAN_VERSION: "3.7.0"
+          PREFIX: /usr/local
+        run: ./ci/install.sh
+
       - name: Build enprot
+        env:
+          PKG_CONFIG_PATH: /usr/local/lib/pkgconfig
         run: cargo build --release --features cli && sudo cp target/release/enprot /usr/local/bin/
 
       - name: Run comparison harness
