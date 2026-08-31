@@ -160,6 +160,10 @@ pub struct CryptoConfig {
     /// When non-empty, the transform calls kemenc::encrypt instead
     /// of prot::encrypt (password-based). Empty = password mode.
     pub recipient_pubs: Vec<String>,
+    /// OpenPGP armored pubkeys for PGP-recipient escrow wraps
+    /// (`enprot encrypt --pgp-pubkey`). Each wraps the CEK alongside
+    /// the password and ML-KEM recovery paths.
+    pub pgp_pubs: Vec<String>,
     /// Recovery pubkeys for escrow-mode encryption (TODO.complete/59).
     /// When non-empty (and no recipients), the transform calls
     /// escrow::encrypt: the payload key is a wrapped CEK reachable
@@ -308,6 +312,7 @@ impl ParseOps {
                 rng: Some(rng),
                 pbkdf_cache: Some(Vec::new()),
                 recipient_pubs: Vec::new(),
+                pgp_pubs: Vec::new(),
                 recovery_pubs: Vec::new(),
                 recipient_privkeys: HashMap::new(),
             },

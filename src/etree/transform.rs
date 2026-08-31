@@ -103,7 +103,7 @@ fn transform_begin_end(
                 &paops.crypto.cipheropts.alg,
                 rng,
             )?
-        } else if !paops.crypto.recovery_pubs.is_empty() {
+        } else if !paops.crypto.recovery_pubs.is_empty() || !paops.crypto.pgp_pubs.is_empty() {
             // Escrow mode (TODO.complete/59): password path plus a
             // CEK wrapped to each recovery pubkey.
             let pass = ensure_password(keyw, paops, true)?;
@@ -111,6 +111,7 @@ fn transform_begin_end(
                 pt,
                 &pass,
                 &paops.crypto.recovery_pubs,
+                &paops.crypto.pgp_pubs,
                 &mut paops.crypto.rng,
                 &paops.crypto.pbkdfopts,
                 &paops.crypto.cipheropts,
