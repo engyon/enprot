@@ -57,26 +57,33 @@ setup_sops() {
     "$AGE_KEYGEN" -y "$WORK/age.key" > "$WORK/recipients.txt"
 }
 encrypt_sops() {
-    (cd "$1" && "$SOPS" encrypt --age "$WORK/recipients.txt" \
+    # --age takes the recipient STRING (not a file); the secret key
+    # reaches decrypt via SOPS_AGE_KEY_FILE, set in setup_sops.
+    (cd "$1" && "$SOPS" encrypt --age "$(cat "$WORK/recipients.txt")" \
         --encrypted-regex 'secret_payload' file.txt > file.enc && mv file.enc file.txt)
 }
 decrypt_sops() {
-    (cd "$1" && "$SOPS" decrypt "$WORK/age.key" file.txt > file.dec && mv file.dec file.txt)
+    (cd "$1" && "$SOPS" decrypt file.txt > file.dec && mv file.dec file.txt)
 }
 
 setup_gitcrypt() {
-    mkdir -p "$WORK/gc" && (cd "$WORK/gc" && git init -q && "$GIT_CRYPT" init && \
+    # A fresh repo per invocation: git-crypt lock/unlock cycles do not
+    # compose on a shared working tree (second lock on a locked repo
+    # errors).
+    GC="$WORK/gc-$(basename "$1")"
+    export GC
+    mkdir -p "$GC" && (cd "$GC" && git init -q && "$GIT_CRYPT" init && \
         "$GIT_CRYPT" export-key "$WORK/gc-key" && echo "*.txt filter=git-crypt diff=git-crypt" > .gitattributes)
 }
 encrypt_gitcrypt() {
-    (cd "$WORK/gc" && cp "$1/file.txt" . && git add file.txt && \
+    (cd "$GC" && cp "$1/file.txt" . && git add file.txt && \
         git -c user.email=b@b -c user.name=b commit -qm x && "$GIT_CRYPT" lock)
-    cp "$WORK/gc/file.txt" "$1/file.txt"
+    cp "$GC/file.txt" "$1/file.txt"
 }
 decrypt_gitcrypt() {
-    cp "$1/file.txt" "$WORK/gc/file.txt"
-    (cd "$WORK/gc" && "$GIT_CRYPT" unlock "$WORK/gc-key")
-    cp "$WORK/gc/file.txt" "$1/file.txt"
+    cp "$1/file.txt" "$GC/file.txt"
+    (cd "$GC" && "$GIT_CRYPT" unlock "$WORK/gc-key")
+    cp "$GC/file.txt" "$1/file.txt"
 }
 
 # --- measurement -----------------------------------------------------
@@ -86,11 +93,11 @@ bench() { # tool size_bytes words label
     rm -rf "$d"; mkdir -p "$d"
     TOOL=$TOOL make_corpus "$d" "$size" "$words" >/dev/null
     cp -r "$d" "$d-plain"
-    "setup_${TOOL%_*}" 2>/dev/null || "setup_$TOOL"
-    t0=$(now_ms); "encrypt_$TOOL" "$d"; t1=$(now_ms)
+    "setup_$TOOL" 2>>"$OUT_DIR/errors.log"
+    t0=$(now_ms); "encrypt_$TOOL" "$d" 2>>"$OUT_DIR/errors.log"; t1=$(now_ms)
     enc_bytes=$(wc -c < "$d/file.txt" | tr -d ' ')
     plain_bytes=$(wc -c < "$d-plain/file.txt" | tr -d ' ')
-    t2=$(now_ms); "decrypt_$TOOL" "$d"; t3=$(now_ms)
+    t2=$(now_ms); "decrypt_$TOOL" "$d" 2>>"$OUT_DIR/errors.log"; t3=$(now_ms)
     echo "{\"tool\":\"$TOOL\",\"bytes\":$plain_bytes,\"words\":$words,\"encrypt_ms\":$((t1-t0)),\"decrypt_ms\":$((t3-t2)),\"overhead_pct\":$(( (enc_bytes * 100 / plain_bytes) - 100 ))}"
 }
 
