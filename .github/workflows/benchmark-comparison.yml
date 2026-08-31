@@ -1,0 +1,57 @@
+name: benchmark-comparison
+
+# Competitive benchmark: enprot vs SOPS vs git-crypt (the committed-
+# ciphertext incumbents). Runs weekly and on demand — NOT per-PR —
+# because competitor installs and multi-megabyte corpora are pure
+# maintenance cost on every push. Results land as a workflow artifact
+# and in the job summary; docs/src/pages/docs/reference/benchmarks.md
+# carries the methodology and the current snapshot.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOPS_VERSION: "3.10.2"
+  AGE_VERSION: "1.2.1"
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install competitors
+        run: |
+          set -euxo pipefail
+          sudo apt-get -y update && sudo apt-get -y install git-crypt
+          curl -fsSL "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64" \
+            -o /usr/local/bin/sops && chmod +x /usr/local/bin/sops
+          curl -fsSL "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz" \
+            | tar xz -C /tmp
+          sudo mv "/tmp/age-v${AGE_VERSION}-linux-amd64/age-keygen" /usr/local/bin/
+          sudo mv "/tmp/age-v${AGE_VERSION}-linux-amd64/age" /usr/local/bin/
+          sops --version && age-keygen --version && git-crypt version
+
+      - name: Build enprot
+        run: cargo build --release --features cli && sudo cp target/release/enprot /usr/local/bin/
+
+      - name: Run comparison harness
+        env:
+          OUT_DIR: bench-results
+        run: ./ci/bench/competitors.sh
+
+      - name: Job summary
+        run: cat bench-results/results.jsonl >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-comparison
+          path: bench-results/
+          retention-days: 90
