@@ -79,8 +79,12 @@ setup_gitcrypt() {
         "$GIT_CRYPT" export-key "$WORK/gc-key" && echo "*.txt filter=git-crypt diff=git-crypt" > .gitattributes)
 }
 encrypt_gitcrypt() {
-    (cd "$GC" && cp "$1/file.txt" . && git add file.txt && \
-        git -c user.email=b@b -c user.name=b commit -qm x && "$GIT_CRYPT" lock)
+    echo "DBG: encrypt_gitcrypt in=$1 gc=$GC" >&2
+    (cd "$GC" && cp "$1/file.txt" . \
+        && git add file.txt \
+        && git -c user.email=b@b -c user.name=b commit -qm x \
+        && "$GIT_CRYPT" lock) \
+      || echo "DBG: gitcrypt cycle rc=$?" >&2
     cp "$GC/file.txt" "$1/file.txt"
 }
 decrypt_gitcrypt() {
