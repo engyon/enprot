@@ -35,8 +35,10 @@ jobs:
             -o /usr/local/bin/sops && chmod +x /usr/local/bin/sops
           curl -fsSL "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz" \
             | tar xz -C /tmp
-          sudo mv "/tmp/age-v${AGE_VERSION}-linux-amd64/age-keygen" /usr/local/bin/
-          sudo mv "/tmp/age-v${AGE_VERSION}-linux-amd64/age" /usr/local/bin/
+          # The archive's top-level directory name varies across
+          # releases; locate the binaries instead of guessing paths.
+          sudo find /tmp -maxdepth 3 -type f \( -name age -o -name age-keygen \) \
+            -exec mv {} /usr/local/bin/ \;
           sops --version && age-keygen --version && git-crypt version
 
       - name: Build enprot
