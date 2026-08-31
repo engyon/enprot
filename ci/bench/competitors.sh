@@ -54,7 +54,8 @@ setup_sops() {
     # prints with -y. The env var is how sops finds the identity at
     # decrypt time — without it sops falls back to
     # ~/.config/sops/age/keys.txt and the run dies there.
-    "$AGE_KEYGEN" -o "$WORK/age.key"
+    # Idempotent: bench() invokes setup once per corpus size.
+    [ -f "$WORK/age.key" ] || "$AGE_KEYGEN" -o "$WORK/age.key"
     "$AGE_KEYGEN" -y "$WORK/age.key" > "$WORK/recipients.txt"
     export SOPS_AGE_KEY_FILE="$WORK/age.key"
 }
