@@ -23,6 +23,7 @@ mod json_output;
 mod merge_driver;
 mod migrate_keys;
 mod misc;
+mod pgp_recipient;
 mod multi_file;
 mod pbkdf;
 mod pipe;
