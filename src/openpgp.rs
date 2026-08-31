@@ -79,7 +79,7 @@ fn rnp_err(e: rnp::Error) -> Error {
 }
 
 /// Wrap `cek` to every encryption-capable key in each armored pubkey
-/// block. Returns `(fpr16, base64-of-pgp-message)` per recipient.
+/// block. Returns `(fp16, base64-of-pgp-message)` per recipient.
 /// A fresh context per armor means every key found belongs to it.
 pub fn wrap_cek_to_pubkeys(pub_armors: &[String], cek: &[u8]) -> Result<Vec<(String, String)>> {
     use rnp::key::LoadSaveFlags;
@@ -102,7 +102,7 @@ pub fn wrap_cek_to_pubkeys(pub_armors: &[String], cek: &[u8]) -> Result<Vec<(Str
                 Ok(Some(k)) => k,
                 _ => continue,
             };
-            let fpr = key.fingerprint().map_err(rnp_err)?;
+            let fp = key.fingerprint().map_err(rnp_err)?;
             let mut ct = Output::to_memory().map_err(rnp_err)?;
             Encryptor::new(&ctx, cek)
                 .map_err(rnp_err)?
@@ -111,7 +111,7 @@ pub fn wrap_cek_to_pubkeys(pub_armors: &[String], cek: &[u8]) -> Result<Vec<(Str
                 .map_err(rnp_err)?;
             let bytes = ct.into_bytes().map_err(rnp_err)?;
             out.push((
-                fpr[fpr.len().saturating_sub(16)..].to_string(),
+                fp[fp.len().saturating_sub(16)..].to_string(),
                 crate::utils::base64_encode(&bytes)?,
             ));
         }
