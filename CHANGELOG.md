@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.75](https://github.com/engyon/enprot/compare/enprot-v0.5.74...enprot-v0.5.75) - 2026-08-31
+
+### Added
+
+- *(cli)* turnkey git wiring — enprot init --git configures the full filter/diff/merge trio
+
+### Fixed
+
+- *(bench)* run setup in the noise/merge probes — git-crypt's $GC was unset there
+- *(bench)* pass the corpus dir to setup — git-crypt's per-cycle repo derivation needs it
+- *(bench)* idempotent sops setup — age-keygen -o collides on the second corpus size
+- *(bench)* restore SOPS_AGE_KEY_FILE — sops fell back to ~/.config and the run died at decrypt
+- *(bench)* sops --age takes the recipient string; decrypt keys via env; fresh git-crypt repo per cycle; stderr captured to errors.log
+- *(bench)* age-keygen -o writes the secret key — sops rows silently died in the tee pipeline
+- *(bench)* install the C stack via ci/install.sh — bare runners ship neither Botan nor librnp
+- *(bench)* locate age binaries by find — the release archive's top-level dir name varies
+
+### Other
+
+- bump actions/upload-artifact from 4 to 7
+- bump taiki-e/install-action from 2.86.3 to 2.86.7
+- *(bench)* first measured snapshot — enprot vs SOPS vs git-crypt across all three axes
+- *(debug)* pinpoint the git-crypt diffnoise death — echo the cycle's failing stage
+- Metanorma cookbook — encrypted annexes in published specs, and a composite GitHub Action
+- fmt
+- *(pgp)* prove the rnp-rs encryption roundtrip — the seam for the OpenPGP recipient path
+- competitor comparison harness — enprot vs SOPS vs git-crypt
+- bump actions/cache from 4 to 6
+- bump aes-gcm-siv in the rustcrypto group across 1 directory
+- *(ci)* re-enable simd_avx512 on windows-gnu — step two of the validated rollback to stock modules
+- *(ci)* re-enable simd_avx2 on windows-gnu — the disable was CPATH-poison fallout, one variable stale
+
 ## [0.5.74](https://github.com/engyon/enprot/compare/enprot-v0.5.73...enprot-v0.5.74) - 2026-08-29
 
 ### Added
