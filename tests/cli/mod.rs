@@ -17,6 +17,7 @@ mod deterministic;
 mod encrypt_decrypt;
 mod encrypt_store;
 mod fingerprint;
+mod init_git;
 mod inspect;
 mod issue_15;
 mod json_output;

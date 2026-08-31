@@ -41,6 +41,7 @@ pub fn run(a: InitSubcmd) -> Result<()> {
 
     if a.git {
         init_gitattributes()?;
+        configure_git_filters(&a.git_word)?;
     }
     // Create the CAS directory if it doesn't exist — most commands
     // assume it's there; creating it at init time saves the user
@@ -53,35 +54,76 @@ pub fn run(a: InitSubcmd) -> Result<()> {
     Ok(())
 }
 
-/// Write `.gitattributes` so *.ept files route through enprot's
-/// filter/diff/merge machinery. Prints the `.git/config` snippet to
-/// stdout — we don't write to `.git/config` directly to avoid
-/// clobbering unrelated entries.
+/// Append-safe `.gitattributes` entry routing `*.ept` through
+/// enprot's filter/diff/merge machinery.
 fn init_gitattributes() -> Result<()> {
     let path = PathBuf::from(".gitattributes");
-    let snippet = "# Route *.ept through enprot's clean/smudge filters.\n\
-                   *.ept filter=enprot diff=enprot merge=enprot\n";
+    let line = "*.ept filter=enprot diff=enprot merge=enprot\n";
     if path.exists() {
-        return Err(Error::Io(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!(
-                "{} already exists; merge this snippet in manually:\n{}",
-                path.display(),
-                snippet
-            ),
-        )));
+        let existing = std::fs::read_to_string(&path)?;
+        if existing.contains("filter=enprot") {
+            println!("{} already routes enprot; left as is", path.display());
+        } else {
+            std::fs::write(&path, format!("{existing}\n{line}"))?;
+            println!("appended enprot entry to {}", path.display());
+        }
+    } else {
+        std::fs::write(
+            &path,
+            format!("# Route *.ept through enprot's clean/smudge filters.\n{line}"),
+        )?;
+        println!("wrote {}", path.display());
     }
-    std::fs::write(&path, snippet)?;
-    println!("wrote {}", path.display());
+    Ok(())
+}
+
+/// Configure the git filter/diff/merge trio surgically via
+/// `git config` (never file rewriting — unrelated entries are safe).
+/// Credentials are deliberately NOT baked here: `required = false`
+/// keeps checkouts working without them, and the printed hint shows
+/// where to add a `-k WORD=PASSWORD` once the user chooses how to
+/// store it.
+fn configure_git_filters(words: &[String]) -> Result<()> {
+    if !PathBuf::from(".git").exists() {
+        println!("not a git repository; skipped .git/config (attributes still written)");
+        return Ok(());
+    }
+    let word_flags: String = words
+        .iter()
+        .map(|w| format!(" -w {w}"))
+        .collect::<Vec<_>>()
+        .join("");
+    let entries = [
+        ("filter.enprot.clean", format!("enprot clean{word_flags}")),
+        ("filter.enprot.smudge", format!("enprot smudge{word_flags}")),
+        ("filter.enprot.required", "false".to_string()),
+        (
+            "diff.enprot.textconv",
+            format!("enprot textconv{word_flags}"),
+        ),
+        (
+            "merge.enprot.driver",
+            "enprot merge-driver %O %A %B %P".to_string(),
+        ),
+        ("merge.enprot.name", "enprot WORD-aware merge".to_string()),
+    ];
+    for (key, value) in entries {
+        let status = std::process::Command::new("git")
+            .args(["config", key, &value])
+            .status()
+            .map_err(|e| Error::Io(std::io::Error::other(format!("git config {key}: {e}"))))?;
+        if !status.success() {
+            return Err(Error::InvalidArg {
+                arg: "--git",
+                reason: format!("git config {key} failed"),
+            });
+        }
+        println!("git config {key} = {value}");
+    }
     println!(
-        "\nAdd the following to .git/config (or run `git config -f .git/config ...`):\n\
-               [filter \"enprot\"]\n\
-               \x20   clean = enprot clean -w WORD -k WORD=PASSWORD\n\
-               \x20   smudge = enprot smudge -w WORD -k WORD=PASSWORD\n\
-               [diff \"enprot\"]\n\
-               \x20   textconv = enprot textconv -w WORD -k WORD=PASSWORD\n\
-               [merge \"enprot\"]\n\
-               \x20   driver = enprot merge-driver %O %A %B %P\n"
+        "\nFilters degrade gracefully without credentials (required=false). \
+         To decrypt on checkout, add `-k WORD=PASSWORD` to \
+         filter.enprot.smudge (or a credential helper of your choosing)."
     );
     Ok(())
 }
@@ -101,11 +143,18 @@ pub struct InitSubcmd {
     #[arg(long)]
     pub force: bool,
 
-    /// Also write `.gitattributes` and print the `.git/config` snippet
-    /// for the enprot filter (TODO.roadmap/45). The config snippet
-    /// goes to stdout so the user can review before pasting — enprot
-    /// doesn't write to `.git/config` directly to avoid stomping
-    /// unrelated entries.
+    /// Turnkey git wiring: `.gitattributes` entry (append-safe) plus
+    /// the filter/diff/merge trio in `.git/config`, set surgically
+    /// via `git config` so unrelated entries are never touched.
+    /// Credentials are not baked in — `filter.enprot.required=false`
+    /// keeps checkouts working without them.
     #[arg(long)]
     pub git: bool,
+
+    /// WORDs to bake into the filter commands (`enprot init --git
+    /// --word ALPHA --word BETA`). Without any, the bare commands are
+    /// configured and every WORD is handled when credentials are
+    /// supplied.
+    #[arg(long = "git-word", value_name = "WORD")]
+    pub git_word: Vec<String>,
 }

@@ -157,13 +157,28 @@ pub(super) fn run(common: &CommonArgs, _format: OutputFormat) -> Result<()> {
     let locale = std::env::var("ENPROT_LOCALE").unwrap_or_else(|_| "en (default)".to_string());
     println!("locale: {locale}");
 
-    // 7. git filter wiring
-    if Path::new(".git").is_dir() {
-        match std::fs::read_to_string(".gitattributes") {
-            Ok(attr) if attr.contains("enprot") => {
-                println!("git filter: ok (.gitattributes references enprot)");
-            }
-            _ => println!("git filter: not configured (add to .gitattributes for smudge/clean)"),
+    // 7. git filter wiring — the full trio: attributes + config keys
+    if Path::new(".git").exists() {
+        let attrs_ok = std::fs::read_to_string(".gitattributes")
+            .map(|a| a.contains("filter=enprot"))
+            .unwrap_or(false);
+        let key = |k: &str| {
+            std::process::Command::new("git")
+                .args(["config", "--get", k])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        };
+        let (filter, merge) = (key("filter.enprot.smudge"), key("merge.enprot.driver"));
+        match (attrs_ok, filter, merge) {
+            (true, true, true) => println!("git filter: ok (attributes + filter + merge driver)"),
+            (true, true, false) => println!(
+                "git filter: warn — attributes + filter set, merge driver missing                  (enprot init --git wires the full trio)"
+            ),
+            _ => println!(
+                "git filter: not configured (enprot init --git wires attributes, \
+                 filters, and the WORD-aware merge driver)"
+            ),
         }
     }
 
