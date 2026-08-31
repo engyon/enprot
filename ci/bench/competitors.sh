@@ -96,7 +96,7 @@ bench() { # tool size_bytes words label
     rm -rf "$d"; mkdir -p "$d"
     TOOL=$TOOL make_corpus "$d" "$size" "$words" >/dev/null
     cp -r "$d" "$d-plain"
-    "setup_$TOOL" 2>>"$OUT_DIR/errors.log"
+    "setup_$TOOL" "$d" 2>>"$OUT_DIR/errors.log"
     t0=$(now_ms); "encrypt_$TOOL" "$d" 2>>"$OUT_DIR/errors.log"; t1=$(now_ms)
     enc_bytes=$(wc -c < "$d/file.txt" | tr -d ' ')
     plain_bytes=$(wc -c < "$d-plain/file.txt" | tr -d ' ')
