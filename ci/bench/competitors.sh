@@ -51,10 +51,12 @@ decrypt_enprot() { "$ENPROT" decrypt -w W1 -k W1=pw "$1/file.txt"; }
 
 setup_sops() {
     # age-keygen: the SECRET key goes to -o; the matching public key
-    # prints with -y. (The first run conflated stdout with the key
-    # file and sops silently died — tee swallowed it.)
+    # prints with -y. The env var is how sops finds the identity at
+    # decrypt time — without it sops falls back to
+    # ~/.config/sops/age/keys.txt and the run dies there.
     "$AGE_KEYGEN" -o "$WORK/age.key"
     "$AGE_KEYGEN" -y "$WORK/age.key" > "$WORK/recipients.txt"
+    export SOPS_AGE_KEY_FILE="$WORK/age.key"
 }
 encrypt_sops() {
     # --age takes the recipient STRING (not a file); the secret key
