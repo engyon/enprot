@@ -41,3 +41,6 @@ snapcraft = "snapcraft"
 Cargo = "Cargo"
 # Accepted verbatim — appears in CHANGELOG entries that quote the original misspelling.
 CHANGLOG = "CHANGLOG"
+# Former spelling of fp (fingerprint), quoted verbatim in one
+# generated CHANGELOG entry.
+fpr = "fpr"
