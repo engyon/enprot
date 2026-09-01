@@ -87,6 +87,13 @@ jobs:
               enprot-v*|v[0-9]*.[0-9]*.[0-9]*|[0-9]*.[0-9]*.[0-9]*)
                 echo "dispatching deploy for $tag"
                 gh workflow run deploy.yml -f "tag=$tag"
+                # The composite Action's rolling tags (@v0, @v0.5)
+                # roll via publish-action.yml — same token-push
+                # blind spot as deploy, so it chains here too. Its
+                # own workflow exercises the Action as its smoke
+                # test. (Found 2026-09-01: the workflow had zero
+                # runs ever; the pins pointed at nothing.)
+                gh workflow run publish-action.yml -f "tag=$tag"
                 ;;
               enprot-ffi-v*)
                 # FFI cdylib has no standalone release artifacts.
