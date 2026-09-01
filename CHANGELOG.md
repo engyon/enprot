@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.78](https://github.com/engyon/enprot/compare/enprot-v0.5.77...enprot-v0.5.78) - 2026-09-01
+
+### Added
+
+- *(bench)* the snapshot maintains itself — weekly run regenerates the docs table and opens the PR
+
 ## [0.5.77](https://github.com/engyon/enprot/compare/enprot-v0.5.76...enprot-v0.5.77) - 2026-09-01
 
 ### Other
