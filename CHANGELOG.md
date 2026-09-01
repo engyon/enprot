@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.77](https://github.com/engyon/enprot/compare/enprot-v0.5.76...enprot-v0.5.77) - 2026-09-01
+
+### Other
+
+- pgp recipient enters the map — CLAUDE.md escrow line + CONTEXT.md glossary term
+
 ## [0.5.76](https://github.com/engyon/enprot/compare/enprot-v0.5.75...enprot-v0.5.76) - 2026-09-01
 
 ### Fixed
