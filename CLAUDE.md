@@ -119,7 +119,7 @@ Each subcommand is a handler module with its `clap` `Args` struct beside it (`ro
 
 ### Beyond the core pipeline
 
-`src/ledger/` (chain anchors: `anchor.rs` sign/verify, `dag.rs` the parent-checked DAG), `src/merge/` (the region-based merge driver behind `enprot merge`/git merge-file), `src/escrow.rs` (CEK wrapping with password + ML-KEM recovery paths; powers `enprot rotate`), `src/kemenc.rs` (ML-KEM encryption to recipient pubkeys), `src/capability.rs`/`cappolicy.rs` (capability ledger policy), `src/extfield.rs` (typed extfield views — raw string keys are nameable only there), `src/cas/` (LocalCas plus s3/ipfs/rekor backends behind the `CasStore` trait), `src/policy/` (the `CryptoPolicy` trait + NIST profile), `src/sbom.rs`, `src/i18n.rs`, `src/signer.rs`, `src/pure_rust_crypto.rs`, `src/plugin.rs`.
+`src/ledger/` (chain anchors: `anchor.rs` sign/verify, `dag.rs` the parent-checked DAG), `src/merge/` (the region-based merge driver behind `enprot merge`/git merge-file), `src/escrow.rs` (CEK wrapping with password + ML-KEM recovery + OpenPGP recipient paths — `--recovery-key`, `--pgp-pubkey`; powers `enprot rotate`), `src/kemenc.rs` (ML-KEM encryption to recipient pubkeys), `src/capability.rs`/`cappolicy.rs` (capability ledger policy), `src/extfield.rs` (typed extfield views — raw string keys are nameable only there), `src/cas/` (LocalCas plus s3/ipfs/rekor backends behind the `CasStore` trait), `src/policy/` (the `CryptoPolicy` trait + NIST profile), `src/sbom.rs`, `src/i18n.rs`, `src/signer.rs`, `src/pure_rust_crypto.rs`, `src/plugin.rs`.
 
 ### Error handling (src/error.rs)
 
