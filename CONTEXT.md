@@ -52,6 +52,9 @@ here is sharpened, update this file in the same change.
   wrapped **CEK** (content-encryption key) reachable via the
   password *or* any recovery private key (ML-KEM). Detected only
   through `escrow::is_escrow_block`.
+- **pgp recipient** — an OpenPGP public key that received the CEK of
+  an escrow block (`pgp-<fp16>-wrap` extfields, added v0.5.75). The
+  matching armored secret key decrypts via `--key-file`, no password.
 - **rotation** — re-wrapping an escrow block's CEK under new
   password/recovery key material; the payload ciphertext is
   byte-identical.
