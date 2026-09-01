@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.76](https://github.com/engyon/enprot/compare/enprot-v0.5.75...enprot-v0.5.76) - 2026-09-01
+
+### Fixed
+
+- typos — accept fpr verbatim (one generated CHANGELOG entry quotes it)
+- *(release)* chain publish-action into the release flow — token-pushed tags never fired it
+
+### Other
+
+- bump aes-siv from 0.7.0 to 0.8.0
+
 ## [0.5.75](https://github.com/engyon/enprot/compare/enprot-v0.5.74...enprot-v0.5.75) - 2026-08-31
 
 ### Added
