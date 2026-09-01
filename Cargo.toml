@@ -1,6 +1,6 @@
 [package]
 name        = "enprot"
-version     = "0.5.75"
+version     = "0.5.76"
 authors     = ["Ribose Inc. <open.source@ribose.com>"]
 license     = "BSD-2-Clause"
 description = "Engyon Protected Text (EPT) — confidentiality processor and capability ledger"
