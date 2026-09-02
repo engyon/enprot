@@ -45,10 +45,11 @@
 //! validated eagerly at load, so an invalid policy fails at
 //! `--policy-file` load rather than mid-encrypt (fail fast).
 //!
-//! Recipient whitelisting (per-WORD `accepted_recipients`) is parsed
-//! and surfaced through introspection, but not yet enforced: it
-//! requires ML-KEM-based encryption to be wired through the encrypt
-//! pipeline (TODO.roadmap/30).
+//! Recipient whitelisting (per-WORD `accepted_recipients`) is
+//! enforced by the encrypt pipeline alongside the capability check:
+//! when a policy is loaded and the operation encrypts to recipient
+//! pubkeys, every recipient fingerprint must appear in the WORD's
+//! list (`ml-kem:<fp>`).
 
 use std::path::Path;
 
@@ -352,6 +353,18 @@ impl CapPolicy {
     /// in [`Action::decide`], not here.
     pub fn check_word_capability(&self, word: &str, held: &CapabilitySet) -> Result<()> {
         self.evaluate(&Request { word, held }).into_result()
+    }
+
+    /// The WORD's recipient whitelist (`ml-kem:<fp>` entries), or
+    /// `None` when the policy says nothing about the WORD — absence
+    /// means unconstrained. A present-but-empty list accepts no
+    /// recipients (strict reading: the policy named the WORD and
+    /// allowed nobody).
+    pub fn accepted_recipients(&self, word: &str) -> Option<&[String]> {
+        self.words
+            .iter()
+            .find(|w| w.name == word)
+            .map(|w| w.accepted_recipients.as_slice())
     }
 }
 

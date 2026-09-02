@@ -216,6 +216,8 @@ pub fn run(cfg: RunConfig) -> Result<()> {
     paops.separators.left = left;
     paops.separators.right = right;
     paops.passwords.extend(common.password);
+    // The whitelist gate below reads the pubkeys before they move.
+    let recipient_pubs_for_gate = recipient_pubs.clone();
     paops.crypto.recipient_pubs = recipient_pubs;
     paops.crypto.recovery_pubs = recovery_pubs;
     paops.crypto.pgp_pubs = pgp_pubs;
@@ -248,6 +250,28 @@ pub fn run(cfg: RunConfig) -> Result<()> {
             let held = capability::CapabilitySet::from_paops(&paops);
             for w in &output.word {
                 p.check_word_capability(w, &held)?;
+            }
+            // Recipient whitelist (cappolicy): when this operation
+            // also encrypts to recipient pubkeys, every fingerprint
+            // must be accepted for the WORD. Same opt-in as the
+            // capability check — no policy file, no gate.
+            if !recipient_pubs_for_gate.is_empty() {
+                for w in &output.word {
+                    let Some(accepted) = p.accepted_recipients(w) else {
+                        continue;
+                    };
+                    for pub_pem in &recipient_pubs_for_gate {
+                        let fp = capability::KeyFp::from_pem(pub_pem)?;
+                        let entry = format!("ml-kem:{}", fp.to_hex());
+                        if !accepted.iter().any(|a| a == &entry) {
+                            return Err(crate::error::Error::Policy(format!(
+                                "recipient {} is not in the accepted_recipients \
+                                 whitelist for WORD {w}",
+                                fp.to_hex()
+                            )));
+                        }
+                    }
+                }
             }
         }
         for w in &output.word {
