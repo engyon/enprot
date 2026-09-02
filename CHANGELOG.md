@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.79](https://github.com/engyon/enprot/compare/enprot-v0.5.78...enprot-v0.5.79) - 2026-09-02
+
+### Added
+
+- *(capability)* enforce accepted_recipients — the vision's last parked promise
+
+### Fixed
+
+- botan dev-dependency mirrors the per-target feature split — bare pkg-config broke the Windows legs
+
 ## [0.5.78](https://github.com/engyon/enprot/compare/enprot-v0.5.77...enprot-v0.5.78) - 2026-09-01
 
 ### Added
