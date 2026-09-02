@@ -199,11 +199,19 @@ botan          = { version = "0.11", features = ["botan3", "pkg-config"] }
 [target.'cfg(windows)'.dependencies]
 botan          = { version = "0.11", default-features = false, features = ["botan3", "static"] }
 
+[target.'cfg(not(windows))'.dev-dependencies]
+botan = { version = "0.11", features = ["botan3", "pkg-config"] }
+
+[target.'cfg(windows)'.dev-dependencies]
+botan = { version = "0.11", default-features = false, features = ["botan3", "static"] }
+
 [dev-dependencies]
 # rnp-rs is a normal dependency; redeclared here so integration
 # tests can generate throwaway OpenPGP keypairs for the recipient
-# roundtrips (same version req as the lib).
-botan = { version = "0.11", features = ["botan3", "pkg-config"] }
+# roundtrips (same version req as the lib). botan is redeclared for
+# test RNG/keygen with the same per-target feature split as the main
+# dependency — a bare pkg-config feature broke Windows, which has no
+# pkg-config and builds the static botan instead.
 rnp-rs = "0.1.10"
 tempfile    = "3"
 assert_cmd  = "2"
