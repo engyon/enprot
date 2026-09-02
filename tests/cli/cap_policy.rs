@@ -208,3 +208,101 @@ fn malformed_policy_file_produces_clean_error() {
         .assert()
         .failure();
 }
+
+// Recipient whitelist enforcement (TODO.roadmap/30's parked half):
+// a policy's accepted_recipients gates who may receive the CEK when
+// encrypting to recipient pubkeys.
+fn mlkem_pubkey(dir: &tempfile::TempDir) -> String {
+    let mut rng = botan::RandomNumberGenerator::new_system().unwrap();
+    let (_priv, pub_pem) =
+        enprot::pki::kem_keygen(enprot::pki::KemAlgKind::MlKem, &mut rng).unwrap();
+    let pub_path = dir.path().join("kem_pub.pem");
+    fs::write(&pub_path, &pub_pem).unwrap();
+    pub_path.to_str().unwrap().to_string()
+}
+
+#[test]
+fn encrypt_to_whitelisted_recipient_passes() {
+    let dir = tempdir().unwrap();
+    let pub_pem = mlkem_pubkey(&dir);
+    let fp = fingerprint_hex(&pub_pem);
+    let policy = dir.path().join("policy.toml");
+    fs::write(
+        &policy,
+        format!(
+            "[[word]]\nname = \"W\"\nrequired_capability = \"viewer\"\naccepted_recipients = [\"ml-kem:{fp}\"]\n"
+        ),
+    )
+    .unwrap();
+    let doc = dir.path().join("d.ept");
+    fs::write(&doc, "// <( BEGIN W )>\nx\n// <( END W )>\n").unwrap();
+
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["encrypt", "-w", "W", "--policy-file"])
+        .arg(&policy)
+        .arg("--recipient")
+        .arg(&pub_pem)
+        .arg("d.ept")
+        .assert()
+        .success();
+}
+
+#[test]
+fn encrypt_to_recipient_outside_whitelist_fails() {
+    let dir = tempdir().unwrap();
+    let pub_a = mlkem_pubkey(&dir);
+    // A second, different key.
+    let pub_b = {
+        let mut rng = botan::RandomNumberGenerator::new_system().unwrap();
+        let (_priv, pub_pem) =
+            enprot::pki::kem_keygen(enprot::pki::KemAlgKind::MlKem, &mut rng).unwrap();
+        let p = dir.path().join("kem_pub2.pem");
+        fs::write(&p, &pub_pem).unwrap();
+        p.to_str().unwrap().to_string()
+    };
+    assert_ne!(pub_a, pub_b);
+    let fp_a = fingerprint_hex(&pub_a);
+    let policy = dir.path().join("policy.toml");
+    fs::write(
+        &policy,
+        format!(
+            "[[word]]\nname = \"W\"\nrequired_capability = \"viewer\"\naccepted_recipients = [\"ml-kem:{fp_a}\"]\n"
+        ),
+    )
+    .unwrap();
+    let doc = dir.path().join("d.ept");
+    fs::write(&doc, "// <( BEGIN W )>\nx\n// <( END W )>\n").unwrap();
+
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["encrypt", "-w", "W", "--policy-file"])
+        .arg(&policy)
+        .arg("--recipient")
+        .arg(&pub_b)
+        .arg("d.ept")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("accepted_recipients"));
+}
+
+#[test]
+fn recipient_gate_silent_without_policy() {
+    let dir = tempdir().unwrap();
+    let pub_pem = mlkem_pubkey(&dir);
+    let doc = dir.path().join("d.ept");
+    fs::write(&doc, "// <( BEGIN W )>\nx\n// <( END W )>\n").unwrap();
+
+    // No policy file: any recipient is fine (opt-in, like the
+    // capability check).
+    Command::cargo_bin("enprot")
+        .unwrap()
+        .current_dir(dir.path())
+        .args(["encrypt", "-w", "W", "--recipient"])
+        .arg(&pub_pem)
+        .arg("d.ept")
+        .assert()
+        .success();
+}
