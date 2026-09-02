@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.80](https://github.com/engyon/enprot/compare/enprot-v0.5.79...enprot-v0.5.80) - 2026-09-02
+
+### Other
+
+- *(deps-dev)* bump fast-uri from 3.1.5 to 3.1.7 in /docs
+
 ## [0.5.79](https://github.com/engyon/enprot/compare/enprot-v0.5.78...enprot-v0.5.79) - 2026-09-02
 
 ### Added
